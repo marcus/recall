@@ -14,9 +14,15 @@ Recall is intended for a new personal agent system that should be more portable 
 
 The expected deployment is local-first and single-user at the beginning. Some sources may later be remote or shared. Work data makes provenance, permissions, and query privacy part of the base design.
 
+Recall is a standalone product rather than a Clara subsystem. Clara, Tasks, td,
+and the first personal agent are initial consumers and source examples. None of
+their schemas, directory layouts, or ranking assumptions belong in the Recall
+core.
+
 ## Goals
 
 - Search multiple logical sources through one stable interface.
+- Work across unrelated projects through declarative configuration.
 - Preserve source-native search behavior instead of forcing every source into one index.
 - Combine source-local result lists without comparing meaningless raw scores.
 - Return compact evidence first, with progressive expansion when the agent needs more.
@@ -24,6 +30,7 @@ The expected deployment is local-first and single-user at the beginning. Some so
 - Make missing, stale, denied, and unhealthy sources visible.
 - Support both live retrieval and indexed projections.
 - Allow new adapters without changes to the ranking core.
+- Expose the same behavior through a CLI and optional local API and MCP server.
 - Measure retrieval quality using real questions and downstream answer utility.
 
 ## Non-Goals For The First Version
@@ -34,6 +41,8 @@ The expected deployment is local-first and single-user at the beginning. Some so
 - Replacing the agent runtime or its conversation manager.
 - Training a global ranking model before a useful labeled dataset exists.
 - Converting every source into a single canonical storage schema.
+- Becoming a general data synchronization or ETL platform.
+- Requiring adapters to share Recall's implementation language.
 
 Recall may later participate in memory capture or consolidation, but retrieval should stand on its own first.
 
@@ -44,6 +53,15 @@ Recall may later participate in memory capture or consolidation, but retrieval s
 
 **Adapter**
 : The implementation that connects Recall to a source. It owns source-specific discovery, querying, health checks, and expansion.
+
+**Source instance**
+: One configured use of an adapter, with its own identity, location, policy,
+permissions, and ranking prior. Two projects can use the same adapter without
+becoming the same source.
+
+**Profile**
+: A named set of source instances and policies that can be selected for a
+project, machine, or query.
 
 **Record**
 : A native item exposed by a source, such as a document section, person, task, message, or event.
@@ -101,6 +119,117 @@ adapter      adapter      adapter    adapter    adapter
 ```
 
 The source adapters and the cross-source ranker are separate modules. An adapter may improve its own retrieval without changing fusion behavior. The fusion strategy may change without teaching it SQLite schemas or Markdown chunking.
+
+## Portable Configuration
+
+Recall should load source instances and ranking policy from configuration. The
+core must not contain a built-in list of a user's repositories or databases.
+
+A source instance needs configuration equivalent to:
+
+```text
+source_id              stable identity within the configuration namespace
+adapter                adapter type and compatible protocol version
+location               path, command, endpoint, or connection reference
+enabled                 explicit on/off state
+record_types            optional scope narrower than the adapter default
+retrieval_mode          live, indexed, or hybrid
+base_prior              modest cross-source prior
+intent_priors           bounded adjustments for named query classes
+freshness_policy        expected refresh or verification behavior
+sensitivity             default data classification
+timeout                 per-source query budget
+settings                adapter-owned, schema-validated configuration
+```
+
+Configuration should support two layers:
+
+- User configuration contains machine-wide adapters and reusable profiles.
+- Project configuration selects or adds sources for one project.
+
+The merge order must be deterministic and explainable. `recall config explain`
+should show the resolved profile, the origin of each value, and validation
+errors without printing secrets.
+
+Relative paths in project configuration resolve from that configuration file.
+Secrets are references to environment variables, an operating-system keychain,
+or another secret provider; they are never copied into the resolved config
+output.
+
+Configuration can tune source priors, but it must not turn ranking into an
+unbounded scoring language. Priors and intent adjustments use validated ranges,
+appear in result explanations, and remain benchmark parameters. A source weight
+expresses expected authority for a query class. It does not calibrate the
+source's native search score.
+
+## Product Surfaces
+
+All product surfaces call the same application layer. They must not acquire
+separate ranking, permission, or expansion behavior.
+
+### CLI
+
+The CLI is the first and canonical operator surface. Every read command has
+stable structured output in addition to concise human output.
+
+The initial command shape should cover:
+
+```text
+recall query             search and fuse configured sources
+recall expand            retrieve evidence from a stable locator
+recall sources           list source instances and capabilities
+recall doctor            validate config, access, health, and freshness
+recall eval              run a versioned retrieval benchmark
+recall serve             run the local HTTP API
+recall mcp               run the MCP server
+```
+
+Command names remain provisional until the query and evidence contracts are
+written.
+
+### Local API
+
+A versioned HTTP API may expose query, expansion, source status, and health when
+a long-lived service has a concrete consumer. It binds to loopback by default.
+Non-loopback access requires explicit configuration and authentication.
+
+The API is useful for long-lived indexes, shared model processes, concurrent
+agent hosts, and clients that should not spawn a process per query. The CLI may
+run the application in-process or call a configured local service, but the
+results must be equivalent.
+
+### MCP
+
+MCP is the likely second surface after the CLI. It is an adapter from agent
+hosts to Recall, not Recall's internal module boundary. A small server can
+expose query, expansion, and source-status tools. It should preserve Recall
+locators and diagnostics rather than flattening every result into an
+unstructured text response.
+
+Recall may also consume an upstream MCP server through a source adapter when
+that is the best supported interface. The two roles are independent.
+
+## Adapter Extensibility
+
+Recall should support two adapter forms:
+
+**Built-in adapters**
+: Compiled with Recall for common, low-level sources such as files, JSONL, and
+read-only SQLite. These provide the simplest installation and strongest type
+checking.
+
+**External adapters**
+: Executables or services that implement a versioned Recall adapter protocol.
+They can be written in any language and can wrap an existing CLI, API, MCP
+server, or proprietary SDK.
+
+The external protocol should cover manifest, health, search, expansion, and
+clean cancellation. A local subprocess transport is enough for the first
+version; a network transport can reuse the same messages later. Recall should
+not load native shared-library plugins.
+
+Adapters are registered explicitly. Recall never discovers and executes
+arbitrary programs found in a source directory.
 
 ## What Counts As A Source
 
@@ -733,18 +862,45 @@ Python-first, while Recall is still deliberately language agnostic. Its
 provenance, conflict, and write-safety ideas should inform later memory
 construction work.
 
+## Implementation Direction
+
+[ADR-0001](adr/0001-core-implementation-language.md) proposes Go for the Recall
+core.
+
+Go is the best fit for the current boundary: one dependable executable that can
+act as a CLI, local service, and MCP server while supervising concurrent source
+adapters. The official MCP Go SDK is Tier 1, and specialized retrieval systems
+such as QMD can remain external processes.
+
+TypeScript on Bun is the strongest alternative. It would make direct QMD
+integration and JavaScript adapter development easier, and Bun can package
+standalone executables. Its runtime and native-dependency surface is less
+predictable than Go's for a long-lived local utility.
+
+Rust is a good choice for a future retrieval engine with measured
+performance-sensitive indexing work. It asks for more implementation effort
+than this orchestration-heavy first version needs.
+
+The contracts in this specification remain language neutral even if the first
+core implementation uses Go. The Go decision should be accepted only after the
+ADR's implementation spike passes.
+
 ## Working Decisions
 
 These choices are accepted for the current draft:
 
 - The product name is Recall.
-- The specification remains language agnostic.
+- Recall is reusable across projects and contains no Clara-specific core logic.
+- The specification and adapter contracts remain language neutral.
 - Recall uses source adapters behind a stable contract.
+- Recall supports built-in and out-of-process adapters.
 - Source-local retrieval and cross-source fusion are separate concerns.
 - Raw relevance scores are not compared across sources.
 - Results use progressive disclosure with stable locators.
 - Source health and freshness are part of query correctness.
 - The first version is read-only.
+- The CLI is canonical; any local API or MCP surface is a thin transport over
+  the same application core.
 - Retrieval evaluation will exist before source weights and decay constants are
   tuned.
 
@@ -753,7 +909,8 @@ These choices are accepted for the current draft:
 1. Which subset of the initial source inventory belongs in the first vertical
    slice?
 2. Should QMD be the first document backend trial?
-3. How are adapters registered and configured portably?
+3. What serialized configuration format should represent the portable source
+   contract?
 4. What source priors are justified for the first query classes?
 5. Should broad parallel search be the default, or should a router narrow most queries?
 6. What constitutes the same evidence lineage for corroboration?
@@ -763,6 +920,8 @@ These choices are accepted for the current draft:
 10. Which host integrations are required first: library, CLI, local service, MCP, or another protocol?
 11. Which memory record kinds, if any, should receive decay in the first
     implementation?
+12. Does the Go implementation spike satisfy ADR-0001 well enough to accept the
+    language decision?
 
 ## Source Discussion: Opening Position
 
