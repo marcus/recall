@@ -46,6 +46,68 @@ core.
 
 Recall may later participate in memory capture or consolidation, but retrieval should stand on its own first.
 
+## Design Lineage
+
+Recall keeps the strongest ideas from Scent and Clara while changing their
+product boundary. These are design inputs, not compatibility requirements.
+
+### Scent Ideas To Preserve
+
+| Scent idea | Recall commitment |
+| --- | --- |
+| Retrieve before the reply when continuity matters | Hosts may invoke Recall as a pre-reply step using the exact current request. Passive recall remains a host policy, not a hidden global hook. |
+| Pointers before payloads | Queries return compact candidates with stable locators; expansion retrieves stronger evidence under a budget. |
+| Search each kind of data appropriately | Exact identifiers, structured filters, lexical search, semantic search, and temporal lookup remain source-local capabilities. |
+| Keep the cheap path cheap | Exact and lexical retrieval form the baseline. Semantic expansion and reranking must earn their latency in evaluation. |
+| Avoid repeating the same context | Optional conversation-scoped suppression prevents passive recall from injecting the same evidence lineage on every turn. |
+| Reinforce agreement across sources | Independent evidence can increase confidence after candidates are clustered by lineage. Duplicate projections do not count twice. |
+| Make retrieval inspectable | Local data, typed results, provenance, score explanations, and stable evidence references remain default design choices. |
+| Measure actual use | Recall measures expansion and host-reported consumption, not only query count and latency. |
+
+### Scent Failure Patterns To Reject
+
+- Raw scores from different systems are never normalized into a pretend common
+  scale.
+- Missing dependencies, invalid configuration, inaccessible databases, and
+  adapter failures never become successful empty result sets.
+- A host passes the current request directly. Recall does not reconstruct it by
+  scraping a session log or depend on a private host patch.
+- Partial indexes, stale embeddings, and truncated source scans are reported as
+  degraded. A recent index timestamp alone is not health.
+- Recall does not build a second document or embedding stack when a replaceable
+  engine such as QMD performs that job better.
+- Entity matching cannot rely on unbounded substring tests. Adapters use exact
+  identifiers, token boundaries, aliases, or typed resolvers and test common
+  false positives.
+- Query text and evidence are not written to plaintext analytics by default.
+- Every configured ranking or decay value must affect an explained code path
+  and have an end-to-end test. Dead configuration is a defect.
+
+### Clara Ideas To Preserve
+
+| Clara idea | Recall commitment |
+| --- | --- |
+| Deterministic core with an agentic edge | Parsing, identity, policy, fusion, and output contracts are deterministic. External tools and model-backed retrieval stay behind adapters. |
+| Stable, versioned records | Adapter messages and Recall-owned indexes use explicit schema versions, stable source identities, and provenance. |
+| Source completion is evidence | Absence is meaningful only after a complete successful source boundary. Partial or failed scans cannot retire records or prove no match. |
+| Separate kinds of memory | Durable facts, inferred preferences, transient signals, and behavioral observations have different temporal policy. |
+| Forget by semantics | Decay applies only to suitable record classes. Faded material moves to recoverable cold storage rather than disappearing. |
+| Reinforce from evidence | New evidence or explicit behavior may reinforce an inference. Search and retrieval hits never do. |
+| Preserve behavioral truth | If Recall later learns preferences, append-only observations remain separate from the derived, rebuildable preference projection. |
+| Treat source content as hostile input | Source data cannot promote its own trust, alter the retrieval plan, or authorize a tool call. |
+
+### Clara Limits Not To Inherit
+
+- Clara's current memory recall is substring filtering followed by decayed
+  weight. Recall needs exact, lexical, semantic, structured, and temporal
+  retrieval plus cross-source fusion.
+- Clara's default half-lives are evidence from one application, not defaults for
+  Recall.
+- Clara-specific schemas and work routines remain optional adapters or profiles.
+  They never enter the core.
+- One timestamp cannot stand for indexing, source confirmation, event time, and
+  semantic reinforcement.
+
 ## Terms
 
 **Source**
@@ -209,6 +271,28 @@ unstructured text response.
 Recall may also consume an upstream MCP server through a source adapter when
 that is the best supported interface. The two roles are independent.
 
+### Invocation Policy
+
+A host can use Recall in two modes:
+
+**Explicit**
+: A user or agent calls Recall for a query. Suppression does not hide requested
+evidence.
+
+**Pre-reply**
+: The host requests a small evidence budget before composing an answer. The
+request includes the exact current user message, conversation identity, request
+identity, allowed profile, and privacy scope.
+
+Pre-reply recall must finish inside a configured latency budget or return a
+visible degraded outcome. It cannot fall back to the previous message. A late
+result may be discarded, but it cannot silently attach to a later turn.
+
+Conversation-scoped suppression keys on evidence lineage rather than rendered
+text. Suppression affects passive display, not source retrieval or explicit
+queries. It expires by policy and is explainable so a host can say why a result
+was omitted.
+
 ## Adapter Extensibility
 
 Recall should support two adapter forms:
@@ -340,13 +424,19 @@ An adapter reports:
 ```text
 status                healthy, degraded, unavailable, denied
 checked_at            time of the probe
+last_success_at        latest complete successful operation
 source_watermark      latest source revision, timestamp, or cursor
 index_watermark       indexed revision when applicable
 record_count          exact or estimated
+indexed_count         records represented by the current index
+failed_count          records rejected or not indexed
+coverage              complete, partial, or unknown
 diagnostics           safe operational details
 ```
 
 An unavailable source must not look like a successful search with zero matches.
+A partial source or index must not report healthy unless its declared policy
+allows that exact partial boundary.
 
 ### Search
 
@@ -367,6 +457,7 @@ Output:
 candidates            ranked source-local candidates
 diagnostics           timing, query mode, fallback use, truncation
 source_watermark      freshness evidence for this search
+outcome               success, partial, unavailable, denied, or failed
 ```
 
 The adapter owns local retrieval and ordering. It may use SQL, FTS, vector search, exact lookup, an API, or a combination.
@@ -378,6 +469,7 @@ Every candidate includes:
 ```text
 candidate_id          stable within the source revision
 source_id             logical source identifier
+source_record_id       stable native or adapter-defined record identity
 locator               opaque expansion reference
 record_type           person, task, document, message, event, ...
 title                 compact human-readable label
@@ -386,6 +478,7 @@ local_rank            mandatory rank in the source result list
 local_score           optional source-native score
 match_signals         exact, lexical, semantic, field match, filters
 observed_at           when Recall observed this record
+confirmed_at          when a complete source boundary last confirmed it
 event_time            when the source event happened, if applicable
 valid_from            optional fact validity start
 valid_to              optional fact validity end
@@ -422,6 +515,21 @@ Recall should not impose one freshness strategy on every adapter.
 : Combine a broad index with live verification or recent records. Best when the full corpus is expensive to search but the latest state matters.
 
 Each result must say which revision was searched. A healthy index can still be stale.
+
+### Index Publication And Absence
+
+Recall-owned indexes are rebuildable projections, never the source of truth.
+An index build writes a new generation and publishes it atomically only after
+the declared source boundary completes. Failed builds leave the previous
+generation readable and mark it stale or degraded.
+
+Incremental adapters checkpoint only after their records and errors are
+durable. They retain the last successful watermark when a later pass fails.
+
+A record missing from an incomplete scan is unknown, not deleted. An adapter
+may mark a record absent, inactive, or superseded only when its source contract
+defines the boundary that proves absence. Historical evidence stays
+expandable whenever the source permits it.
 
 ## Cross-Source Ranking
 
@@ -536,6 +644,12 @@ The explanation is part of the product, not only a debugger feature. It makes ra
 ## Security And Privacy
 
 - Treat all retrieved content as untrusted data, never as agent instructions.
+- Assign trust at Recall's central boundary. An adapter cannot mark
+  source-derived text as trusted.
+- Strip unsafe control characters, bound text fields, and validate links before
+  candidates reach a terminal, API, MCP client, or model.
+- Never allow retrieved content to change the retrieval plan, adapter command,
+  configuration, permission scope, or available tools.
 - Enforce source permissions before retrieval and again before expansion.
 - Open databases with read-only credentials or modes by default.
 - Do not log full queries or excerpts by default.
@@ -558,8 +672,13 @@ Recall should record operational facts without collecting query content by defau
 - Index and source watermarks
 - Fallback paths used
 - Reranker usage and cost
+- Suppressed candidate counts and reasons
+- Expansion requests and host-reported selection or citation events
 
 Opt-in evaluation logs may retain query text and judgments in a separate, clearly classified dataset.
+Aggregate consumption metrics should not require query bodies. Candidate- or
+locator-level telemetry is opt-in because identifiers can reveal sensitive
+subjects.
 
 ## Evaluation
 
@@ -589,6 +708,11 @@ Useful measures:
 - Result and reranking cost
 
 The deciding measure is whether Recall improves the agent's final answer without adding misleading context.
+
+The fixture benchmark runs in CI. A separate private benchmark runs before
+ranking, decay, indexing, or adapter changes are accepted. Both verify degraded
+source behavior and assert that configured policies appear in score
+explanations, preventing a setting from existing only on paper.
 
 ### Evaluation Before Tuning
 
@@ -654,7 +778,12 @@ Recall needs to distinguish four different time concepts:
   making the older record irrelevant to a historical query.
 
 **Observation time**
-: When Recall last verified or indexed the source record.
+: When Recall read or indexed the source record. Observation alone does not
+prove that a later source boundary completed.
+
+**Confirmation time**
+: When a complete successful source operation confirmed that the record was
+present or current.
 
 **Reinforcement time**
 : When independent evidence or explicit user behavior strengthened an inferred
