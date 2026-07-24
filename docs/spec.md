@@ -135,7 +135,15 @@ project, machine, or query.
 : Expanded source material retrieved from a candidate's locator.
 
 **Locator**
-: A stable, opaque reference that lets the adapter retrieve a record or evidence range again.
+: A stable, printable reference that lets the adapter retrieve a record or
+evidence range again. Locators are readable and copy-pasteable, such as
+`tasks:td-f62256` or `clara-docs:projects/recall/spec.md#ranking`. Only the
+owning adapter interprets a locator's internal structure; other components
+treat it as an identifier.
+
+**Evidence lineage**
+: The identity that groups candidates derived from the same original record, so
+projections of one fact are not mistaken for independent corroboration.
 
 **Retrieval plan**
 : The set of eligible sources, per-source limits, filters, and query variants used for one request.
@@ -182,10 +190,92 @@ adapter      adapter      adapter    adapter    adapter
 
 The source adapters and the cross-source ranker are separate modules. An adapter may improve its own retrieval without changing fusion behavior. The fusion strategy may change without teaching it SQLite schemas or Markdown chunking.
 
+## Query Contract
+
+The query contract is the host-facing API. The CLI, local API, and MCP surface
+are thin transports over this one contract. Scent's `smell`/`hunt` CLI validated
+this two-verb shape in daily use; the contract below generalizes it.
+
+### Query Request
+
+```text
+query                 the exact current request text
+profile               named profile, or default resolution
+scope                 optional source, record-type, and time filters
+context               optional bounded prior messages with explicit weights
+conversation_id       optional identity for suppression scope
+request_id            unique identity for tracing and idempotency
+mode                  explicit or pre_reply
+budget                latency budget and response token budget
+min_confidence        optional abstention threshold
+limit                 maximum fused results
+```
+
+Context is always passed explicitly by the host with per-message weights.
+Recall never reconstructs conversational context from transcripts or session
+logs.
+
+### Query Response
+
+```text
+results               fused, clustered candidates in final order
+source_outcomes       per-source outcome, latency, and freshness evidence
+plan                  the resolved retrieval plan that produced this response
+suppressed            count and reasons for suppressed candidates
+outcome               answered, degraded, abstained, or failed
+```
+
+Each result carries its candidate envelope, cluster members with lineage,
+score explanation, and locator. The response is budget-shaped: leading results
+include excerpts, trailing results compress to one line with a locator the
+caller can expand. The same structure serializes to JSON for machine callers
+and renders tiered text for humans; neither surface gets extra fields.
+
+Degraded is a first-class outcome. A response that omitted an eligible source
+says so inline; it never silently narrows coverage.
+
+### Expand Request
+
+```text
+locator               from a prior result
+detail                summary, excerpt, full record, surrounding context
+budget                hard output limit
+```
+
+Expansion is stateless with respect to the original query. A locator printed
+yesterday should still expand today unless the source changed incompatibly, and
+that failure is explicit.
+
+## Evidence Identity And Lineage
+
+Lineage determines clustering, corroboration, suppression, and evaluation
+judgments. Identity is declared, not inferred:
+
+1. **Record-level derivation.** A candidate may carry `derived_from` locators
+   naming the upstream records it projects. This is the primary lineage edge.
+   A Clara signal that projects a Tasks record declares that Tasks locator.
+2. **Source-level derivation.** A manifest may declare `derives_from` when an
+   entire source is a projection of another source. Used when record-level
+   references are unavailable.
+3. **Content fingerprint (advisory).** A normalized content hash may collapse
+   candidates for corroboration counting when no declared edge exists. A
+   fingerprint match is never identity: it can merge duplicates, but two
+   fingerprint-merged candidates still count as one lineage for corroboration
+   and remain separate records for expansion.
+
+A lineage identifier is the locator of the root record after following declared
+derivation edges. Candidates sharing a lineage root cluster together and count
+once for corroboration. Independent corroboration requires distinct lineage
+roots.
+
 ## Portable Configuration
 
 Recall should load source instances and ranking policy from configuration. The
 core must not contain a built-in list of a user's repositories or databases.
+
+Configuration files use TOML: they are hand-edited, and comments are part of
+the contract. Machine-generated output such as `recall config explain` emits
+JSON.
 
 A source instance needs configuration equivalent to:
 
@@ -410,6 +500,7 @@ display_name          human-readable source name
 record_types          person, task, document, message, event, ...
 retrieval_modes       exact, lexical, semantic, structured, temporal
 consistency_mode      live, indexed, or hybrid
+derives_from          optional source_id this source projects
 freshness_policy      how current results are expected to be
 sensitivity           default data classification
 capabilities          search, expand, enumerate, checkpoint
@@ -470,7 +561,8 @@ Every candidate includes:
 candidate_id          stable within the source revision
 source_id             logical source identifier
 source_record_id       stable native or adapter-defined record identity
-locator               opaque expansion reference
+locator               stable printable expansion reference
+derived_from          optional upstream locators for lineage
 record_type           person, task, document, message, event, ...
 title                 compact human-readable label
 excerpt               bounded evidence preview
@@ -530,6 +622,25 @@ A record missing from an incomplete scan is unknown, not deleted. An adapter
 may mark a record absent, inactive, or superseded only when its source contract
 defines the boundary that proves absence. Historical evidence stays
 expandable whenever the source permits it.
+
+An index generation records the embedding model identifier and version used to
+build it. A model change starts a new generation; one generation never mixes
+embeddings from different models. Queries report the generation's model as part
+of freshness evidence.
+
+### Deletion And Retention
+
+Recall does not own source data, but it holds projections of it. When a source
+boundary proves a record was deleted upstream, the next published index
+generation excludes it, and superseded generations containing it are removed on
+publication rather than kept as browsable history. Cached excerpts and
+expansion caches honor the same boundary.
+
+Recall never resurfaces a record whose source no longer contains it, except
+through a source that itself retains history as part of its contract, such as
+an archive stream. Evaluation packs store locators rather than copied bodies
+for private data, so deleting the source record also removes it from future
+benchmark runs.
 
 ## Cross-Source Ranking
 
@@ -771,7 +882,6 @@ impractical to reproduce against live data.
 
 ## Time, Freshness, And Decay
 
-Decay is useful, but it must not become a universal relevance multiplier.
 Recall needs to distinguish four different time concepts:
 
 **Event time**
@@ -789,165 +899,46 @@ prove that a later source boundary completed.
 : When a complete successful source operation confirmed that the record was
 present or current.
 
-**Reinforcement time**
-: When independent evidence or explicit user behavior strengthened an inferred
-  memory.
+A fifth concept, reinforcement time, exists only inside memory-owning sources
+and stays behind their adapters.
 
 These timestamps answer different questions and must not be collapsed into one
 `last_seen` field.
 
-Clara supplies a useful starting model:
+### Decay Belongs To Adapters
 
-```text
-effective_weight =
-    base_weight * 0.5 ^ (age_since_reinforcement / half_life)
-```
+The Recall core never implements decay. Decay, reinforcement, and archival are
+memory-store semantics: they require owning the records, and Recall does not.
+An adapter whose source has native decay, such as Clara memory, applies it
+inside source-local ranking. Cross-source fusion operates on local ranks, so
+decayed weights never leak into cross-source comparison.
 
-It applies no decay to durable facts and feedback, while preferences and
-transient signals receive different half-lives. Repeated evidence reinforces a
-memory, and records below a floor move to a recoverable cold archive.
+This delegation is permanent, not a first-version simplification. If a future
+source needs decay, its adapter or its underlying store implements it.
 
-Recall should preserve the good parts of that model:
+For adapters that add decay to a source without native support, Recall's
+documentation is opinionated about how:
 
 - Decay is selected by record semantics, not storage type.
 - Durable facts do not become false merely because they are old.
-- Transient observations and inferred preferences may lose influence.
-- Reinforcement requires new evidence or explicit behavior, not retrieval hits.
+- Only transient observations and inferred preferences lose influence.
+- Reinforcement requires new evidence or explicit behavior, not retrieval hits
+  and not source refreshes that merely re-observe the same assertion.
 - Faded material remains recoverable and searchable for historical questions.
-- Half-life and archive thresholds are inspectable policy.
-
-Recall should tighten the model in several ways:
-
-- Retrieval relevance and memory strength remain separate values.
-- A current-state query favors valid, freshly verified authority.
+- Half-life and archive thresholds are inspectable policy, tuned from
+  evaluation evidence rather than copied from another system.
 - A historical query can deliberately retrieve old evidence without a recency
-  penalty.
-- Source refreshes do not count as semantic reinforcement unless they confirm
-  the same assertion.
-- Contradicting or superseding evidence changes validity; it does not simply
-  apply negative decay.
-- Decay may influence ranking within a suitable source, but cross-source fusion
-  still operates on ranks rather than incomparable effective weights.
+  penalty; contradicting evidence changes validity rather than applying
+  negative decay.
 
-The first version should expose temporal features and implement decay only for a
-small set of clearly transient record classes. The evaluation set should
-determine half-lives later. We should not inherit Clara's 10-day or 45-day
-constants without evidence from Recall's queries.
+The core's temporal obligations are the four timestamp semantics above, the
+`as_of` query boundary, and current-state versus historical query handling.
 
 ## Initial Source Inventory
 
-This is the first concrete inventory. The logical boundaries may change after
-benchmarking.
-
-### Clara Project Corpus
-
-**Location:** `~/code/clara-marcus/projects/`
-
-**Records:** Markdown project packets, status notes, decisions, architecture,
-open questions, and supporting research.
-
-**Authority:** Human- and agent-curated synthesis. Often the best source for
-"what is this project?" or "what did we decide?", but not automatically the
-authority for live task state.
-
-**Proposed mode:** Indexed, with live expansion from the original file and line
-range.
-
-**Stable locator:** Repository-relative path, heading or line range, Git
-revision, and content hash where useful.
-
-**Retrieval:** Lexical plus semantic document search. Project directory and
-document role should remain structured metadata.
-
-### Clara Memory
-
-**Location:** `~/code/clara-marcus/data/memory.jsonl`
-
-**Records:** Distilled facts, feedback, inferred signals, and learned
-preferences with stable IDs, subjects, provenance, weight, reinforcement
-history, and optional half-life.
-
-**Authority:** Derived memory. It is a useful lead and ranking feature, not
-automatically primary evidence for claims about an external system.
-
-**Proposed mode:** Live for exact subject lookup; indexed or scanned for broader
-text recall.
-
-**Stable locator:** Schema version plus memory ID. The source subject is a useful
-deduplication key but may not be globally unique.
-
-**Important lesson:** Preserve record-kind-specific decay and recoverable
-archive behavior. Do not reuse Clara's substring-only retrieval as Recall's
-general ranker.
-
-### Clara Signals And Observations
-
-**Locations:**
-
-- `~/code/clara-marcus/data/signals.jsonl`
-- `~/code/clara-marcus/data/signals-archive.jsonl`
-- `~/code/clara-marcus/data/observations.jsonl`
-
-**Records:** Normalized Jira, Slack, Outlook, Calendar, and Tasks events plus
-explicit user actions such as acting, dismissing, or reprioritizing.
-
-**Authority:** A normalized local projection of upstream systems. Signals are
-evidence with upstream provenance, but live upstream state may supersede them.
-Observations are authoritative evidence of local user behavior.
-
-**Proposed mode:** Incrementally indexed by schema version and record cursor,
-with time-window and exact-reference lookup.
-
-**Stable locator:** Record ID plus source-native `ref`, source ID, occurrence ID,
-and source revision where present.
-
-**Lineage warning:** A Tasks record appearing in Clara Signals and the original
-Tasks record are two representations of one evidence lineage, not independent
-corroboration.
-
-### Tasks
-
-**Source of truth:** The configured Tasks corpus, currently
-`~/code/tasks-marcus/tasks.jsonl` with `archive.jsonl`.
-
-**Records:** Current and archived tasks, projects, hierarchy, state, dates,
-priority, tags, notes, and external links.
-
-**Authority:** Authoritative for Marcus's personal and work task state.
-
-**Proposed mode:** Live structured retrieval through the Tasks CLI JSON
-contract, with an optional index for semantic retrieval over titles and bodies.
-Using the CLI preserves configuration resolution, lifecycle semantics, and
-stable IDs.
-
-**Stable locator:** Task ID. Line numbers and title substrings are convenience
-references, not stable locators.
-
-### td Workspaces
-
-**Source of truth:** Each td project database associated with a repository.
-
-**Records:** Engineering issues, epics, dependencies, review state, comments,
-handoffs, sessions, and linked files.
-
-**Authority:** Authoritative for engineering work tracked in that td workspace.
-
-**Proposed mode:** Live structured retrieval through `td export --all
---format json`, `td query`, `td search`, or the local td HTTP API. Recall should
-not depend on td's private SQLite schema.
-
-**Stable locator:** Workspace identity plus issue ID.
-
-Each workspace is a source instance behind one td adapter. Recall may present
-them as one source family while retaining the workspace boundary for
-permissions, routing, and provenance.
-
-### Additional Structured Databases
-
-Future SQLite sources should be split into logical adapters by record semantics,
-not registered as one source per database file. An adapter should prefer a
-documented application API or read-only view when available. Direct read-only
-SQL is appropriate when the schema itself is a supported contract.
+The concrete first-deployment inventory is a profile example, not core
+specification. It lives in [sources-initial.md](sources-initial.md). The
+abstract Source Classes above are the specification.
 
 ## Build Versus Adopt
 
@@ -1018,6 +1009,10 @@ The contracts in this specification remain language neutral even if the first
 core implementation uses Go. The Go decision should be accepted only after the
 ADR's implementation spike passes.
 
+[ADR-0003](adr/0003-adapter-wire-protocol.md) proposes the external adapter
+wire protocol: newline-delimited JSON-RPC 2.0 over stdio with a manifest
+handshake, cancellation, and recorded-transcript conformance testing.
+
 ## Working Decisions
 
 These choices are accepted for the current draft:
@@ -1040,27 +1035,40 @@ These choices are accepted for the current draft:
   judgments and ranked runs.
 - Autonomous research can optimize a development score only after hard
   correctness, privacy, provenance, abstention, latency, and cost gates pass.
+- Configuration is TOML; machine-generated output is JSON.
+- Evidence lineage is declared: record-level `derived_from`, then source-level
+  `derives_from`, with content fingerprints as an advisory collapse signal
+  only.
+- Locators are stable, printable, and interpreted only by the owning adapter.
+- Decay is permanently an adapter concern; the core carries temporal fields and
+  the `as_of` boundary but never applies decay.
+- Broad parallel search is the default. Eligibility uses hard rules only:
+  permissions, health, explicit scope, and exact-identifier routing. No soft
+  intent router before evaluation shows routing errors.
+- The first vertical slice is two sources: Tasks through its CLI contract
+  (live, structured) and Clara project documents (indexed). Fusing two
+  heterogeneous sources proves the architecture; more sources follow the
+  baseline.
+- The external adapter protocol is newline-delimited JSON-RPC 2.0 over stdio
+  per [ADR-0003](adr/0003-adapter-wire-protocol.md).
+- Evaluation is staged: schemas, smoke pack, run and compare tooling, and hard
+  gates come first; research score, holdout governance, and the autonomous
+  loop wait until a trusted baseline exists.
 
 ## Open Decisions
 
-1. Which subset of the initial source inventory belongs in the first vertical
-   slice?
-2. Should QMD be the first document backend trial?
-3. What serialized configuration format should represent the portable source
-   contract?
-4. What source priors are justified for the first query classes?
-5. Should broad parallel search be the default, or should a router narrow most queries?
-6. What constitutes the same evidence lineage for corroboration?
-7. Which stable identifiers exist across sources?
-8. When is shared-scale reranking worth its latency and data-egress cost?
-9. What query and result data may be retained for evaluation?
-10. Which host integrations are required first: library, CLI, local service, MCP, or another protocol?
-11. Which memory record kinds, if any, should receive decay in the first
-    implementation?
-12. Does the Go implementation spike satisfy ADR-0001 well enough to accept the
-    language decision?
-13. Do the initial benchmark distributions support ADR-0002's proposed research
-    score weights and acceptance gates?
+1. Should QMD be the first document backend trial?
+2. What source priors are justified for the first query classes?
+3. When is shared-scale reranking worth its latency and data-egress cost?
+4. What query and result data may be retained for evaluation?
+5. Which host integrations are required first beyond the CLI: library, local
+   service, MCP, or another protocol?
+6. Does the Go implementation spike satisfy ADR-0001 well enough to accept the
+   language decision?
+7. Do the initial benchmark distributions support ADR-0002's proposed research
+   score weights and acceptance gates?
+8. Where does conversation-scoped suppression state live when Recall runs
+   per-query in-process rather than as a service?
 
 ## Source Discussion: Opening Position
 
@@ -1078,9 +1086,8 @@ My proposed starting point:
 6. Cluster equivalent evidence and reward independent corroboration.
 7. Add a shared reranker only after the baseline has measured failures.
 
-The next discussion should select the smallest vertical slice that exercises
-the architecture. A strong candidate is Clara project documents through a QMD
-trial, current Tasks through its CLI contract, and one Clara JSONL stream. That
-would cover indexed documents, structured live records, append-only events,
-cross-source fusion, evidence lineage, and temporal behavior without committing
-to a runtime.
+The first vertical slice is Tasks plus Clara project documents. It covers
+indexed documents, structured live records, cross-source fusion, and stable
+locators with the smallest surface that can produce a trustworthy baseline.
+The first append-only stream source, which adds record-level lineage and
+temporal behavior, follows once that baseline exists.

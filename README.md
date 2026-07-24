@@ -9,3 +9,4 @@ The project is in its architecture and evaluation-design phase:
 - [Working specification](docs/spec.md)
 - [Evaluation framework](docs/evaluation.md)
 - [Architecture decisions](docs/adr/)
+- [Initial source inventory (profile example)](docs/sources-initial.md)
