@@ -461,6 +461,278 @@ Useful measures:
 
 The deciding measure is whether Recall improves the agent's final answer without adding misleading context.
 
+### Evaluation Before Tuning
+
+Recall should have a versioned evaluation corpus before source priors, decay
+constants, score thresholds, or reranker prompts are tuned.
+
+Each case should contain:
+
+```text
+case_id                 stable identifier
+query                   realistic user wording
+scope                   sources and permissions available to the query
+as_of                    optional historical or current-state boundary
+expected_evidence       acceptable source locators or evidence lineages
+forbidden_evidence      known distractors or superseded records
+expected_behavior       answer, clarify, or abstain
+notes                   why this case matters
+```
+
+The expected target is evidence, not only a reference answer. Several different
+answers may be valid when they are grounded in the right records.
+
+The first benchmark should compare increasingly capable, independently useful
+baselines:
+
+1. Exact and lexical retrieval within each source
+2. Source-local retrieval fused with unweighted reciprocal rank fusion
+3. Query-dependent source priors
+4. Temporal and lifecycle features
+5. Semantic document retrieval
+6. Optional shared reranking
+
+Each layer must earn its complexity on a held-out subset. A change that improves
+average ranking but damages exact identifiers, current-state questions,
+abstention, or provenance is not automatically an improvement.
+
+Evaluation should report both aggregate scores and an error taxonomy:
+
+- Source was incorrectly excluded
+- Source-local retrieval missed the evidence
+- Fusion ranked the right evidence too low
+- A stale or superseded record outranked current authority
+- Duplicate lineage was mistaken for corroboration
+- Expansion returned the wrong revision or insufficient context
+- The system answered despite inadequate evidence
+
+Real work questions are necessary, but the evaluation manifest should avoid
+copying source bodies. It can retain private queries and stable locators in a
+private dataset, then resolve the evidence during a benchmark run. Synthetic
+fixtures should cover failure and permission scenarios that are unsafe or
+impractical to reproduce against live data.
+
+## Time, Freshness, And Decay
+
+Decay is useful, but it must not become a universal relevance multiplier.
+Recall needs to distinguish four different time concepts:
+
+**Event time**
+: When a message, meeting, task change, or other event happened.
+
+**Validity time**
+: When a fact was or is true. A newer record may supersede an older one without
+  making the older record irrelevant to a historical query.
+
+**Observation time**
+: When Recall last verified or indexed the source record.
+
+**Reinforcement time**
+: When independent evidence or explicit user behavior strengthened an inferred
+  memory.
+
+These timestamps answer different questions and must not be collapsed into one
+`last_seen` field.
+
+Clara supplies a useful starting model:
+
+```text
+effective_weight =
+    base_weight * 0.5 ^ (age_since_reinforcement / half_life)
+```
+
+It applies no decay to durable facts and feedback, while preferences and
+transient signals receive different half-lives. Repeated evidence reinforces a
+memory, and records below a floor move to a recoverable cold archive.
+
+Recall should preserve the good parts of that model:
+
+- Decay is selected by record semantics, not storage type.
+- Durable facts do not become false merely because they are old.
+- Transient observations and inferred preferences may lose influence.
+- Reinforcement requires new evidence or explicit behavior, not retrieval hits.
+- Faded material remains recoverable and searchable for historical questions.
+- Half-life and archive thresholds are inspectable policy.
+
+Recall should tighten the model in several ways:
+
+- Retrieval relevance and memory strength remain separate values.
+- A current-state query favors valid, freshly verified authority.
+- A historical query can deliberately retrieve old evidence without a recency
+  penalty.
+- Source refreshes do not count as semantic reinforcement unless they confirm
+  the same assertion.
+- Contradicting or superseding evidence changes validity; it does not simply
+  apply negative decay.
+- Decay may influence ranking within a suitable source, but cross-source fusion
+  still operates on ranks rather than incomparable effective weights.
+
+The first version should expose temporal features and implement decay only for a
+small set of clearly transient record classes. The evaluation set should
+determine half-lives later. We should not inherit Clara's 10-day or 45-day
+constants without evidence from Recall's queries.
+
+## Initial Source Inventory
+
+This is the first concrete inventory. The logical boundaries may change after
+benchmarking.
+
+### Clara Project Corpus
+
+**Location:** `~/code/clara-marcus/projects/`
+
+**Records:** Markdown project packets, status notes, decisions, architecture,
+open questions, and supporting research.
+
+**Authority:** Human- and agent-curated synthesis. Often the best source for
+"what is this project?" or "what did we decide?", but not automatically the
+authority for live task state.
+
+**Proposed mode:** Indexed, with live expansion from the original file and line
+range.
+
+**Stable locator:** Repository-relative path, heading or line range, Git
+revision, and content hash where useful.
+
+**Retrieval:** Lexical plus semantic document search. Project directory and
+document role should remain structured metadata.
+
+### Clara Memory
+
+**Location:** `~/code/clara-marcus/data/memory.jsonl`
+
+**Records:** Distilled facts, feedback, inferred signals, and learned
+preferences with stable IDs, subjects, provenance, weight, reinforcement
+history, and optional half-life.
+
+**Authority:** Derived memory. It is a useful lead and ranking feature, not
+automatically primary evidence for claims about an external system.
+
+**Proposed mode:** Live for exact subject lookup; indexed or scanned for broader
+text recall.
+
+**Stable locator:** Schema version plus memory ID. The source subject is a useful
+deduplication key but may not be globally unique.
+
+**Important lesson:** Preserve record-kind-specific decay and recoverable
+archive behavior. Do not reuse Clara's substring-only retrieval as Recall's
+general ranker.
+
+### Clara Signals And Observations
+
+**Locations:**
+
+- `~/code/clara-marcus/data/signals.jsonl`
+- `~/code/clara-marcus/data/signals-archive.jsonl`
+- `~/code/clara-marcus/data/observations.jsonl`
+
+**Records:** Normalized Jira, Slack, Outlook, Calendar, and Tasks events plus
+explicit user actions such as acting, dismissing, or reprioritizing.
+
+**Authority:** A normalized local projection of upstream systems. Signals are
+evidence with upstream provenance, but live upstream state may supersede them.
+Observations are authoritative evidence of local user behavior.
+
+**Proposed mode:** Incrementally indexed by schema version and record cursor,
+with time-window and exact-reference lookup.
+
+**Stable locator:** Record ID plus source-native `ref`, source ID, occurrence ID,
+and source revision where present.
+
+**Lineage warning:** A Tasks record appearing in Clara Signals and the original
+Tasks record are two representations of one evidence lineage, not independent
+corroboration.
+
+### Tasks
+
+**Source of truth:** The configured Tasks corpus, currently
+`~/code/tasks-marcus/tasks.jsonl` with `archive.jsonl`.
+
+**Records:** Current and archived tasks, projects, hierarchy, state, dates,
+priority, tags, notes, and external links.
+
+**Authority:** Authoritative for Marcus's personal and work task state.
+
+**Proposed mode:** Live structured retrieval through the Tasks CLI JSON
+contract, with an optional index for semantic retrieval over titles and bodies.
+Using the CLI preserves configuration resolution, lifecycle semantics, and
+stable IDs.
+
+**Stable locator:** Task ID. Line numbers and title substrings are convenience
+references, not stable locators.
+
+### td Workspaces
+
+**Source of truth:** Each td project database associated with a repository.
+
+**Records:** Engineering issues, epics, dependencies, review state, comments,
+handoffs, sessions, and linked files.
+
+**Authority:** Authoritative for engineering work tracked in that td workspace.
+
+**Proposed mode:** Live structured retrieval through `td export --all
+--format json`, `td query`, `td search`, or the local td HTTP API. Recall should
+not depend on td's private SQLite schema.
+
+**Stable locator:** Workspace identity plus issue ID.
+
+Each workspace is a source instance behind one td adapter. Recall may present
+them as one source family while retaining the workspace boundary for
+permissions, routing, and provenance.
+
+### Additional Structured Databases
+
+Future SQLite sources should be split into logical adapters by record semantics,
+not registered as one source per database file. An adapter should prefer a
+documented application API or read-only view when available. Direct read-only
+SQL is appropriate when the schema itself is a supported contract.
+
+## Build Versus Adopt
+
+Recall should own the parts that are distinctive to this system:
+
+- Logical source registry and adapter contract
+- Eligibility, cross-source fusion, and evidence lineage
+- Freshness, permissions, provenance, and expansion
+- Temporal semantics and decay policy
+- Evaluation corpus, benchmark runner, and regression gates
+- Host-neutral query and result contracts
+
+Specialized retrieval engines can sit behind adapters when they solve a hard
+subproblem substantially better than a new implementation.
+
+### QMD
+
+[QMD](https://github.com/tobi/qmd) is a strong candidate for the document
+adapter's retrieval engine. It already provides local BM25, vector search,
+hybrid reciprocal-rank fusion, local model reranking, collections, contextual
+metadata, bounded line retrieval, JSON output, an MCP server, and a library
+interface.
+
+**Proposal:** Trial QMD behind the document adapter rather than adopt it as
+Recall's top-level architecture. Recall would still own source eligibility,
+cross-source fusion, provenance, evaluation, and non-document adapters. The
+integration must remain replaceable and can use the CLI or MCP boundary so it
+does not decide Recall's implementation language.
+
+This is the kind of subsystem worth considering instead of rebuilding
+immediately: document chunking, hybrid retrieval, local embedding model
+operation, and reranking form a genuinely complex package. The benchmark should
+compare QMD with a simple lexical baseline before it becomes a dependency.
+
+### MemoryWiki
+
+[MemoryWiki](https://github.com/MemoryWiki/MemoryWiki) has valuable design
+patterns: Markdown-native memory, episodic/semantic/procedural separation,
+source hashes, update history, conflict preservation, rebuildable indexes,
+write gates, and explicit forget workflows.
+
+**Proposal:** Use it as a design reference, not a dependency for the first
+version. It overlaps Recall's memory product boundary, is early-stage, and is
+Python-first, while Recall is still deliberately language agnostic. Its
+provenance, conflict, and write-safety ideas should inform later memory
+construction work.
+
 ## Working Decisions
 
 These choices are accepted for the current draft:
@@ -473,11 +745,14 @@ These choices are accepted for the current draft:
 - Results use progressive disclosure with stable locators.
 - Source health and freshness are part of query correctness.
 - The first version is read-only.
+- Retrieval evaluation will exist before source weights and decay constants are
+  tuned.
 
 ## Open Decisions
 
-1. What logical sources will the first deployment include?
-2. Which sources must be live, indexed, or hybrid?
+1. Which subset of the initial source inventory belongs in the first vertical
+   slice?
+2. Should QMD be the first document backend trial?
 3. How are adapters registered and configured portably?
 4. What source priors are justified for the first query classes?
 5. Should broad parallel search be the default, or should a router narrow most queries?
@@ -486,6 +761,8 @@ These choices are accepted for the current draft:
 8. When is shared-scale reranking worth its latency and data-egress cost?
 9. What query and result data may be retained for evaluation?
 10. Which host integrations are required first: library, CLI, local service, MCP, or another protocol?
+11. Which memory record kinds, if any, should receive decay in the first
+    implementation?
 
 ## Source Discussion: Opening Position
 
@@ -503,4 +780,9 @@ My proposed starting point:
 6. Cluster equivalent evidence and reward independent corroboration.
 7. Add a shared reranker only after the baseline has measured failures.
 
-The next discussion should inventory the first real sources. For each one, we need to name its logical records, authority, freshness needs, best native retrieval method, stable identifiers, sensitivity, and likely query classes. That inventory will tell us whether the proposed adapter contract is correct before implementation begins.
+The next discussion should select the smallest vertical slice that exercises
+the architecture. A strong candidate is Clara project documents through a QMD
+trial, current Tasks through its CLI contract, and one Clara JSONL stream. That
+would cover indexed documents, structured live records, append-only events,
+cross-source fusion, evidence lineage, and temporal behavior without committing
+to a runtime.
