@@ -17,6 +17,21 @@ The framework has two layers:
 An aggregate retrieval score is useful for experiments. It never overrides a
 failed safety or correctness gate.
 
+## Staging
+
+The framework ships in two stages so evaluation infrastructure cannot
+front-run the product:
+
+**Stage 1 — with the first vertical slice.** Case, judgment, and run schemas;
+the smoke pack; `recall eval validate`, `run`, `compare`, and `report`; the
+retrieval metrics; and the hard acceptance gates. This is everything needed for
+a trustworthy baseline and regression protection.
+
+**Stage 2 — after a trusted baseline exists.** The research score, the private
+holdout and its governance, TREC export and `trec_eval` cross-checks, answer-
+utility evaluation, and the autonomous research loop. Sections below that
+belong to stage 2 are design commitments, not stage-1 work.
+
 ## Evaluation Packs
 
 An evaluation pack is a versioned set of queries, source fixtures or snapshot
