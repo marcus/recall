@@ -682,6 +682,10 @@ subjects.
 
 ## Evaluation
 
+[ADR-0002](adr/0002-evaluation-framework.md) proposes a native evaluation
+harness. [The evaluation framework](evaluation.md) defines its packs, schemas,
+metrics, gates, reports, and bounded autonomous research loop.
+
 The initial evaluation set should contain real questions spanning all source types. It must include:
 
 - Exact entity and identifier lookups
@@ -1032,6 +1036,10 @@ These choices are accepted for the current draft:
   the same application core.
 - Retrieval evaluation will exist before source weights and decay constants are
   tuned.
+- The evaluation runner is native to Recall and exports standard TREC-compatible
+  judgments and ranked runs.
+- Autonomous research can optimize a development score only after hard
+  correctness, privacy, provenance, abstention, latency, and cost gates pass.
 
 ## Open Decisions
 
@@ -1051,6 +1059,8 @@ These choices are accepted for the current draft:
     implementation?
 12. Does the Go implementation spike satisfy ADR-0001 well enough to accept the
     language decision?
+13. Do the initial benchmark distributions support ADR-0002's proposed research
+    score weights and acceptance gates?
 
 ## Source Discussion: Opening Position
 
