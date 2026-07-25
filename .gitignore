@@ -8,3 +8,4 @@ coverage.out
 .sidecar-start.sh
 .sidecar-base
 .td-root
+__pycache__/
