@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marcus/recall/eval/schema/run.schema.json",
+  "title": "Evaluation run",
+  "description": "One deterministic run: what was run, on what, with what result. Everything needed to reproduce the run is recorded here; per-case detail lives beside it in cases.jsonl.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "started_at",
+    "finished_at",
+    "pack",
+    "environment",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": ["pass", "fail", "invalid"],
+      "description": "invalid means a hard gate failed, so the run's numbers do not order anything."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "version", "content_hash"],
+      "properties": {
+        "pack_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "metrics": {
+      "$ref": "#/$defs/report"
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    }
+  },
+  "$defs": {
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recall_commit", "dirty", "profile_hash", "os", "arch"],
+      "properties": {
+        "recall_commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "A dirty tree is recorded, never hidden: its numbers are not reproducible."
+        },
+        "profile_hash": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hash of the resolved profile with secrets removed."
+        },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/model"
+          }
+        },
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_policy": {
+          "type": "string"
+        },
+        "warm": {
+          "type": "boolean",
+          "description": "Whether caches were warmed before the run. Cold and warm latency are never pooled."
+        },
+        "network_access": {
+          "type": "boolean"
+        },
+        "seeds": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["pass", "fail", "skipped"]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "observed": {
+          "type": "number"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "mean": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "n"],
+      "description": "An average and how many observations produced it. n of 0 means the metric was undefined for every observation; its value is meaningless and must not be read as zero.",
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "rates": {
+      "type": "object",
+      "required": [
+        "ndcg_at_10",
+        "recall_at_5",
+        "recall_at_20",
+        "mrr_at_10",
+        "success_at_5",
+        "forbidden_at_5",
+        "abstention_accuracy",
+        "coverage_accuracy",
+        "locator_success",
+        "provenance_accuracy",
+        "source_outcome_accuracy"
+      ],
+      "properties": {
+        "ndcg_at_10": {
+          "$ref": "#/$defs/mean"
+        },
+        "recall_at_5": {
+          "$ref": "#/$defs/mean"
+        },
+        "recall_at_20": {
+          "$ref": "#/$defs/mean"
+        },
+        "mrr_at_10": {
+          "$ref": "#/$defs/mean"
+        },
+        "success_at_5": {
+          "$ref": "#/$defs/mean"
+        },
+        "forbidden_at_5": {
+          "$ref": "#/$defs/mean"
+        },
+        "abstention_accuracy": {
+          "$ref": "#/$defs/mean"
+        },
+        "coverage_accuracy": {
+          "$ref": "#/$defs/mean"
+        },
+        "locator_success": {
+          "$ref": "#/$defs/mean"
+        },
+        "provenance_accuracy": {
+          "$ref": "#/$defs/mean"
+        },
+        "source_outcome_accuracy": {
+          "$ref": "#/$defs/mean"
+        }
+      }
+    },
+    "percentiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "p50_ns", "p95_ns"],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p50_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p95_ns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cold", "warm"],
+      "properties": {
+        "cold": {
+          "$ref": "#/$defs/percentiles"
+        },
+        "warm": {
+          "$ref": "#/$defs/percentiles"
+        }
+      }
+    },
+    "metrics": {
+      "$ref": "#/$defs/rates",
+      "$comment": "Rates plus the population they were measured over. Composed by reference rather than repeated so the rate vocabulary has one definition.",
+      "required": ["cases", "latency"],
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency": {
+          "$ref": "#/$defs/latency"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "macro": {
+      "$ref": "#/$defs/rates",
+      "$comment": "The unweighted mean across groups: every group counts once, so n counts groups rather than cases. Latency is absent by construction — a percentile of percentiles is not a percentile.",
+      "required": ["groups"],
+      "properties": {
+        "groups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "group_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["groups", "macro"],
+      "properties": {
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/metrics"
+          }
+        },
+        "macro": {
+          "$ref": "#/$defs/macro"
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cases", "overall", "by_tag", "by_source_family"],
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overall": {
+          "$ref": "#/$defs/metrics"
+        },
+        "by_tag": {
+          "$ref": "#/$defs/group_report"
+        },
+        "by_source_family": {
+          "$ref": "#/$defs/group_report"
+        }
+      }
+    }
+  }
+}

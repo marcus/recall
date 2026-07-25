@@ -63,7 +63,7 @@ optimization score.
 
 ```text
 eval/
-  schema/       pack, case, judgment, run schemas
+  schema/       pack, case, judgment, run schemas, plus embed.go
   packs/smoke/  pack.json, cases.jsonl, judgments.jsonl, sources/, transcripts/
   baselines/    smoke.json
 ```
@@ -116,10 +116,14 @@ pack.
 relevance  0 irrelevant | 1 related context | 2 useful support | 3 authoritative
 ```
 
-A case may also declare policy assertions, which are not relevance judgments:
+A case may also declare policy assertions in an `assertions` block. These are
+the ground truth for the policy metrics, which never read them back off the
+response — one source of truth, or the metric would grade the system against
+itself:
 
 ```text
-expected source outcome and coverage
+expected_coverage: complete | degraded
+expected source outcome per source
 required or forbidden source
 required abstention or clarification
 maximum latency
@@ -169,14 +173,48 @@ A run produces `run.json` (environment, metrics, gates, status),
 | Provenance accuracy | Correct source and lineage root per candidate |
 | Source-outcome accuracy | Failure, denial, timeout, and partial reported honestly |
 | p50 / p95 latency | Typical and tail response time, cold and warm |
-| Query cost | Model calls, tokens, external requests |
+| Query cost | Model calls, tokens, external requests — lands with the runner, once there is a cost to count |
 
-Metrics are reported per case tag, per source family, and as a macro average
-across groups. One large document source must not hide regressions in exact
-lookups, temporal questions, or no-answer cases.
+### Definitions
 
-Metric implementations are verified against published test vectors, and in
-stage 2 against `trec_eval`.
+Two implementations can both be called "nDCG@10" and disagree by several
+points, so the formulations are fixed here rather than left to the code:
+
+```text
+nDCG@k        linear gain, rel_i / log2(i+1). Not 2^rel - 1.
+Recall@k      denominator is the judgments marked required, not every
+              positively graded one.
+MRR@10        target is grade 3 (authoritative) only.
+Success@5     threshold is grade >= 2 (useful support).
+Forbidden@5   any judgment marked forbidden appearing in the top 5.
+percentiles   nearest-rank.
+```
+
+**An undefined metric is not zero.** A case with nothing to find has no recall,
+a pack that puts nothing at stake has no Forbidden@5, and a case with no policy
+assertion has no coverage accuracy. Every per-case metric reports whether it
+applies and every average carries its `N`. Scoring an undefined metric as zero
+would manufacture regressions and let an abstention-heavy pack drive
+Forbidden@5 to a flattering zero.
+
+### Grouping
+
+Metrics are reported per case tag and per source family, each with its own
+macro average across that dimension's groups. One large document source must
+not hide regressions in exact lookups, temporal questions, or no-answer cases.
+
+The research score in stage 2 uses the **case-tag** macro. Tags are how a pack
+declares what a case is testing, so they are the dimension a regression should
+be visible along.
+
+Latency has no macro average. A percentile of percentiles is not a percentile;
+latency is pooled within each population and reported per group and overall.
+
+Metric implementations are verified against published worked examples, term by
+term so the formulation is pinned and not only the arithmetic, and in stage 2
+against `trec_eval`. Accuracy metrics with no published vector — abstention,
+coverage, locator, provenance, source outcome — are verified against explicitly
+constructed cases and are not claimed as published.
 
 ## Acceptance Gates
 

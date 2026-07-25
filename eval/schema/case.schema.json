@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marcus/recall/eval/schema/case.schema.json",
+  "title": "Evaluation case",
+  "description": "One query put to Recall, plus the policy assertions it makes. A case carries no answers: relevance judgments live in a separate file so a runner can hand an agent the queries while withholding the answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "query",
+    "profile",
+    "expected_behavior"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "case_id": {
+      "$ref": "#/$defs/identifier",
+      "description": "Stable within a pack. Judgments key on it."
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Historical boundary. Fixture runs inject the clock from this value."
+    },
+    "expected_behavior": {
+      "$ref": "#/$defs/behavior"
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Reporting groups. Metrics are reported per tag so a large group cannot hide a small one."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "notes": {
+      "type": "string"
+    },
+    "assertions": {
+      "$ref": "#/$defs/assertions"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "behavior": {
+      "enum": ["answer", "clarify", "abstain"]
+    },
+    "coverage": {
+      "enum": ["complete", "degraded"]
+    },
+    "sensitivity": {
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "search_outcome": {
+      "enum": [
+        "success",
+        "partial",
+        "unavailable",
+        "denied",
+        "failed",
+        "timeout",
+        "skipped"
+      ]
+    },
+    "source_uid": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^:]+$",
+      "description": "Immutable source identity. The locator separator is forbidden inside it."
+    },
+    "lineage_root": {
+      "type": "string",
+      "pattern": "^[^:]+:.+$",
+      "description": "Persisted-form locator, <source_uid>:<local>."
+    },
+    "assertions": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Policy assertions. These are not relevance judgments: they state what the run must report, not which evidence is good.",
+      "properties": {
+        "expected_coverage": {
+          "$ref": "#/$defs/coverage",
+          "description": "Ground truth for coverage accuracy: degraded must be reported when and only when this says degraded."
+        },
+        "expected_source_outcomes": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/source_uid"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/search_outcome"
+          }
+        },
+        "required_sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/source_uid"
+          }
+        },
+        "forbidden_sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/source_uid"
+          }
+        },
+        "max_latency_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_expansion_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_revisions": {
+          "type": "object",
+          "description": "A returned locator for one of these lineage roots must expand to the named source revision.",
+          "propertyNames": {
+            "$ref": "#/$defs/lineage_root"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "suppressed_lineages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/lineage_root"
+          }
+        },
+        "visible_lineages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/lineage_root"
+          }
+        },
+        "sensitivity_ceiling": {
+          "$ref": "#/$defs/sensitivity"
+        }
+      }
+    }
+  }
+}

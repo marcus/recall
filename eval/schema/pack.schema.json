@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marcus/recall/eval/schema/pack.schema.json",
+  "title": "Evaluation pack manifest",
+  "description": "A versioned set of queries, fixtures or snapshot references, judgments, policy assertions, and budgets. Cases and judgments are named as separate files and are never inlined here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pack_id", "version", "cases", "judgments"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pack_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pack version. A pack is versioned independently of the schema it conforms to."
+    },
+    "description": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Profile the pack expects to be resolved against."
+    },
+    "cases": {
+      "$ref": "#/$defs/relative_path"
+    },
+    "judgments": {
+      "$ref": "#/$defs/relative_path"
+    },
+    "sources": {
+      "$ref": "#/$defs/relative_path",
+      "description": "Directory of fixture sources or snapshot references."
+    },
+    "transcripts": {
+      "$ref": "#/$defs/relative_path",
+      "description": "Directory of recorded adapter protocol transcripts replayed instead of live calls."
+    },
+    "network_access": {
+      "type": "boolean",
+      "description": "Absent or false means the pack must run with network access disabled. Only a live health pack sets it."
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "p95_latency_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "external_requests": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "description": "Absolute gate thresholds recorded in the pack. On the first run there is no baseline, so these are absolute; afterwards they become regression bounds derived from measured distributions.",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "sensitivity_ceiling": {
+      "enum": ["public", "internal", "confidential", "restricted"],
+      "description": "No candidate in any case may cross this."
+    }
+  },
+  "$defs": {
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\][^\\\\]*$",
+      "description": "Slash-separated path relative to the pack directory. Absolute paths and backslashes are refused so a pack is portable."
+    }
+  }
+}

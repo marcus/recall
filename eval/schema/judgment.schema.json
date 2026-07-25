@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marcus/recall/eval/schema/judgment.schema.json",
+  "title": "Evaluation judgment",
+  "description": "One graded judgment for one case. A judgment targets an evidence lineage, not rendered text, and keys on source_uid so renaming a source does not invalidate a pack.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "lineage_root", "relevance"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Must name a case in this pack's case file."
+    },
+    "lineage_root": {
+      "type": "string",
+      "pattern": "^[^:]+:.+$",
+      "description": "Persisted-form locator, <source_uid>:<local>."
+    },
+    "relevance": {
+      "enum": [0, 1, 2, 3],
+      "description": "0 irrelevant | 1 related context | 2 useful support | 3 authoritative"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Evidence the case cannot be answered without. Recall@k is measured over these."
+    },
+    "forbidden": {
+      "type": "boolean",
+      "description": "Evidence that must not appear near the top: superseded, out of scope, or over the sensitivity ceiling."
+    },
+    "supports": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Which parts of the answer this evidence supports."
+    }
+  }
+}
