@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/marcus/recall/internal/buildinfo"
 )
@@ -58,7 +59,22 @@ type MCPOptions struct {
 	// stdout: stdout carries protocol messages and nothing else, so a stray
 	// line there desynchronizes the session. Query text never reaches it.
 	Log func(string)
+
+	// MaxInFlight bounds concurrent requests. Zero uses
+	// [DefaultMCPMaxInFlight]. Saturation is rejected immediately rather than
+	// growing an unbounded goroutine queue.
+	MaxInFlight int
+
+	// ShutdownTimeout bounds how long shutdown waits for calls that ignored
+	// cancellation. Zero uses [DefaultMCPShutdownTimeout].
+	ShutdownTimeout time.Duration
 }
+
+const (
+	DefaultMCPMaxInFlight     = 32
+	DefaultMCPShutdownTimeout = 5 * time.Second
+	codeServerBusy            = -32000
+)
 
 // ServeMCP runs the Model Context Protocol over one pair of streams.
 //
@@ -83,37 +99,53 @@ func ServeMCP(ctx context.Context, r io.Reader, w io.Writer, opt MCPOptions) err
 		defer stop()
 	}
 	s := &mcpServer{
-		core:  opt.Core,
-		log:   opt.Log,
-		enc:   json.NewEncoder(w),
-		tools: toolSet(),
+		core:            opt.Core,
+		log:             opt.Log,
+		enc:             json.NewEncoder(w),
+		tools:           toolSet(),
+		maxInFlight:     opt.MaxInFlight,
+		shutdownTimeout: opt.ShutdownTimeout,
 	}
+	if s.maxInFlight <= 0 {
+		s.maxInFlight = DefaultMCPMaxInFlight
+	}
+	if s.shutdownTimeout <= 0 {
+		s.shutdownTimeout = DefaultMCPShutdownTimeout
+	}
+	s.slots = make(chan struct{}, s.maxInFlight)
 	return s.run(ctx, r)
 }
 
 type mcpServer struct {
-	core  Core
-	log   func(string)
-	tools []Tool
+	core            Core
+	log             func(string)
+	tools           []Tool
+	maxInFlight     int
+	shutdownTimeout time.Duration
+	slots           chan struct{}
 
 	mu      sync.Mutex
 	enc     *json.Encoder
+	closed  bool
 	cancelM sync.Mutex
 	cancels map[string]context.CancelFunc
+	stateM  sync.Mutex
+	state   mcpState
 }
 
 func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
+	runCtx, cancelAll := context.WithCancel(ctx)
+	defer cancelAll()
 	reader := bufio.NewReaderSize(r, 64<<10)
 	var wg sync.WaitGroup
-	defer wg.Wait()
 
 	for {
-		if ctx.Err() != nil {
-			return nil
+		if runCtx.Err() != nil {
+			return s.shutdown(cancelAll, &wg)
 		}
 		line, err := readFrame(reader)
 		if errors.Is(err, io.EOF) {
-			return nil
+			return s.shutdown(cancelAll, &wg)
 		}
 		if errors.Is(err, errFrameTooLarge) {
 			// The line was consumed to its newline, so the stream is still
@@ -123,8 +155,8 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 			continue
 		}
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
+			if runCtx.Err() != nil {
+				return s.shutdown(cancelAll, &wg)
 			}
 			return err
 		}
@@ -137,14 +169,11 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 			s.write(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: codeParse, Message: "message is not JSON-RPC"}})
 			continue
 		}
-		if msg.isNotification() {
-			// Notifications get no reply, ever — including an error reply. A
-			// response to a message with no id has nothing to correlate with
-			// and is a protocol violation in its own right.
-			s.notification(msg)
-			continue
-		}
 		if msg.JSONRPC != "2.0" || msg.Method == "" {
+			if msg.isNotification() {
+				s.report("invalid notification: message must declare jsonrpc 2.0 and a method")
+				continue
+			}
 			s.write(mcpResponse{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
@@ -152,10 +181,37 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 			})
 			continue
 		}
+		if msg.isNotification() {
+			// Notifications get no reply, ever — including an error reply. A
+			// response to a message with no id has nothing to correlate with
+			// and is a protocol violation in its own right.
+			s.notification(msg)
+			continue
+		}
+		if msg.Method == "initialize" || msg.Method == "ping" {
+			s.write(s.dispatch(runCtx, msg))
+			continue
+		}
+		if lifecycleErr := s.requireReady(); lifecycleErr != nil {
+			s.write(mcpResponse{JSONRPC: "2.0", ID: msg.ID, Error: lifecycleErr})
+			continue
+		}
+		if !s.trySlot() {
+			s.write(mcpResponse{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Error: &mcpError{
+					Code:    codeServerBusy,
+					Message: fmt.Sprintf("server is busy: %d requests are already in flight", s.maxInFlight),
+				},
+			})
+			continue
+		}
 
-		requestCtx, cancel := context.WithCancel(ctx)
+		requestCtx, cancel := context.WithCancel(runCtx)
 		if !s.register(msg.ID, cancel) {
 			cancel()
+			s.releaseSlot()
 			s.write(mcpResponse{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
@@ -166,6 +222,7 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer s.releaseSlot()
 			defer cancel()
 			defer s.unregister(msg.ID)
 			s.write(s.dispatch(requestCtx, msg))
@@ -173,10 +230,53 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 	}
 }
 
+func (s *mcpServer) trySlot() bool {
+	select {
+	case s.slots <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *mcpServer) releaseSlot() { <-s.slots }
+
+func (s *mcpServer) shutdown(cancel context.CancelFunc, wg *sync.WaitGroup) error {
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	timer := time.NewTimer(s.shutdownTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		s.report(fmt.Sprintf("shutdown: %d request(s) ignored cancellation after %s",
+			len(s.slots), s.shutdownTimeout))
+	}
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	return nil
+}
+
 // notification handles the one client notification that changes server state.
 // initialized and unknown notifications are acknowledgements or extensions and
 // intentionally need no reply.
 func (s *mcpServer) notification(msg mcpRequest) {
+	if msg.Method == "notifications/initialized" {
+		s.stateM.Lock()
+		if s.state == mcpAwaitingInitialized {
+			s.state = mcpReady
+		} else {
+			s.report("notifications/initialized arrived outside initialization")
+		}
+		s.stateM.Unlock()
+		return
+	}
 	if msg.Method != "notifications/cancelled" {
 		return
 	}
@@ -221,19 +321,37 @@ func (s *mcpServer) dispatch(ctx context.Context, msg mcpRequest) mcpResponse {
 
 	switch msg.Method {
 	case "initialize":
+		s.stateM.Lock()
+		if s.state != mcpUninitialized {
+			s.stateM.Unlock()
+			reply.Error = &mcpError{Code: codeInvalidRequest, Message: "initialize may be called exactly once"}
+			return reply
+		}
+		s.stateM.Unlock()
 		result, err := s.initialize(msg.Params)
 		if err != nil {
 			reply.Error = err
 			return reply
 		}
+		s.stateM.Lock()
+		s.state = mcpAwaitingInitialized
+		s.stateM.Unlock()
 		reply.Result = result
 	case "ping":
 		// Liveness only. It deliberately touches no source: a ping that probed
 		// the corpus would report a cold adapter as a dead server.
 		reply.Result = struct{}{}
 	case "tools/list":
+		if err := s.requireReady(); err != nil {
+			reply.Error = err
+			return reply
+		}
 		reply.Result = map[string]any{"tools": s.tools}
 	case "tools/call":
+		if err := s.requireReady(); err != nil {
+			reply.Error = err
+			return reply
+		}
 		reply.Result, reply.Error = s.call(ctx, msg.Params)
 		if reply.Error != nil {
 			reply.Result = nil
@@ -242,6 +360,27 @@ func (s *mcpServer) dispatch(ctx context.Context, msg mcpRequest) mcpResponse {
 		reply.Error = &mcpError{Code: codeMethodNotFound, Message: "unsupported method: " + msg.Method}
 	}
 	return reply
+}
+
+type mcpState uint8
+
+const (
+	mcpUninitialized mcpState = iota
+	mcpAwaitingInitialized
+	mcpReady
+)
+
+func (s *mcpServer) requireReady() *mcpError {
+	s.stateM.Lock()
+	defer s.stateM.Unlock()
+	switch s.state {
+	case mcpReady:
+		return nil
+	case mcpUninitialized:
+		return &mcpError{Code: codeInvalidRequest, Message: "initialize must be the first request"}
+	default:
+		return &mcpError{Code: codeInvalidRequest, Message: "wait for notifications/initialized before normal operation"}
+	}
 }
 
 // JSON-RPC's own standard error codes.
@@ -349,6 +488,9 @@ func (s *mcpServer) initialize(params json.RawMessage) (any, *mcpError) {
 func (s *mcpServer) write(msg mcpResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
 	if err := s.enc.Encode(msg); err != nil {
 		s.report("write: " + err.Error())
 	}

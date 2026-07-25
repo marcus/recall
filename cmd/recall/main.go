@@ -18,7 +18,7 @@ func main() {
 }
 
 func run() int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), terminationSignals()...)
 	defer stop()
 	return cli.Run(ctx, cli.Env{
 		Args:   os.Args[1:],

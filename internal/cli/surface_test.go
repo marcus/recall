@@ -3,9 +3,13 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"net"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/cli"
@@ -139,6 +143,113 @@ func TestServeRefusesUnsafeBindBeforeOpeningSocket(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServeContextCancellationShutsDownPromptly(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	stdout := newNotifyingBuffer()
+	stderr := newNotifyingBuffer()
+	done := make(chan int, 1)
+	go func() {
+		done <- cli.Run(ctx, cli.Env{
+			Args: []string{
+				"serve", "--addr", "127.0.0.1:0", "--request-timeout", "250ms",
+			},
+			Stdout: stdout,
+			Stderr: stderr,
+			Core:   &transportCore{},
+		})
+	}()
+	select {
+	case <-stdout.written:
+	case <-time.After(time.Second):
+		t.Fatal("serve did not start")
+	}
+	cancel()
+	select {
+	case code := <-done:
+		if code != cli.ExitOK {
+			t.Fatalf("serve exit=%d stderr=%s", code, stderr.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not shut down after cancellation")
+	}
+}
+
+func TestServeReadDeadlineBoundsSlowRequestBody(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stdout := newNotifyingBuffer()
+	stderr := newNotifyingBuffer()
+	done := make(chan int, 1)
+	go func() {
+		done <- cli.Run(ctx, cli.Env{
+			Args: []string{
+				"serve", "--addr", "127.0.0.1:0", "--request-timeout", "80ms",
+			},
+			Stdout: stdout,
+			Stderr: stderr,
+			Core:   &transportCore{},
+		})
+	}()
+	select {
+	case <-stdout.written:
+	case <-time.After(time.Second):
+		t.Fatal("serve did not start")
+	}
+	line := strings.TrimSpace(stdout.String())
+	_, url, ok := strings.Cut(line, " at http://")
+	if !ok {
+		t.Fatalf("unexpected startup line: %q", line)
+	}
+	conn, err := net.Dial("tcp", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = conn.Write([]byte("POST /v1/query HTTP/1.1\r\nHost: " + url +
+		"\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"))
+	started := time.Now()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	var reply [1024]byte
+	if _, err := conn.Read(reply[:]); err != nil {
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			t.Fatal("slow request body pinned the connection past the server deadline")
+		}
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("slow request body took %s to terminate", elapsed)
+	}
+	cancel()
+	if code := <-done; code != cli.ExitOK {
+		t.Fatalf("serve exit=%d stderr=%s", code, stderr.String())
+	}
+}
+
+type notifyingBuffer struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	once    sync.Once
+	written chan struct{}
+}
+
+func newNotifyingBuffer() *notifyingBuffer {
+	return &notifyingBuffer{written: make(chan struct{})}
+}
+
+func (b *notifyingBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	n, err := b.buf.Write(p)
+	b.mu.Unlock()
+	b.once.Do(func() { close(b.written) })
+	return n, err
+}
+
+func (b *notifyingBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func runSurfaceCLI(

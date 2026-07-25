@@ -27,6 +27,7 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 	}
 	responses := runMCP(t, core,
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"decision","limit":7,"sources":["notes"],"record_types":["document"],"project":"recall","since":"2026-07-01T00:00:00Z","until":"2026-07-25T00:00:00Z","as_of":"2026-07-24T12:00:00Z","budget_tokens":900,"budget_ms":750}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"recall_expand","arguments":{"locator":"notes:record-1#L1-2"}}}`,
@@ -85,6 +86,8 @@ func TestMCPFailedOutcomeCannotLookLikeEmptySuccess(t *testing.T) {
 		}},
 	}}
 	responses := runMCP(t, core,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":"q","method":"tools/call","params":{"name":"recall_query","arguments":{"query":"x"}}}`,
 	)
 	var got callToolResult
@@ -114,6 +117,9 @@ func TestMCPCancellationNotificationCancelsInFlightCoreCall(t *testing.T) {
 		done <- ServeMCP(t.Context(), pr, &output, MCPOptions{Core: core})
 	}()
 	_, _ = io.WriteString(pw,
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"+
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+	_, _ = io.WriteString(pw,
 		"{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/call\",\"params\":{\"name\":\"recall_query\",\"arguments\":{\"query\":\"slow\"}}}\n")
 	<-started
 	_, _ = io.WriteString(pw,
@@ -130,8 +136,18 @@ func TestMCPCancellationNotificationCancelsInFlightCoreCall(t *testing.T) {
 	}
 
 	var response mcpResponse
-	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &response); err != nil {
-		t.Fatalf("decode cancellation response: %v\n%s", err, output.String())
+	scan := bufio.NewScanner(bytes.NewReader(output.Bytes()))
+	for scan.Scan() {
+		var candidate mcpResponse
+		if err := json.Unmarshal(scan.Bytes(), &candidate); err != nil {
+			t.Fatalf("decode cancellation response: %v\n%s", err, output.String())
+		}
+		if string(candidate.ID) == "99" {
+			response = candidate
+		}
+	}
+	if len(response.ID) == 0 {
+		t.Fatalf("no cancellation response for request 99\n%s", output.String())
 	}
 	var result callToolResult
 	raw, _ := json.Marshal(response.Result)
@@ -162,9 +178,148 @@ func TestMCPServerContextCancellationUnblocksIdleStdio(t *testing.T) {
 	}
 }
 
+func TestMCPConcurrencySaturationIsRejectedWithoutStartingWork(t *testing.T) {
+	started := make(chan struct{})
+	secondStarted := make(chan struct{}, 1)
+	core := &stubCore{queryFunc: func(ctx context.Context, req recall.QueryRequest) (recall.QueryResponse, error) {
+		if req.Query == "second" {
+			secondStarted <- struct{}{}
+			return recall.QueryResponse{}, nil
+		}
+		close(started)
+		<-ctx.Done()
+		return recall.QueryResponse{}, ctx.Err()
+	}}
+	pr, pw := io.Pipe()
+	var output bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeMCP(t.Context(), pr, &output, MCPOptions{
+			Core: core, MaxInFlight: 1, ShutdownTimeout: time.Second,
+		})
+	}()
+	_, _ = io.WriteString(pw,
+		"{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"+
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n"+
+			"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"recall_query\",\"arguments\":{\"query\":\"first\"}}}\n")
+	<-started
+	_, _ = io.WriteString(pw,
+		"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"recall_query\",\"arguments\":{\"query\":\"second\"}}}\n"+
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}\n")
+	_ = pw.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-secondStarted:
+		t.Fatal("saturated request reached the core")
+	default:
+	}
+	responses := responseMap(t, output.Bytes())
+	if responses["2"].Error == nil || responses["2"].Error.Code != codeServerBusy {
+		t.Fatalf("saturated response: %+v", responses["2"])
+	}
+}
+
+func TestMCPStdinEOFCancelsInflightWork(t *testing.T) {
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	core := &stubCore{queryFunc: func(ctx context.Context, _ recall.QueryRequest) (recall.QueryResponse, error) {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return recall.QueryResponse{}, ctx.Err()
+	}}
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeMCP(t.Context(), pr, io.Discard, MCPOptions{
+			Core: core, ShutdownTimeout: time.Second,
+		})
+	}()
+	_, _ = io.WriteString(pw,
+		"{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"+
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n"+
+			"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"recall_query\",\"arguments\":{\"query\":\"slow\"}}}\n")
+	<-started
+	_ = pw.Close()
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("stdin EOF did not cancel in-flight work")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMCPShutdownDoesNotWaitForeverForNonCooperativeCore(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	core := &stubCore{queryFunc: func(context.Context, recall.QueryRequest) (recall.QueryResponse, error) {
+		close(started)
+		<-release
+		return recall.QueryResponse{}, nil
+	}}
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	const shutdown = 30 * time.Millisecond
+	go func() {
+		done <- ServeMCP(t.Context(), pr, io.Discard, MCPOptions{
+			Core: core, ShutdownTimeout: shutdown,
+		})
+	}()
+	_, _ = io.WriteString(pw,
+		"{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"+
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n"+
+			"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"recall_query\",\"arguments\":{\"query\":\"stuck\"}}}\n")
+	<-started
+	began := time.Now()
+	_ = pw.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * shutdown):
+		t.Fatal("shutdown waited indefinitely for non-cooperative core")
+	}
+	if elapsed := time.Since(began); elapsed > 8*shutdown {
+		t.Fatalf("shutdown took %s, configured %s", elapsed, shutdown)
+	}
+	close(release)
+}
+
+func TestMCPLifecycleRequiresInitializeThenInitialized(t *testing.T) {
+	core := &stubCore{}
+	responses := runMCP(t, core,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":5,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+	)
+	if responses["1"].Error == nil || !strings.Contains(responses["1"].Error.Message, "initialize") {
+		t.Fatalf("pre-initialize tools/list response: %+v", responses["1"])
+	}
+	if responses["3"].Error == nil || !strings.Contains(responses["3"].Error.Message, "notifications/initialized") {
+		t.Fatalf("pre-initialized tools/list response: %+v", responses["3"])
+	}
+	if responses["4"].Error != nil {
+		t.Fatalf("ready tools/list: %+v", responses["4"])
+	}
+	if responses["5"].Error == nil || !strings.Contains(responses["5"].Error.Message, "exactly once") {
+		t.Fatalf("duplicate initialize response: %+v", responses["5"])
+	}
+}
+
 func TestMCPRejectsUnknownAndTrailingArguments(t *testing.T) {
 	core := &stubCore{}
 	responses := runMCP(t, core,
+		`{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"x","soruces":["notes"]}}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"not_a_tool","arguments":{}}}`,
 		`{"id":3,"method":"ping"}`,
@@ -231,6 +386,13 @@ func runMCP(t *testing.T, core Core, messages ...string) map[string]mcpResponse 
 	}
 
 	got := map[string]mcpResponse{}
+	wantResponses := 0
+	for _, message := range messages {
+		var request mcpRequest
+		if err := json.Unmarshal([]byte(message), &request); err == nil && !request.isNotification() {
+			wantResponses++
+		}
+	}
 	scan := bufio.NewScanner(&output)
 	for scan.Scan() {
 		var response mcpResponse
@@ -242,8 +404,8 @@ func runMCP(t *testing.T, core Core, messages ...string) map[string]mcpResponse 
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != len(messages) {
-		t.Fatalf("got %d responses for %d requests\n%s", len(got), len(messages), output.String())
+	if len(got) != wantResponses {
+		t.Fatalf("got %d responses for %d requests\n%s", len(got), wantResponses, output.String())
 	}
 	return got
 }
@@ -260,4 +422,21 @@ func decodeResult(t *testing.T, response mcpResponse, out any) {
 	if err := json.Unmarshal(raw, out); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, raw)
 	}
+}
+
+func responseMap(t *testing.T, raw []byte) map[string]mcpResponse {
+	t.Helper()
+	got := map[string]mcpResponse{}
+	scan := bufio.NewScanner(bytes.NewReader(raw))
+	for scan.Scan() {
+		var response mcpResponse
+		if err := json.Unmarshal(scan.Bytes(), &response); err != nil {
+			t.Fatalf("decode MCP response: %v\n%s", err, scan.Text())
+		}
+		got[string(response.ID)] = response
+	}
+	if err := scan.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

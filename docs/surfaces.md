@@ -15,6 +15,9 @@ recall serve --profile work
 
 The default address is the loopback literal `127.0.0.1:8765`. A hostname is not
 used because name resolution can change the interface a process binds.
+Header reads, request bodies, response writes, and idle connections all have
+finite deadlines derived from `--request-timeout`. `SIGINT` and `SIGTERM`
+trigger graceful HTTP shutdown with a five-second fallback bound.
 
 Dispatch the operator commands to that long-lived core:
 
@@ -90,3 +93,11 @@ MCP requests run concurrently. A `notifications/cancelled` message cancels the
 matching application call and therefore the adapter work below it. Standard
 output carries protocol messages only; diagnostics go to standard error and do
 not include query text.
+
+The client must send `initialize`, receive its response, and then send
+`notifications/initialized` before listing or calling tools. At most 32
+requests are in flight by default; saturation returns a JSON-RPC server-busy
+error rather than queuing unbounded goroutines. Closing stdin or stopping the
+server cancels every in-flight call immediately. Shutdown waits at most five
+seconds for a non-cooperative call before returning and suppressing any late
+write.

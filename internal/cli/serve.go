@@ -40,6 +40,9 @@ func runServe(ctx context.Context, env Env, args []string) int {
 	if fs.NArg() != 0 {
 		return usageErr(env, serveHelp, errors.New("serve takes no arguments"))
 	}
+	if *timeout <= 0 {
+		return usageErr(env, serveHelp, errors.New("--request-timeout must be greater than zero"))
+	}
 
 	token, err := tokenFromEnv(env, *tokenEnv)
 	if err != nil {
@@ -69,6 +72,7 @@ func runServe(ctx context.Context, env Env, args []string) int {
 	if *logRequest {
 		logger = func(line string) { _, _ = fmt.Fprintln(env.Stderr, line) }
 	}
+	deadlines := deriveHTTPDeadlines(*timeout)
 	server := &http.Server{
 		Handler: api.NewHandler(api.ServerOptions{
 			Core:           core,
@@ -76,8 +80,10 @@ func runServe(ctx context.Context, env Env, args []string) int {
 			RequestTimeout: *timeout,
 			Log:            logger,
 		}),
-		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       2 * time.Minute,
+		ReadHeaderTimeout: deadlines.header,
+		ReadTimeout:       deadlines.read,
+		WriteTimeout:      deadlines.write,
+		IdleTimeout:       deadlines.idle,
 		MaxHeaderBytes:    1 << 20,
 	}
 
@@ -89,7 +95,12 @@ func runServe(ctx context.Context, env Env, args []string) int {
 	stopShutdown := context.AfterFunc(ctx, func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			// Shutdown stops accepting immediately but waits for active
+			// connections. A handler that ignored cancellation must not keep the
+			// process and its adapter pool alive past the fallback bound.
+			_ = server.Close()
+		}
 	})
 	defer stopShutdown()
 
@@ -99,4 +110,27 @@ func runServe(ctx context.Context, env Env, args []string) int {
 	}
 	fail(env, err)
 	return ExitError
+}
+
+type httpDeadlines struct {
+	header time.Duration
+	read   time.Duration
+	write  time.Duration
+	idle   time.Duration
+}
+
+func deriveHTTPDeadlines(request time.Duration) httpDeadlines {
+	header := min(request, 5*time.Second)
+	idle := max(request, 30*time.Second)
+	return httpDeadlines{
+		header: header,
+		// ReadTimeout begins when the connection is accepted, so it bounds
+		// headers and a drip-fed body together.
+		read: request,
+		// WriteTimeout also begins before the handler. Give it the bounded
+		// header allowance plus the advertised handler timeout so a legitimate
+		// request does not lose its response budget to header parsing.
+		write: request + header,
+		idle:  idle,
+	}
 }
