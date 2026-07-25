@@ -23,7 +23,7 @@ Check everything that has to be true before a query means anything:
   trust_boundary   the project layer stayed inside what a cloned repository
                    may declare
   identity         every source has a source_uid, and no two share one
-  access           every eligible source's location can be read
+  access           every eligible filesystem location can be read
   health           every eligible source can be reached and is usable
   serving          every source that answered is serving its whole corpus,
                    rather than a stale or partial one
@@ -524,7 +524,7 @@ func accessCheck(sources []*config.SourceInstance) Check {
 	var problems []Problem
 	checked := 0
 	for _, s := range sources {
-		if s.Location == "" || strings.Contains(s.Location, "://") {
+		if s.LocationKind != config.LocationPath {
 			continue
 		}
 		checked++

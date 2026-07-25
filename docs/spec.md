@@ -418,6 +418,17 @@ settings            adapter-owned, schema-validated
 Relative paths in a project file resolve from that file. Secrets are references
 to environment variables or an OS keychain and never appear in resolved output.
 
+`location` has a syntax-only interpretation. A bare value such as an email
+account, mailbox, device name, or database identifier is opaque and reaches the
+adapter byte-for-byte. URI schemes (`https://...`, `google://...`, `urn:...`)
+are also opaque. A value is a filesystem path only when it declares filesystem
+syntax: `/`, `./`, `../`, `~`, a `/` or `\` separator, or a Windows drive/UNC
+form. Explicit relative paths resolve from the file that declared them and `~`
+expands to the current user's home. Recall never guesses from whether a file
+happens to exist. Consequently, a bare project directory must be written
+`./notes`, not `notes`. `recall config explain` reports the original value, the
+resolved value, the classified kind, and whether rewriting occurred.
+
 An `intent_priors` entry is the prior **in force** for its query class, not a
 delta applied to `base_prior`. Both are validated against the same `[0.5, 2.0]`
 range, which is what makes them comparable and bounded; a delta sharing that

@@ -312,6 +312,25 @@ location = "https://notes.example/api/v1"
 	}
 }
 
+func TestOpaqueLocationReachesAdapterUnchanged(t *testing.T) {
+	const account = "marcus@vorwaller.net"
+	body := `
+[[sources]]
+source_id = "mail"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "` + account + `"
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	got := source(t, cfg, "mail")
+	if got.Location != account {
+		t.Errorf("location = %q, want opaque account unchanged", got.Location)
+	}
+	if got.DeclaredLocation != account || got.LocationKind != config.LocationOpaque || got.LocationRewritten {
+		t.Errorf("location decision = declared %q, kind %q, rewritten %v", got.DeclaredLocation, got.LocationKind, got.LocationRewritten)
+	}
+}
+
 // The whole reason source_uid exists. Renaming a source is a display change;
 // every persisted reference must keep pointing at the same data.
 func TestRenamePreservesTheIdentityMapping(t *testing.T) {

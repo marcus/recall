@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -115,27 +116,120 @@ func DiscoverProject(dir string) (string, error) {
 	}
 }
 
+type locationResolution struct {
+	declared  string
+	resolved  string
+	kind      LocationKind
+	rewritten bool
+}
+
 // resolveLocation turns a declared location into the form an adapter receives.
 //
-// A relative path resolves against the directory of the file that declared it,
-// never the working directory: a project file means the path it wrote, wherever
-// Recall is invoked from. A location carrying a scheme is an endpoint or
-// connection reference and is left exactly as written.
-func resolveLocation(location, dir string) (string, error) {
+// Location is deliberately a sum type encoded as a string. Bare values are
+// opaque adapter identifiers. A value is a path only when it uses filesystem
+// syntax: an absolute or explicitly relative prefix, a home prefix, a path
+// separator, or a Windows drive/UNC form. URI schemes are opaque connection
+// references. This rule is syntactic: it never changes because a similarly
+// named file happens to exist.
+//
+// Relative paths resolve against the directory of the file that declared them,
+// never the working directory.
+func resolveLocation(location, dir string) (locationResolution, error) {
+	result := locationResolution{
+		declared: location,
+		resolved: location,
+		kind:     classifyLocation(location),
+	}
+
+	switch result.kind {
+	case LocationEmpty, LocationOpaque, LocationScheme:
+		return result, nil
+	case LocationPath:
+		// Drive-relative paths (C:mail) are resolved by Windows against that
+		// drive's working directory, not against an ordinary directory. Joining
+		// one to the declaring file would change its native meaning.
+		if isWindowsDriveRelativePath(location) {
+			return result, nil
+		}
+		// A Windows-qualified path is path syntax on every platform, but only
+		// Windows can resolve its drive or UNC namespace correctly. Preserve it
+		// elsewhere instead of corrupting it with a POSIX base directory.
+		if isWindowsQualifiedPath(location) && runtime.GOOS != "windows" {
+			return result, nil
+		}
+
+		path := filepath.FromSlash(strings.ReplaceAll(location, `\`, "/"))
+		switch {
+		case path == "~" || strings.HasPrefix(path, "~/"):
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return locationResolution{}, fmt.Errorf("expanding %q: %w", location, err)
+			}
+			result.resolved = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
+		case filepath.IsAbs(path):
+			result.resolved = filepath.Clean(path)
+		default:
+			result.resolved = filepath.Join(dir, path)
+		}
+		result.rewritten = result.resolved != result.declared
+		return result, nil
+	default:
+		panic("unknown location kind " + result.kind)
+	}
+}
+
+func classifyLocation(location string) LocationKind {
 	switch {
 	case location == "":
-		return "", nil
-	case strings.Contains(location, "://"):
-		return location, nil
-	case location == "~" || strings.HasPrefix(location, "~/"):
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("expanding %q: %w", location, err)
-		}
-		return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(location, "~"), "/")), nil
+		return LocationEmpty
+	case isWindowsDrivePath(location):
+		return LocationPath
+	case hasURIScheme(location):
+		return LocationScheme
+	case location == ".", location == "..", location == "~":
+		return LocationPath
 	case filepath.IsAbs(location):
-		return filepath.Clean(location), nil
+		return LocationPath
+	case strings.HasPrefix(location, "./"), strings.HasPrefix(location, "../"),
+		strings.HasPrefix(location, "~/"), strings.HasPrefix(location, `.\`),
+		strings.HasPrefix(location, `..\`), strings.HasPrefix(location, `~\`):
+		return LocationPath
+	case strings.ContainsAny(location, `/\`):
+		return LocationPath
 	default:
-		return filepath.Join(dir, location), nil
+		return LocationOpaque
 	}
+}
+
+func hasURIScheme(location string) bool {
+	colon := strings.IndexByte(location, ':')
+	if colon <= 0 || !isASCIIAlpha(location[0]) {
+		return false
+	}
+	for i := 1; i < colon; i++ {
+		c := location[i]
+		if !isASCIIAlpha(c) && (c < '0' || c > '9') && c != '+' && c != '-' && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func isWindowsQualifiedPath(location string) bool {
+	return isWindowsDrivePath(location) ||
+		strings.HasPrefix(location, `\\`) ||
+		strings.HasPrefix(location, "//")
+}
+
+func isWindowsDrivePath(location string) bool {
+	return len(location) >= 2 && isASCIIAlpha(location[0]) && location[1] == ':'
+}
+
+func isWindowsDriveRelativePath(location string) bool {
+	return isWindowsDrivePath(location) &&
+		(len(location) == 2 || location[2] != '/' && location[2] != '\\')
+}
+
+func isASCIIAlpha(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }

@@ -18,7 +18,7 @@ timeout_ms = 900
 # and the source name.
 source_id = "repo-notes"
 adapter = "documents"
-location = "notes"
+location = "./notes"
 freshness_mode = "indexed"
 sensitivity = "public"
 base_prior = 0.8

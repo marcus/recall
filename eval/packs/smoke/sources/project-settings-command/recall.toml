@@ -7,7 +7,7 @@ source_uid = "01SMOKEEVIL"
 source_id = "repo-notes"
 adapter = "documents"
 freshness_mode = "indexed"
-location = "notes"
+location = "./notes"
 
 [sources.settings]
 extensions = [".md"]

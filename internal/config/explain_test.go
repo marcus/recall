@@ -74,6 +74,51 @@ func TestExplainNamesTheOriginOfEveryValue(t *testing.T) {
 	}
 }
 
+func TestExplainShowsLocationResolutionDecision(t *testing.T) {
+	projectFile := writeProject(t, `
+[[sources]]
+source_id = "mail"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "marcus@vorwaller.net"
+
+[[sources]]
+source_id = "notes"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "./notes"
+`)
+	e := mustLoad(t, "testdata/home", projectFile).Explain()
+
+	mail := explainedSource(t, e, "mail")
+	if got := mail.Fields["location_original"].Value; got != "marcus@vorwaller.net" {
+		t.Errorf("opaque original = %q", got)
+	}
+	if got := mail.Fields["location"].Value; got != "marcus@vorwaller.net" {
+		t.Errorf("opaque resolved = %q", got)
+	}
+	if got := mail.Fields["location_kind"].Value; got != "opaque" {
+		t.Errorf("opaque kind = %q", got)
+	}
+	if got := mail.Fields["location_rewritten"].Value; got != false {
+		t.Errorf("opaque rewritten = %v", got)
+	}
+
+	notes := explainedSource(t, e, "notes")
+	if got := notes.Fields["location_original"].Value; got != "./notes" {
+		t.Errorf("path original = %q", got)
+	}
+	if got := notes.Fields["location_kind"].Value; got != "path" {
+		t.Errorf("path kind = %q", got)
+	}
+	if got := notes.Fields["location_rewritten"].Value; got != true {
+		t.Errorf("path rewritten = %v", got)
+	}
+	if got, _ := notes.Fields["location"].Value.(string); !strings.HasSuffix(got, "/notes") {
+		t.Errorf("path resolved = %q, want absolute notes path", got)
+	}
+}
+
 // Secrets are references. This package never reads an environment variable or
 // a keychain, so there is no path by which a value could reach the explained
 // view — and this test fails loudly if one ever appears.

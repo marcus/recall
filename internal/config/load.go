@@ -269,15 +269,16 @@ func (c *Config) mergeSources(f sourceFile) error {
 // newSource creates a source instance an earlier layer did not declare.
 func (c *Config) newSource(f sourceFile, key, id string, raw rawSource) error {
 	inst := &SourceInstance{
-		ID:          id,
-		Enabled:     true,
-		BasePrior:   1.0,
-		Sensitivity: recall.SensitivityInternal,
-		BaseDir:     f.Dir,
-		origins:     map[string]Origin{"source_id": f.Origin},
-		keys:        map[string]string{"source_id": key + ".source_id"},
-		declaredIn:  f.Origin,
-		declaredKey: key,
+		ID:           id,
+		Enabled:      true,
+		BasePrior:    1.0,
+		Sensitivity:  recall.SensitivityInternal,
+		BaseDir:      f.Dir,
+		LocationKind: LocationEmpty,
+		origins:      map[string]Origin{"source_id": f.Origin},
+		keys:         map[string]string{"source_id": key + ".source_id"},
+		declaredIn:   f.Origin,
+		declaredKey:  key,
 	}
 	switch {
 	case f.Layer == LayerProject && raw.SourceUID != nil:
@@ -384,7 +385,10 @@ func (c *Config) applyRaw(f sourceFile, key string, inst *SourceInstance, raw ra
 		if err != nil {
 			probs.add(invalidErrorf(f.Path, key+".location", "%s", err))
 		} else {
-			inst.Location = location
+			inst.DeclaredLocation = location.declared
+			inst.Location = location.resolved
+			inst.LocationKind = location.kind
+			inst.LocationRewritten = location.rewritten
 			set("location")
 		}
 	}

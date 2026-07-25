@@ -118,6 +118,51 @@ func TestDoctorPassesAndNamesEveryCheck(t *testing.T) {
 	}
 }
 
+func TestDoctorChecksOnlyDeclaredFilesystemLocations(t *testing.T) {
+	const withLocation = `
+[defaults]
+profile = "work"
+
+[[sources]]
+source_uid = "01UIDLOCATION"
+source_id = "mail"
+adapter = "fakedocs"
+freshness_mode = "indexed"
+location = %q
+
+[profiles.work]
+sources = ["mail"]
+`
+	run := func(t *testing.T, location string) cli.Diagnosis {
+		t.Helper()
+		h := newHarness(t, harnessOptions{
+			userTOML: fmt.Sprintf(withLocation, location),
+			adapters: fakeAdapters(map[string]*fake{"fakedocs": {manifest: manifest()}}),
+		})
+		_, stdout, _ := h.run("doctor", "--json")
+		var d cli.Diagnosis
+		if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+			t.Fatalf("doctor --json: %v\n%s", err, stdout)
+		}
+		return d
+	}
+
+	opaque := run(t, "marcus@vorwaller.net")
+	if got := checkStatus(t, opaque, "access"); got != cli.CheckPass {
+		t.Errorf("opaque identifier access = %q, want pass", got)
+	}
+	for _, c := range opaque.Checks {
+		if c.Name == "access" && c.Detail != "0 of 1 eligible sources name a local path" {
+			t.Errorf("opaque access detail = %q", c.Detail)
+		}
+	}
+
+	path := run(t, "./definitely-missing")
+	if got := checkStatus(t, path, "access"); got != cli.CheckFail {
+		t.Errorf("missing filesystem path access = %q, want fail", got)
+	}
+}
+
 // A load failure stops the checks that depend on configuration rather than
 // reporting a health failure caused by a file nobody could parse.
 func TestDoctorSkipsWhatItCannotCheck(t *testing.T) {
