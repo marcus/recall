@@ -18,12 +18,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/adapters/tasks"
 	"github.com/marcus/recall/internal/adapters/td"
+	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/buildinfo"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/recall"
@@ -103,6 +105,7 @@ func Builtins() []Adapter {
 // adapters, clock — and the command cannot reach past it.
 type Env struct {
 	Args   []string
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 
@@ -116,6 +119,13 @@ type Env struct {
 
 	// Adapters replaces the compiled-in set. Nil means [Builtins].
 	Adapters []Adapter
+
+	// Core replaces the in-process application core. It is a test and embedding
+	// seam; normal commands build one from configuration.
+	Core api.Core
+
+	// LookupEnv resolves a named environment variable. Nil uses os.LookupEnv.
+	LookupEnv func(string) (string, bool)
 
 	// Now is injectable so a test can pin the clock and a golden file can be a
 	// diff of formatting rather than of timing.
@@ -134,6 +144,20 @@ func (e Env) now() func() time.Time {
 		return time.Now
 	}
 	return e.Now
+}
+
+func (e Env) stdin() io.Reader {
+	if e.Stdin == nil {
+		return os.Stdin
+	}
+	return e.Stdin
+}
+
+func (e Env) lookupEnv(name string) (string, bool) {
+	if e.LookupEnv == nil {
+		return os.LookupEnv(name)
+	}
+	return e.LookupEnv(name)
 }
 
 // Run executes one command and returns the process exit code.
@@ -157,6 +181,10 @@ func Run(ctx context.Context, env Env) int {
 		return runConfig(ctx, env, args)
 	case "eval":
 		return evalCmd(ctx, env, args)
+	case "serve":
+		return runServe(ctx, env, args)
+	case "mcp":
+		return runMCP(ctx, env, args)
 	case "version", "--version":
 		_, err := fmt.Fprintf(env.Stdout, "recall %s (%s)\n", buildinfo.Version, buildinfo.Commit)
 		return report(env, err)
@@ -194,6 +222,8 @@ commands:
                     freshness, identity, and lineage
   config explain    print the resolved configuration and each value's origin
   eval              validate, run, compare, and report an evaluation pack
+  serve             run the versioned HTTP API
+  mcp               run the Model Context Protocol server over stdio
   version           print the build identity
 
 Every read command supports --json alongside its human output, and both carry

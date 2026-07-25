@@ -17,6 +17,9 @@ is listed and not contacted.
 flags:
   --profile NAME    profile to resolve; default is the configured one
   --json            emit the listing as JSON
+  --server URL      dispatch to a running recall serve instance
+  --auth-token-env ENV
+                    read the server bearer token from ENV
 
 ` + exitCodes
 
@@ -74,6 +77,7 @@ func runSources(ctx context.Context, env Env, args []string) int {
 		profile = fs.String("profile", "", "profile to resolve")
 		asJSON  = fs.Bool("json", false, "emit JSON")
 	)
+	remote := addRemoteFlags(fs)
 	if ok, code := parse(env, fs, sourcesHelp, args); !ok {
 		return code
 	}
@@ -81,20 +85,20 @@ func runSources(ctx context.Context, env Env, args []string) int {
 		return usageErr(env, sourcesHelp, fmt.Errorf("sources takes no arguments"))
 	}
 
-	cfg, err := env.load()
+	core, closeCore, err := openCore(env, *profile, 0, remote)
 	if err != nil {
 		fail(env, err)
 		return ExitError
 	}
-	rt, err := newRuntime(env, cfg, *profile, 0)
-	if err != nil {
-		fail(env, err)
-		return ExitError
-	}
-	defer func() { _ = rt.close() }()
+	defer func() { _ = closeCore() }()
 
-	listing, err := rt.listSources(ctx)
+	raw, err := core.Sources(ctx)
 	if err != nil {
+		fail(env, err)
+		return ExitError
+	}
+	var listing SourceListing
+	if err := listingInto(raw.Payload, &listing); err != nil {
 		fail(env, err)
 		return ExitError
 	}

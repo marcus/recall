@@ -8,14 +8,22 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
 
 	"github.com/marcus/recall/internal/cli"
 )
 
 func main() {
-	os.Exit(cli.Run(context.Background(), cli.Env{
+	os.Exit(run())
+}
+
+func run() int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return cli.Run(ctx, cli.Env{
 		Args:   os.Args[1:],
+		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
-	}))
+	})
 }

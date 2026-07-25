@@ -25,13 +25,9 @@
 //     with no surface-local rewriting in between, so evidence a caller was
 //     pointed at is evidence it can actually retrieve.
 //
-// Neither surface authenticates. Both are local: the HTTP server binds loopback
-// and refuses anything else (see bind.go), and the MCP server speaks over the
-// stdio of a process the user's own agent host spawned. Sources carry a
-// sensitivity floor that only the user's configuration sets, and these
-// transports apply the configured profile's ceiling by calling the core rather
-// than by adding a rule of their own — so a surface cannot widen what a caller
-// may see, only fail to narrow it further. Exposing either surface to a network
-// would need authentication, transport security, and a per-caller ceiling that
-// does not exist yet; docs/surfaces.md states the whole precondition.
+// HTTP binds loopback by default. A caller may explicitly select a non-loopback
+// literal only when bearer authentication is configured; the bind guard refuses
+// the unsafe combinations before a socket is opened. MCP speaks over the stdio
+// of a process the user's own agent host spawned. Both call the configured
+// profile's core, so neither can widen its sensitivity ceiling.
 package api

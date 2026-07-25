@@ -17,6 +17,8 @@ the agent can expand under a budget.
   [`templates/adapter-python`](templates/adapter-python) to copy
 - [Evaluation](docs/evaluation.md) — packs, metrics, gates, research policy
 - [Profile example](docs/profile-example.md) — a concrete source inventory
+- [HTTP and MCP surfaces](docs/surfaces.md) — service mode, authentication,
+  endpoint semantics, and agent-host tools
 
 Status: the first vertical slice is in. The CLI fuses two heterogeneous sources
 — indexed project documents and live structured tasks — plus a reference
@@ -80,6 +82,8 @@ recall expand <locator> --detail full
 recall sources          # instances, capabilities, health, freshness
 recall config explain   # resolved configuration and where each value came from
 recall eval run --pack eval/packs/smoke
+recall serve            # long-lived local HTTP API, loopback by default
+recall mcp              # MCP tools over stdio
 ```
 
 Exit codes distinguish `answered` (0), `error` (1), `abstained` (2),

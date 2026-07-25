@@ -45,6 +45,9 @@ flags:
   --profile NAME      profile to resolve; default is the configured one
   --conformance NAME  replay a registered adapter's recorded transcripts
   --json              emit the diagnosis as JSON
+  --server URL        dispatch to a running recall serve instance
+  --auth-token-env ENV
+                      read the server bearer token from ENV
 
 ` + exitCodes
 
@@ -112,6 +115,7 @@ func runDoctor(ctx context.Context, env Env, args []string) int {
 		adapterFor = fs.String("conformance", "", "replay a registered adapter's recorded transcripts")
 		asJSON     = fs.Bool("json", false, "emit JSON")
 	)
+	remote := addRemoteFlags(fs)
 	if ok, code := parse(env, fs, doctorHelp, args); !ok {
 		return code
 	}
@@ -125,12 +129,38 @@ func runDoctor(ctx context.Context, env Env, args []string) int {
 	// machine's sources happen to be reachable has nothing to do with it, and
 	// letting a sleeping laptop fail a conformance run would make the answer
 	// mean something it does not.
-	d := func() Diagnosis {
-		if *adapterFor != "" {
-			return diagnoseConformance(ctx, env, *adapterFor)
+	var d Diagnosis
+	switch {
+	case *adapterFor != "":
+		if *remote.server != "" {
+			return usageErr(env, doctorHelp, errors.New("--conformance cannot be combined with --server"))
 		}
-		return diagnose(ctx, env, *profile)
-	}()
+		d = diagnoseConformance(ctx, env, *adapterFor)
+	case *remote.server == "" && env.Core == nil:
+		// Doctor must turn configuration-load failures into a structured
+		// diagnosis. openCore cannot do that because an invalid configuration
+		// has no core to return.
+		if *remote.tokenEnvName != "" {
+			return usageErr(env, doctorHelp, errors.New("--auth-token-env requires --server"))
+		}
+		d = diagnose(ctx, env, *profile)
+	default:
+		core, closeCore, err := openCore(env, *profile, 0, remote)
+		if err != nil {
+			fail(env, err)
+			return ExitError
+		}
+		defer func() { _ = closeCore() }()
+		listing, err := core.Doctor(ctx)
+		if err != nil {
+			fail(env, err)
+			return ExitError
+		}
+		if err := listingInto(listing.Payload, &d); err != nil {
+			fail(env, err)
+			return ExitError
+		}
+	}
 
 	if *asJSON {
 		if code := report(env, emitJSON(env.Stdout, d)); code != ExitOK {
@@ -176,10 +206,9 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 		return d.finish()
 	}
 
-	d.add(configurationCheck(cfg), trustCheck(cfg), identityCheck(cfg))
-
 	rt, err := newRuntime(env, cfg, profileName, 0)
 	if err != nil {
+		d.add(configurationCheck(cfg), trustCheck(cfg), identityCheck(cfg))
 		// A ranker that will not build is a configured prior fusion would have
 		// applied, so nothing below this can be checked honestly.
 		d.add(Check{
@@ -193,9 +222,19 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 		return d.finish()
 	}
 	defer func() { _ = rt.close() }()
+	return diagnoseRuntime(ctx, cfg, rt)
+}
+
+// diagnoseRuntime runs the live checks against an already assembled runtime.
+// recall serve uses it so a doctor request observes the same long-lived
+// adapters and indexes as query, instead of creating a second pool beside the
+// one the server exists to amortize.
+func diagnoseRuntime(ctx context.Context, cfg *config.Config, rt *runtime) Diagnosis {
+	var d Diagnosis
+	d.add(configurationCheck(cfg), trustCheck(cfg), identityCheck(cfg))
 	d.Profile = rt.profile
 
-	profile, err := cfg.ActiveProfile(profileName)
+	profile, err := cfg.ActiveProfile(rt.profile)
 	if err != nil {
 		d.add(Check{
 			Name:     checkAccess,

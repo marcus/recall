@@ -28,6 +28,8 @@ flags:
   --as-of TIME         answer as of a past instant (RFC 3339). Sources that
                        cannot honor a historical boundary are excluded and
                        reported, and coverage becomes degraded.
+  --server URL         dispatch to a running recall serve instance
+  --auth-token-env ENV read the server bearer token from ENV
 
 Human output states coverage inline: a source that was eligible and could not
 answer is named, never silently absent.
@@ -47,6 +49,7 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 	)
 	var scopes multiFlag
 	fs.Var(&scopes, "scope", "narrow the request: source=, type=, project=, since=, until=")
+	remote := addRemoteFlags(fs)
 
 	if ok, code := parse(env, fs, queryHelp, args); !ok {
 		return code
@@ -65,19 +68,14 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		return usageErr(env, queryHelp, err)
 	}
 
-	cfg, err := env.load()
+	core, closeCore, err := openCore(env, *profile, *limit, remote)
 	if err != nil {
 		fail(env, err)
 		return ExitError
 	}
-	rt, err := newRuntime(env, cfg, *profile, *limit)
-	if err != nil {
-		fail(env, err)
-		return ExitError
-	}
-	defer func() { _ = rt.close() }()
+	defer func() { _ = closeCore() }()
 
-	resp, err := rt.app.Query(ctx, recall.QueryRequest{
+	resp, err := core.Query(ctx, recall.QueryRequest{
 		Query:   text,
 		Profile: *profile,
 		Scope:   scope,

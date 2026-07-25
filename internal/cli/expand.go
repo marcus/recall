@@ -18,6 +18,9 @@ flags:
   --json            emit the response as JSON
   --detail LEVEL    summary | excerpt | full | context   (default excerpt)
   --budget BYTES    hard output limit
+  --server URL      dispatch to a running recall serve instance
+  --auth-token-env ENV
+                    read the server bearer token from ENV
 
 ` + exitCodes
 
@@ -29,6 +32,7 @@ func runExpand(ctx context.Context, env Env, args []string) int {
 		detail  = fs.String("detail", string(recall.DetailExcerpt), "summary|excerpt|full|context")
 		budget  = fs.Int64("budget", 0, "hard output limit in bytes")
 	)
+	remote := addRemoteFlags(fs)
 	if ok, code := parse(env, fs, expandHelp, args); !ok {
 		return code
 	}
@@ -44,23 +48,18 @@ func runExpand(ctx context.Context, env Env, args []string) int {
 		return usageErr(env, expandHelp, err)
 	}
 
-	cfg, err := env.load()
+	core, closeCore, err := openCore(env, *profile, 0, remote)
 	if err != nil {
 		fail(env, err)
 		return ExitError
 	}
-	rt, err := newRuntime(env, cfg, *profile, 0)
-	if err != nil {
-		fail(env, err)
-		return ExitError
-	}
-	defer func() { _ = rt.close() }()
+	defer func() { _ = closeCore() }()
 
-	resp, err := rt.app.Expand(ctx, recall.ExpandRequest{
+	resp, err := core.Expand(ctx, recall.ExpandRequest{
 		Locator: locator,
 		Detail:  level,
 		Budget:  *budget,
-	}, *profile)
+	})
 	if err != nil {
 		// A locator that could not be expanded — unconfigured source, denied,
 		// expired, unreachable — is a source failure and never an empty
