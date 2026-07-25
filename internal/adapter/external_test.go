@@ -284,3 +284,82 @@ func waitForExit(t *testing.T, ext *adapter.External) string {
 	}
 	return ""
 }
+
+const forkerMarkerEnv = "RECALL_TEST_FORKER_MARKER"
+
+// A budget is a promise to the caller. Tearing the process down used to run
+// inside the request that timed out, so the whole grace ladder — cancel grace,
+// SIGTERM grace, then the wait after SIGKILL — was spent on the caller's clock
+// and a 200ms budget returned seconds later.
+func TestTimedOutRequestReturnsWithinItsBudget(t *testing.T) {
+	ext := externalFixture(t, modeWedge, adapter.Options{
+		CancelGrace: 100 * time.Millisecond,
+		TermGrace:   3 * time.Second,
+	})
+
+	start := time.Now()
+	resp, err := ext.Search(context.Background(), searchIn("q", 200*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("a wedged adapter must not report success")
+	}
+	if resp.Outcome.Searched() {
+		t.Errorf("outcome = %s, want a failure", resp.Outcome)
+	}
+	// Budget plus cancel grace plus slack. Nowhere near the termination ladder.
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("returned after %v; teardown must not run on the caller's clock", elapsed)
+	}
+}
+
+// Signalling only the direct child leaves grandchildren running with the
+// descriptors they inherited, so "the process is gone when Close returns" was
+// false for anything an adapter forks.
+func TestTerminationReachesGrandchildren(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "alive")
+	ext := adapter.NewExternal(adapter.Spec{
+		Name:    "forker",
+		Command: os.Args[0],
+		Env: append(os.Environ(),
+			fixtureModeEnv+"="+modeForker,
+			forkerMarkerEnv+"="+marker),
+		Config: adapter.Config{
+			ProtocolVersionMin: protocol.MinVersion,
+			ProtocolVersionMax: protocol.MaxVersion,
+			Workdir:            filepath.Join(t.TempDir(), "work"),
+			SourceID:           "tasks",
+		},
+		Options: adapter.Options{CancelGrace: 100 * time.Millisecond, TermGrace: time.Second},
+	})
+
+	if _, err := ext.Health(context.Background()); err != nil {
+		t.Skipf("fixture did not start: %v", err)
+	}
+
+	size := func() int64 {
+		fi, err := os.Stat(marker)
+		if err != nil {
+			return -1
+		}
+		return fi.Size()
+	}
+	// Wait for the grandchild to prove it is running, so the assertion below is
+	// about termination rather than about startup timing.
+	deadline := time.Now().Add(2 * time.Second)
+	for size() <= 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if size() <= 0 {
+		t.Skip("grandchild never started; nothing to prove")
+	}
+
+	if err := ext.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+		t.Logf("close: %v", err)
+	}
+	before := size()
+	time.Sleep(400 * time.Millisecond)
+	if after := size(); after != before {
+		t.Errorf("grandchild still writing after Close (%d -> %d bytes)", before, after)
+	}
+}

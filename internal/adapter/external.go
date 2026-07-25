@@ -30,6 +30,10 @@ type External struct {
 	spec Spec
 	diag *protocol.Diagnostics
 
+	// reaping tracks background teardowns so Close can still promise that no
+	// adapter process outlives it.
+	reaping sync.WaitGroup
+
 	mu       sync.Mutex
 	sess     *session
 	cfg      Config
@@ -54,6 +58,11 @@ type session struct {
 	conn   *Conn
 	cmd    *exec.Cmd
 	exited chan struct{}
+
+	// pgid is the adapter's process group, captured at spawn because it cannot
+	// be looked up once the leader has exited — which is exactly when a
+	// surviving grandchild needs sweeping.
+	pgid int
 
 	stdout *os.File
 	stderr *os.File
@@ -152,17 +161,23 @@ func (e *External) Close() error {
 	e.mu.Unlock()
 
 	if sess == nil {
+		// A session retired by a timeout may still be being torn down.
+		e.awaitReaping()
 		return nil
 	}
 	err := sess.conn.Close()
 	select {
 	case <-sess.exited:
+		// Exiting cleanly is not the same as leaving nothing behind.
+		sess.sweepGroup()
+		sess.drain()
 	case <-time.After(e.spec.termGrace()):
 		// A clean exit was asked for and did not happen. The contract is that
 		// the process is gone when Close returns, so it is made gone.
 		sess.terminate(e.spec.termGrace())
 	}
 	e.recordExit(sess)
+	e.awaitReaping()
 	return err
 }
 
@@ -181,6 +196,10 @@ func (e *External) ensure(ctx context.Context) (*Conn, error) {
 			// again; the caller learns about the restart through diagnostics,
 			// never through a quietly empty result.
 			e.recordExitLocked(e.sess)
+			// Release the pipe handles here rather than leaving them to
+			// finalizers. This is the one supervision path that dropped a
+			// session without draining it.
+			e.sess.drain()
 			e.sess = nil
 		default:
 			return e.sess.conn, nil
@@ -239,6 +258,17 @@ func (e *External) spawnLocked(ctx context.Context) (*Conn, error) {
 // cancel notification. The request that triggered it is already reported as a
 // timeout; this makes sure the process cannot go on holding resources or
 // answering a request nobody is waiting for.
+// wedged retires a session whose adapter stopped answering.
+//
+// Termination runs on its own goroutine because this is called from inside the
+// request that timed out. Tearing the process down synchronously spent the
+// grace ladder — cancel grace, then SIGTERM grace, then the wait after
+// SIGKILL — on the caller's clock, so a request with a 200ms budget returned
+// seconds later. The budget is a promise to the caller; cleanup afterwards is
+// Recall's problem, not theirs.
+//
+// The session is already detached under the lock, so a concurrent call starts a
+// fresh process rather than waiting for this one to finish dying.
 func (e *External) wedged(string) {
 	e.mu.Lock()
 	sess := e.sess
@@ -248,9 +278,18 @@ func (e *External) wedged(string) {
 	if sess == nil {
 		return
 	}
-	sess.terminate(e.spec.termGrace())
-	e.recordExit(sess)
+	e.reaping.Add(1)
+	go func() {
+		defer e.reaping.Done()
+		sess.terminate(e.spec.termGrace())
+		e.recordExit(sess)
+	}()
 }
+
+// awaitReaping blocks until every background teardown has finished. Close uses
+// it so a caller that shuts Recall down still gets the guarantee that no
+// adapter process outlives the call.
+func (e *External) awaitReaping() { e.reaping.Wait() }
 
 func (e *External) recordExit(sess *session) {
 	e.mu.Lock()
@@ -300,6 +339,12 @@ func startProcess(spec Spec) (*session, error) {
 	}
 
 	cmd := exec.Command(spec.Command, spec.Args...) //nolint:gosec // the command comes from user configuration only; see the trust boundary
+	// Own process group, so termination reaches what the adapter started.
+	// Signalling the direct child alone leaves grandchildren running with the
+	// descriptors they inherited, which makes "the process is gone when Close
+	// returns" false for anything an adapter forks — and leaks one per spawn
+	// from an adapter that is merely sloppy.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Dir = spec.Dir
 	if spec.Env != nil {
 		cmd.Env = spec.Env
@@ -318,6 +363,7 @@ func startProcess(spec Spec) (*session, error) {
 
 	sess := &session{
 		cmd:    cmd,
+		pgid:   cmd.Process.Pid,
 		exited: make(chan struct{}),
 		stdin:  inW,
 		stdout: outR,
@@ -340,33 +386,73 @@ func closeAll(files ...*os.File) {
 // adapter can exit, then SIGTERM, then SIGKILL.
 func (s *session) terminate(grace time.Duration) {
 	s.once.Do(func() {
+		// Whatever happens below, the group is swept and the pipes released.
+		// Three of these paths used to return early, and a clean exit reached
+		// on any of them left the adapter's children running — which is the
+		// common case, not the exotic one.
+		defer func() {
+			s.sweepGroup()
+			s.drain()
+		}()
+
 		_ = s.stdin.Close()
-
-		select {
-		case <-s.exited:
-			s.drain()
+		if s.waitFor(grace / 4) {
 			return
-		case <-time.After(grace / 4):
 		}
 
-		if s.cmd.Process != nil {
-			// Signal may be unsupported for this signal on some platforms; the
-			// kill below is the guarantee either way.
-			_ = s.cmd.Process.Signal(syscall.SIGTERM)
-		}
-		select {
-		case <-s.exited:
-			s.drain()
+		// The whole group, so an adapter's children get the chance to exit
+		// cleanly too.
+		s.signal(syscall.SIGTERM)
+		if s.waitFor(grace) {
 			return
-		case <-time.After(grace):
 		}
 
-		if s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
-		}
-		<-s.exited
-		s.drain()
+		s.signal(syscall.SIGKILL)
+
+		// SIGKILL is not a guarantee of exit: a child blocked in an
+		// uninterruptible wait stays until its I/O returns, and an adapter's
+		// location can point at a hung network mount. Waiting for it without a
+		// bound would hang the caller permanently on the one path that exists
+		// to stop that from happening.
+		s.waitFor(grace)
 	})
+}
+
+// waitFor reports whether the process exited within d.
+func (s *session) waitFor(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-s.exited:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+// signal delivers to the adapter's whole process group, falling back to the
+// direct child if the group is gone.
+func (s *session) signal(sig syscall.Signal) {
+	if s.pgid > 0 && syscall.Kill(-s.pgid, sig) == nil {
+		return
+	}
+	if s.cmd.Process != nil {
+		_ = s.cmd.Process.Signal(sig)
+	}
+}
+
+// sweepGroup kills anything still running in the adapter's process group after
+// the adapter itself is gone.
+//
+// A clean exit does not imply an empty group: an adapter that forks a helper
+// and then answers shutdown politely leaves that helper running, holding the
+// descriptors it inherited. Termination never ran, because there was nothing to
+// terminate. "The process is gone when Close returns" has to mean the processes
+// it started, or a well-behaved adapter leaks one per spawn.
+func (s *session) sweepGroup() {
+	if s.pgid > 0 {
+		_ = syscall.Kill(-s.pgid, syscall.SIGKILL)
+	}
 }
 
 // drain releases the read ends once the child is gone, ending the client's read

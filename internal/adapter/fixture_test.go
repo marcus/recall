@@ -52,6 +52,9 @@ const (
 	modeSerial = "serial"
 	// modeNoise writes junk on stdout before its frames.
 	modeNoise = "noise"
+	// modeForker spawns a child that outlives it, then wedges. Killing only
+	// the direct process would leave the child running.
+	modeForker = "forker"
 )
 
 func TestMain(m *testing.M) {
@@ -74,6 +77,13 @@ func runFixture(mode string) int {
 		fmt.Fprintln(os.Stderr, `{"jsonrpc":"2.0","id":1,"result":{"candidates":[],"outcome":"success"}}`)
 	case modeNoise:
 		fmt.Fprintln(os.Stdout, "this line is not a frame")
+	case modeForker:
+		signal.Ignore(syscall.SIGTERM)
+		if path := os.Getenv(forkerMarkerEnv); path != "" {
+			child := exec.Command("/bin/sh", "-c",
+				"while :; do echo alive >> "+path+"; sleep 0.05; done")
+			_ = child.Start()
+		}
 	}
 	err := adapter.Serve(context.Background(), os.Stdin, os.Stdout, newFixture(mode))
 	if hung.Load() {

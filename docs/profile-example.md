@@ -40,8 +40,13 @@ optional index over titles and bodies may follow.
 **Locator:** task ID. Line numbers and title substrings are convenience
 references, not locators.
 
-**`as_of`:** `filter` at best. Historical queries beyond stored date fields are
-unsupported and must be reported.
+**`as_of`:** `none`. This was written as "filter at best" and that was wrong:
+the CLI publishes no creation, revision, or observation timestamp in any JSON
+shape. `deadline`, `scheduled`, and `closed` are plan dates, not record
+history, so a task created after a boundary is indistinguishable from one that
+predates it. Filtering on plan dates would answer a historical question from
+current state, which the spec forbids. Declaring `filter` here invited an
+adapter to overclaim in exactly the way the manifest field exists to prevent.
 
 ## 3. Clara Signals And Observations — append-only streams
 
