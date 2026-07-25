@@ -25,8 +25,16 @@ Check everything that has to be true before a query means anything:
   identity         every source has a source_uid, and no two share one
   access           every eligible source's location can be read
   health           every eligible source can be reached and is usable
+  serving          every source that answered is serving its whole corpus,
+                   rather than a stale or partial one
+  store_isolation  no two instances of one adapter opened the same store
   freshness        each source's freshness mode is one its adapter serves
   lineage          declared source-level derivation has no cycle
+
+A check that fails means the installation is misconfigured and exits 1. A check
+that degrades means it is configured correctly and is not serving what it was
+configured to serve — a stale index, a partial corpus — and exits 3. The two
+have different remedies, so they are not the same answer.
 
 With --conformance, ask a different question entirely: replay one adapter's
 recorded transcripts against its command and diff every response. The suite is
@@ -41,10 +49,18 @@ flags:
 ` + exitCodes
 
 // Check outcomes.
+//
+// CheckDegraded is deliberately neither pass nor fail. The two questions
+// "is this installation configured correctly" and "is it serving what it was
+// configured to serve" have different answers and different remedies — the
+// first is fixed by editing a file, the second by rebuilding an index or
+// waking a machine — and collapsing them is what let a green doctor mean
+// nothing. It carries its own exit code so a script can still tell them apart.
 const (
-	CheckPass    = "pass"
-	CheckFail    = "fail"
-	CheckSkipped = "skipped"
+	CheckPass     = "pass"
+	CheckFail     = "fail"
+	CheckDegraded = "degraded"
+	CheckSkipped  = "skipped"
 )
 
 // Problem is one located defect. File and Key are carried separately from the
@@ -66,10 +82,11 @@ type Check struct {
 
 // Diagnosis is the whole `recall doctor` answer.
 type Diagnosis struct {
-	Status  string  `json:"status"`
-	Profile string  `json:"profile,omitempty"`
-	Checks  []Check `json:"checks"`
-	Failed  int     `json:"failed_checks"`
+	Status   string  `json:"status"`
+	Profile  string  `json:"profile,omitempty"`
+	Checks   []Check `json:"checks"`
+	Failed   int     `json:"failed_checks"`
+	Degraded int     `json:"degraded_checks"`
 }
 
 // Check names, in the order they are reported. Each later check depends on the
@@ -81,6 +98,7 @@ const (
 	checkIdentity      = "identity"
 	checkAccess        = "access"
 	checkHealth        = "health"
+	checkServing       = "serving"
 	checkIsolation     = "store_isolation"
 	checkFreshness     = "freshness"
 	checkLineage       = "lineage"
@@ -125,10 +143,17 @@ func runDoctor(ctx context.Context, env Env, args []string) int {
 			return code
 		}
 	}
-	if d.Failed > 0 {
+	switch {
+	case d.Failed > 0:
 		// Non-zero for each failing check. A machine asking "is this
 		// installation sound" gets its answer from the status, not from prose.
 		return ExitError
+	case d.Degraded > 0:
+		// Configured correctly, not serving what it was configured to serve.
+		// It is the same distinction ExitDegraded already draws for a query —
+		// the sources are right and one of them could not answer properly —
+		// so it gets the same code rather than a fourth meaning for exit 1.
+		return ExitDegraded
 	}
 	return ExitOK
 }
@@ -187,7 +212,7 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 	d.add(accessCheck(eligible))
 
 	health, manifests, healths := healthCheck(ctx, rt, eligible)
-	d.add(health, isolationCheck(eligible, healths),
+	d.add(health, servingCheck(eligible, healths), isolationCheck(eligible, healths),
 		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
 	return d.finish()
 }
@@ -281,12 +306,24 @@ func conformanceCheck(ctx context.Context, cfg *config.Config, name string) Chec
 func (d *Diagnosis) add(checks ...Check) { d.Checks = append(d.Checks, checks...) }
 
 func (d Diagnosis) finish() Diagnosis {
-	d.Status = "ok"
 	for _, c := range d.Checks {
-		if c.Status == CheckFail {
+		switch c.Status {
+		case CheckFail:
 			d.Failed++
-			d.Status = "failed"
+		case CheckDegraded:
+			d.Degraded++
 		}
+	}
+	switch {
+	case d.Failed > 0:
+		// A broken configuration outranks a degraded one: there is no point
+		// telling someone their index is stale when the file naming it does
+		// not load.
+		d.Status = "failed"
+	case d.Degraded > 0:
+		d.Status = "degraded"
+	default:
+		d.Status = "ok"
 	}
 	return d
 }
@@ -504,6 +541,73 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 		problems), manifests, healths
 }
 
+// servingCheck asks what the health check does not: is each source serving
+// what it was configured to serve.
+//
+// [healthCheck] tests [recall.Health.Usable], which is liveness — did the
+// source answer. A source can answer from a stale, partial index and still
+// count as a pass, and it did: `recall doctor` reported "9 of 9 eligible
+// sources answered a health probe" and exited 0 while the highest-prior source
+// on the machine was degraded, coverage partial, and serving a generation
+// missing two of its nine documents. You had to run `recall sources` to find
+// that out, and in the meantime a green doctor was used as evidence that a
+// configuration was sound.
+//
+// So this reports every source that answered but is not whole. It does not
+// FAIL: nothing here is misconfigured, and a laptop whose index is a rebuild
+// behind should not read the same as a project file that tried to run a
+// command. It degrades, which carries its own exit code.
+//
+// The base prior travels with each line because it is what makes the finding
+// actionable. A stale source at prior 0.9 is a nuisance; the same staleness at
+// 1.5 is silently shaping every answer on the machine, and the two should not
+// look alike in a report someone skims.
+func servingCheck(sources []*config.SourceInstance, healths map[string]recall.Health) Check {
+	var problems []Problem
+	whole := 0
+
+	for _, s := range sources {
+		h, probed := healths[s.ID]
+		if !probed {
+			// Unreachable, and already reported as a health failure. Saying it
+			// twice would make one broken source look like two problems.
+			continue
+		}
+		var found []string
+		if h.Status != recall.HealthHealthy {
+			found = append(found, "health "+string(h.Status))
+		}
+		if h.Coverage != recall.IndexComplete {
+			found = append(found, "coverage "+string(h.Coverage))
+		}
+		if h.RecordCount > 0 && h.IndexedCount > 0 && h.IndexedCount < h.RecordCount {
+			// The index represents less than the source holds, which is the
+			// exact shape of the miss: a search over it returns fewer results
+			// and reports nothing about why.
+			found = append(found, fmt.Sprintf("%d of %d records indexed", h.IndexedCount, h.RecordCount))
+		}
+		if h.FailedCount > 0 {
+			found = append(found, fmt.Sprintf("%d records rejected", h.FailedCount))
+		}
+		if len(found) == 0 {
+			whole++
+			continue
+		}
+		problems = append(problems, Problem{
+			SourceID: s.ID,
+			Message: fmt.Sprintf("%s (base_prior %g); it answers, so a query will use it, and the answer "+
+				"will be drawn from less than this source holds",
+				strings.Join(found, ", "), s.BasePrior),
+		})
+	}
+
+	detail := fmt.Sprintf("%d of %d probed sources are serving their whole corpus", whole, len(healths))
+	if len(problems) > 0 {
+		return Check{Name: checkServing, Status: CheckDegraded, Detail: detail, Problems: problems}
+	}
+	return Check{Name: checkServing, Status: CheckPass, Detail: detail}
+}
+
 // isolationCheck refuses a profile in which two enabled instances of one
 // adapter are reading the same store.
 //
@@ -697,6 +801,7 @@ func renderDiagnosis(o *out, d Diagnosis) {
 	head.text("status", d.Status)
 	head.text("profile", d.Profile)
 	head.count("failed checks", d.Failed)
+	head.count("degraded checks", d.Degraded)
 	o.line(head.String())
 
 	for _, c := range d.Checks {

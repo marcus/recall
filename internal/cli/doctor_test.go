@@ -109,7 +109,8 @@ func TestDoctorPassesAndNamesEveryCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"configuration", "trust_boundary", "identity", "access", "health", "freshness", "lineage",
+		"configuration", "trust_boundary", "identity", "access", "health",
+		"serving", "store_isolation", "freshness", "lineage",
 	} {
 		if got := checkStatus(t, d, want); got != cli.CheckPass {
 			t.Errorf("check %q = %q, want pass", want, got)
@@ -307,4 +308,75 @@ func TestDoctorRefusesTwoSourcesOverOneStore(t *testing.T) {
 		contains(t, stdout, "nothing to compare",
 			"a check that looked at nothing must not read as having cleared something")
 	})
+}
+
+// A source that answers from a stale, partial index is not a pass.
+//
+// doctor once reported "9 of 9 eligible sources answered a health probe" and
+// exited 0 while the highest-prior source on the machine was degraded, coverage
+// partial, and serving a generation missing two of its nine documents. That is
+// liveness, not health, and a green doctor was being read as evidence that a
+// configuration was sound. It has to be visible here, without running a second
+// command — and it has to stay distinguishable from a configuration that does
+// not load, because the two are fixed by different things.
+func TestDoctorReportsWhatASourceIsActuallyServing(t *testing.T) {
+	stale := &fake{
+		manifest: manifest(),
+		health: recall.Health{
+			Status:       recall.HealthDegraded,
+			Coverage:     recall.IndexPartial,
+			RecordCount:  9,
+			IndexedCount: 7,
+		},
+	}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{
+			"fakedocs": stale, "faketasks": {manifest: manifest()},
+		}),
+	})
+
+	code, stdout, _ := h.run("doctor", "--json")
+	if code != cli.ExitDegraded {
+		t.Fatalf("exit = %d, want %d (degraded, not misconfigured and not ok)\n%s",
+			code, cli.ExitDegraded, stdout)
+	}
+	var d cli.Diagnosis
+	if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "degraded" {
+		t.Errorf("status = %q, want degraded", d.Status)
+	}
+	if d.Failed != 0 {
+		t.Errorf("failed_checks = %d; a stale index is not a broken configuration", d.Failed)
+	}
+	if got := checkStatus(t, d, "serving"); got != cli.CheckDegraded {
+		t.Errorf("serving = %q, want degraded", got)
+	}
+	// The liveness question still has its own honest answer: the source did
+	// answer. Folding the two together is what produced the original defect.
+	if got := checkStatus(t, d, "health"); got != cli.CheckPass {
+		t.Errorf("health = %q; the source answered its probe, so liveness passed", got)
+	}
+	for _, want := range []string{"coverage partial", "7 of 9 records indexed", "base_prior"} {
+		contains(t, stdout, want,
+			"the report has to say what is missing and how much authority the source carries")
+	}
+}
+
+// And a real failure still outranks a degraded one: there is no point telling
+// someone their index is stale when the file naming it does not load.
+func TestDoctorPrefersFailureOverDegradation(t *testing.T) {
+	h := newHarness(t, harnessOptions{
+		userTOML: duplicateUIDTOML,
+		adapters: fakeAdapters(map[string]*fake{"fakedocs": {
+			manifest: manifest(),
+			health:   recall.Health{Status: recall.HealthDegraded, Coverage: recall.IndexPartial},
+		}}),
+	})
+	code, stdout, _ := h.run("doctor", "--json")
+	if code != cli.ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, cli.ExitError, stdout)
+	}
 }
