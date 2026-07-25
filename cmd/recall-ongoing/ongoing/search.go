@@ -2,6 +2,8 @@ package ongoing
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -158,6 +160,14 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		diag["catalog_age_hours"] = int(age.Hours())
 		diag["stale"] = true
 	}
+	for k, v := range cat.staleCollectors() {
+		// Per-collector staleness travels with the search, not only with
+		// health, because it is the search result that gets read. A project
+		// absent from an attention view because its LOC measurement expired is
+		// indistinguishable in the candidate list from one that genuinely does
+		// not qualify.
+		diag[k] = v
+	}
 	return recall.SearchResponse{
 		Candidates:      candidates,
 		Diagnostics:     diag,
@@ -213,6 +223,18 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 		SourceRevision: p.cat.revision(),
 		Sensitivity:    p.floor,
 		Metadata:       metadata(proj),
+		// Two instances of this adapter commonly point at ONE ongoing server
+		// with different `views` — "everything" and "the things that need
+		// attention" are different questions over the same catalog. Lineage
+		// groups on source_uid + source_record_id, so without a fingerprint
+		// those instances hand the core one project twice under two identities,
+		// and it is counted as two independent pieces of evidence: the
+		// corroboration bonus then promotes exactly the projects that appear in
+		// the most views. A record read once, from one endpoint, at one scan
+		// revision, is one observation. The fingerprint says so, and
+		// record_type + content_fingerprint collapses them without the core
+		// needing to know anything about ongoing.
+		ContentFingerprint: fingerprint(proj.ID, p.cat.revision()),
 	}
 	if finished, ok := p.cat.boundary(); ok {
 		// The catalog's last complete scan is the only boundary that confirmed
@@ -564,4 +586,14 @@ func queryMode(terms []string, exact bool, f recall.Filters) string {
 	default:
 		return "structured"
 	}
+}
+
+// fingerprint identifies the observation, not the text. Two instances reading
+// one catalog at one revision saw the same thing, whatever each chose to
+// render, so the digest covers the record identity and the scan revision and
+// deliberately not the excerpt — a fingerprint over rendered text would differ
+// between a full-catalog instance and a view-filtered one and defeat itself.
+func fingerprint(projectID, revision string) string {
+	sum := sha256.Sum256([]byte(projectID + "\x00" + revision))
+	return hex.EncodeToString(sum[:])
 }

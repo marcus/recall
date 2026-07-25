@@ -405,6 +405,21 @@ func (a *Adapter) healthOf(cat *catalog, tr transport, set Settings, checked tim
 		h.Diagnostics["reason"] = "the catalog is older than ongoing's own freshness rule"
 		h.Diagnostics["catalog_age_hours"] = int(age.Hours())
 		h.Diagnostics["freshness_rule_hours"] = int(StaleAfter.Hours())
+	case cat.collectorsDegraded():
+		// A scan can finish minutes ago and still hold measurements days old:
+		// ongoing ages each collector separately, and a classification whose
+		// inputs are stale is not computed at all. Reporting healthy here would
+		// turn that silence into "nothing qualifies" — the caller would read a
+		// complete answer where the server simply declined to decide.
+		h.Status = recall.HealthDegraded
+		h.Diagnostics["reason"] = "the catalog is current but some collectors are not"
+		h.Diagnostics["freshness_rule_hours"] = int(StaleAfter.Hours())
+	}
+	for k, v := range cat.staleCollectors() {
+		// Reported whatever the status: a healthy catalog with two unmeasured
+		// collectors is still a catalog whose classifications rest on less than
+		// it looks like.
+		h.Diagnostics[k] = v
 	}
 	if cat.Scan != nil && cat.Scan.ErrorCount > 0 {
 		h.Diagnostics["scan_errors"] = cat.Scan.ErrorCount

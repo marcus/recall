@@ -413,3 +413,76 @@ func (p *project) snapshotSeries(metric string) []metricSnapshot {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].CapturedOn < out[j].CapturedOn })
 	return out
 }
+
+// staleCollectors counts, per collector, how many projects carry a measurement
+// older than ongoing's own freshness window — or none at all.
+//
+// The catalog-level age check is not enough on its own. ongoing applies the
+// 72-hour rule PER COLLECTOR (attention.ts checks gitScannedAt, locScannedAt,
+// tdScannedAt, githubScannedAt and the traffic stamp individually), and a
+// classification whose inputs are stale is simply not computed — so the server
+// returns membership false, and a source reporting "healthy, coverage complete"
+// turns that silence into "nothing qualifies". A recent scan that refreshed git
+// while leaving LOC four days old is exactly that case, and it is the normal
+// state of this deployment rather than an edge case.
+//
+// Measured against generatedAt, never the local clock, for the same reason age
+// is: a recorded response must replay identically forever.
+func (c *catalog) staleCollectors() map[string]any {
+	type counter struct{ stale, missing int }
+	counters := map[string]*counter{
+		"git": {}, "loc": {}, "td": {}, "github": {},
+	}
+	at := c.GeneratedAt.UTC()
+	for i := range c.Projects {
+		p := &c.Projects[i]
+		if p.Metrics == nil {
+			for name := range counters {
+				counters[name].missing++
+			}
+			continue
+		}
+		for name, stamp := range map[string]*time.Time{
+			"git":    p.Metrics.GitScannedAt,
+			"loc":    p.Metrics.LocScannedAt,
+			"td":     p.Metrics.TdScannedAt,
+			"github": p.Metrics.GithubScannedAt,
+		} {
+			switch {
+			case stamp == nil:
+				counters[name].missing++
+			case at.Sub(stamp.UTC()) > StaleAfter:
+				counters[name].stale++
+			}
+		}
+	}
+	out := map[string]any{}
+	for name, c := range counters {
+		if c.stale > 0 {
+			out[name+"_stale"] = c.stale
+		}
+		if c.missing > 0 {
+			out[name+"_unmeasured"] = c.missing
+		}
+	}
+	return out
+}
+
+// collectorsDegraded reports whether any collector holds an EXPIRED
+// measurement.
+//
+// Absence is not degradation, and conflating the two would make this useless:
+// most projects have no td workspace and many have no GitHub remote, so an
+// unmeasured collector is the normal, correct state for them and says nothing
+// about freshness. An expired one is different — the measurement was taken,
+// ongoing's rule now refuses to use it, and a classification silently stops
+// being computed. Only that flips health; the unmeasured counts are reported
+// beside it so a reader can tell the two apart.
+func (c *catalog) collectorsDegraded() bool {
+	for k, v := range c.staleCollectors() {
+		if n, ok := v.(int); ok && n > 0 && strings.HasSuffix(k, "_stale") {
+			return true
+		}
+	}
+	return false
+}
