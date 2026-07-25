@@ -19,7 +19,12 @@ the agent can expand under a budget.
 Status: the first vertical slice is in. The CLI fuses two heterogeneous sources
 — indexed project documents and live structured tasks — plus a reference
 external adapter that exercises the wire protocol and evidence lineage, and an
-evaluation harness with a committed smoke pack and baseline.
+evaluation harness with a committed smoke pack.
+
+`eval/baselines/smoke.json` is documented in
+[evaluation.md](docs/evaluation.md) but is **not committed yet**, so
+`recall eval compare` has nothing to compare against and metric drift goes
+unnoticed. See the backlog before trusting a metric quoted in a commit message.
 
 ## Install
 

@@ -40,20 +40,29 @@ tidy:
 
 check: build test lint
 
+# The command set comes from cmd/, never from the contents of bin/. bin/ is
+# gitignored and no target prunes it, so a renamed or deleted command leaves a
+# binary behind that would otherwise be installed forever, and `uninstall`
+# would delete whatever happened to share its name on the user's PATH.
+COMMANDS := $(notdir $(wildcard cmd/*))
+
 # Adapter binaries must land on the same PATH as the CLI: the core spawns them
 # by command name, so installing recall alone yields a config that passes
-# validation and then fails to reach half its sources.
+# validation and then fails to reach half its sources. Each iteration exits
+# non-zero on failure — with `&&` the recipe reported success whenever the
+# final command happened to install, which is exactly the partial install this
+# target exists to prevent.
 install: build-all
 	@mkdir -p '$(PREFIX)/bin'
-	@for f in $(BIN)/*; do \
-		[ -f "$$f" ] && [ -x "$$f" ] || continue; \
-		install -m 0755 "$$f" '$(PREFIX)/bin/' && echo "installed $$(basename $$f) -> $(PREFIX)/bin"; \
+	@for c in $(COMMANDS); do \
+		install -m 0755 '$(BIN)'/"$$c" '$(PREFIX)/bin/' || exit 1; \
+		echo "installed $$c -> $(PREFIX)/bin"; \
 	done
 
 uninstall:
-	@for f in $(BIN)/*; do \
-		[ -f "$$f" ] || continue; \
-		rm -f '$(PREFIX)/bin/'"$$(basename $$f)" && echo "removed $$(basename $$f)"; \
+	@for c in $(COMMANDS); do \
+		rm -f '$(PREFIX)/bin/'"$$c" || exit 1; \
+		echo "removed $$c"; \
 	done
 
 clean:
