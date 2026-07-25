@@ -249,10 +249,11 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 // title is what a reader sees before deciding to expand. The path is in it
 // because two scan roots can hold two projects called "www".
 func title(p *project) string {
-	if p.RelativePath != "" && p.RelativePath != p.Name {
-		return p.Name + " (" + p.RelativePath + ")"
+	name, rel := oneLine(p.Name), oneLine(p.RelativePath)
+	if rel != "" && rel != name {
+		return name + " (" + rel + ")"
 	}
-	return p.Name
+	return name
 }
 
 // summarize is the candidate preview: the owner's note, then every
@@ -301,8 +302,10 @@ func summarize(p *project) string {
 // scanned" and "no commits" are different facts.
 func metadata(p *project) map[string]any {
 	md := map[string]any{
-		"path":          p.CanonicalPath,
-		"relative_path": p.RelativePath,
+		// Paths are source text too: ongoing records whatever the filesystem
+		// hands it, and a directory name can carry line structure.
+		"path":          oneLine(p.CanonicalPath),
+		"relative_path": oneLine(p.RelativePath),
 	}
 	if views := p.memberViews(); len(views) > 0 {
 		md["views"] = views
@@ -361,13 +364,19 @@ func reasonsPayload(p *project) []map[string]any {
 	for _, key := range p.memberViews() {
 		for _, r := range p.reasonsFor(key) {
 			out = append(out, map[string]any{
-				"view":       key,
-				"source":     r.Source,
+				// Every string here is source text on its way to a
+				// terminal and a model. The core's sanitizer walks top-level
+				// string metadata only, so anything nested one level down —
+				// which this is — arrives exactly as ongoing stored it unless
+				// it is cleaned here. Non-string values keep their type: a
+				// null intent stays null, "1-5" stays a string.
+				"view":       oneLine(key),
+				"source":     oneLine(r.Source),
 				"message":    oneLine(r.Message),
-				"input":      r.Input,
-				"value":      r.Value,
-				"comparison": r.Comparison,
-				"threshold":  r.Threshold,
+				"input":      safeAny(r.Input),
+				"value":      safeAny(r.Value),
+				"comparison": safeAny(r.Comparison),
+				"threshold":  safeAny(r.Threshold),
 			})
 		}
 	}
@@ -596,4 +605,15 @@ func queryMode(terms []string, exact bool, f recall.Filters) string {
 func fingerprint(projectID, revision string) string {
 	sum := sha256.Sum256([]byte(projectID + "\x00" + revision))
 	return hex.EncodeToString(sum[:])
+}
+
+// safeAny cleans a value that may or may not be a string. Attention reasons
+// carry their inputs and thresholds as ongoing typed them — a number stays a
+// number, a null stays null — so this touches only the string case and leaves
+// everything else identical.
+func safeAny(v any) any {
+	if s, ok := v.(string); ok {
+		return oneLine(s)
+	}
+	return v
 }

@@ -586,7 +586,39 @@ func settingsSchema() map[string]any {
 // rendering here is line-oriented: a note reading "\n\nAttention:\n…" would
 // otherwise forge a section header in text a model reads. Collapsing the
 // whitespace is what keeps a field's value inside its field.
-func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+// oneLine renders source text as a single safe line.
+//
+// Collapsing whitespace is not enough on its own. Everything here is written by
+// a person into ongoing's own fields — a project note, a next action — and it
+// reaches a terminal, a JSON API, and a model. Three separate things have to go:
+//
+//   - line structure, or a note can forge "Evidence:" and appear to be a
+//     section this adapter wrote rather than content it quoted;
+//   - C0/C1 control characters, which is where ANSI colour and cursor movement
+//     live — a terminal renders those, so text can rewrite what is above it;
+//   - bidirectional overrides (U+202A-202E, U+2066-2069), which reorder display
+//     without changing bytes, so what a reader sees is not what a program
+//     matched.
+//
+// U+2028 and U+2029 are line separators that strings.Fields does not treat as
+// whitespace, so they are handled with the rest of the control characters
+// rather than left to it.
+func oneLine(s string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t' || r == '\n' || r == '\r':
+			return ' ' // becomes whitespace, collapsed below
+		case r < 0x20, r >= 0x7f && r <= 0x9f:
+			return -1 // C0 and C1 controls, including ESC
+		case r == 0x2028 || r == 0x2029:
+			return ' ' // line and paragraph separators
+		case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			return -1 // bidi overrides and isolates
+		}
+		return r
+	}, s)
+	return strings.Join(strings.Fields(cleaned), " ")
+}
 
 // clip bounds a string at a rune boundary, so a truncated preview is still
 // text.

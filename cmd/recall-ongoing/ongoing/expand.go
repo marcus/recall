@@ -69,7 +69,7 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 		SourceRevision:     cat.revision(),
 		Truncated:          truncated,
 		TruncationBoundary: boundary,
-		Provenance:         fmt.Sprintf("%s (%s)", proj.CanonicalPath, proj.ID),
+		Provenance:         fmt.Sprintf("%s (%s)", oneLine(proj.CanonicalPath), proj.ID),
 	}, nil
 }
 
@@ -221,8 +221,13 @@ func writeEvidence(b *strings.Builder, p *project) {
 				b.WriteString("\n\nEvidence:")
 				wrote = true
 			}
-			fmt.Fprintf(b, "\n- %s/%s %s = %s %s %s", key, r.Source,
-				r.Input, fmtValue(r.Value), r.Comparison, fmtValue(r.Threshold))
+			// Input and Comparison are ongoing's own words for what was
+			// measured, and they land inside a section this adapter labels
+			// "Evidence:". Without collapsing them a reason can forge another
+			// section header and appear to be structure rather than quoted
+			// content — the thing render's doc comment already promised.
+			fmt.Fprintf(b, "\n- %s/%s %s = %s %s %s", oneLine(key), oneLine(r.Source),
+				oneLine(r.Input), fmtValue(r.Value), oneLine(r.Comparison), fmtValue(r.Threshold))
 		}
 	}
 }
