@@ -1,0 +1,13 @@
+{
+  "case": "expand",
+  "description": "Expansion at every detail level, and a budget cut. The levels widen rather than reshape: summary is the structured row, excerpt adds the opening of the description, full adds the whole description with the acceptance criteria and the progress log \u2014 the material td's own search cannot see \u2014 and context adds the dependency edges and linked files, which are the only level that costs extra invocations. The last request offers 200 bytes, and the response reports truncated with truncation_boundary budget_bytes so a caller can tell a budget cut from a source-side limit.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/provenance"
+  ],
+  "responses": 6
+}

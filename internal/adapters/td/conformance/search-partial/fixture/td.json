@@ -1,0 +1,35 @@
+{
+  "comment": "One probe fails; the rest answer. The failing rule is first, because rules are tried in order.",
+  "invocations": [
+    {
+      "contains": [
+        "search",
+        "corroboration"
+      ],
+      "stdout": "no_database.json",
+      "exit_code": 1
+    },
+    {
+      "contains": [
+        "info"
+      ],
+      "stdout": "info.json"
+    },
+    {
+      "contains": [
+        "list"
+      ],
+      "stdout": "list_all.json"
+    },
+    {
+      "contains": [
+        "search"
+      ],
+      "stdout": "search_adapter.json"
+    }
+  ],
+  "default": {
+    "stdout": "show_not_found.json",
+    "exit_code": 1
+  }
+}

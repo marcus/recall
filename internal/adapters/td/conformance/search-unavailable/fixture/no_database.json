@@ -1,0 +1,2 @@
+[38;5;196mERROR: database not found: run 'td init' first[m
+{"error":{"code":"invalid_input","message":"database not found: run 'td init' first"}}

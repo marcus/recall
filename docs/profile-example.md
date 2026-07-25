@@ -100,15 +100,39 @@ handoffs, sessions, linked files.
 
 **Authority:** authoritative for engineering work in that workspace.
 
-**Mode:** live structured retrieval through `td export --all --format json`,
-`td query`, `td search`, or the local td HTTP API. Recall never depends on td's
+**Mode:** live structured retrieval through the td CLI's JSON surfaces —
+`td search` for retrieval and ordering, `td list` for the workspace listing that
+supplies the watermark, `td show` for expansion. Recall never depends on td's
 private SQLite schema.
 
-**Locator:** workspace identity plus issue ID.
+**Locator:** workspace identity plus issue ID, as `<workspace>/td-xxxxxx`. td
+mints six random hex characters and guarantees them unique only inside one
+database, so the workspace is part of the reference and not merely part of the
+configuration around it.
 
-Each workspace is a separate source instance behind one td adapter. They may be
-presented as one source family while retaining the workspace boundary for
-permissions, routing, and provenance.
+**`as_of`:** `none`. td publishes more history than the Tasks CLI —
+`created_at`, `updated_at`, `closed_at`, and timestamps on logs, handoffs, and
+reviews — and it is still not record history. `updated_at` is a single
+last-write stamp with no prior revision behind it, and dependency edges carry
+no time at all, so an issue edited after a boundary can only be described as it
+is now. Filtering on `created_at` would quietly reinterpret "as the world
+looked at T" as "rows created before T". Both are answering a historical
+question from current state, which the spec forbids.
+
+**Known gaps in the source contract:** `td search` matches id, title, and
+description only, despite help text claiming logs and handoffs, so text living
+only in a log or comment is reachable by expansion and not by search. Comments
+have no machine-readable CLI surface at all — they exist only over the local
+HTTP API, which needs a long-lived writing process — so they are absent from
+expansion rather than parsed out of prose. Date comparison in `td query` is
+broken upstream and is used nowhere.
+
+Each workspace is a separate source instance behind one td adapter. They are
+presented as one source family — one adapter id, one record shape, one locator
+grammar — while the workspace boundary survives inside it: sensitivity and
+priors are per instance, a project filter routes to the workspace that answers
+to that name, and an instance refuses to expand another workspace's locator
+rather than returning the issue that happens to share its id.
 
 ## Future Structured Databases
 

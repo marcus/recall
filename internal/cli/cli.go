@@ -23,6 +23,7 @@ import (
 	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/adapters/tasks"
+	"github.com/marcus/recall/internal/adapters/td"
 	"github.com/marcus/recall/internal/buildinfo"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/recall"
@@ -84,6 +85,15 @@ func Builtins() []Adapter {
 			Name:           "tasks",
 			FreshnessModes: []recall.FreshnessMode{recall.FreshnessLive},
 			New:            func() adapter.Adapter { return tasks.New(tasks.Options{}) },
+		},
+		{
+			// One adapter, one configured source per td workspace. It is
+			// built in rather than external because the same workspaces are
+			// read from both the home and the work install, and an adapter
+			// shared across installs is one this binary should carry.
+			Name:           "td",
+			FreshnessModes: []recall.FreshnessMode{recall.FreshnessLive},
+			New:            func() adapter.Adapter { return td.New(td.Options{}) },
 		},
 	}
 }

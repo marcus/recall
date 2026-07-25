@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "A locator whose issue the workspace no longer holds, and a locator naming another workspace. The first fails with -32003 locator_expired: td answered and holds no such issue, so the reference is dead rather than the source unreachable. The second fails with -32002 locator_unknown without td being asked at all \u2014 ids are six random hex characters and are unique only within one workspace, so answering another workspace's locator from this one would return a plausible wrong record.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 3
+}

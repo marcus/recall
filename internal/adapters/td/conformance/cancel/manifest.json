@@ -1,0 +1,11 @@
+{
+  "case": "cancel",
+  "description": "A search cancelled while in flight. The fixture makes every td invocation take thirty seconds, so the cancel notification arrives while the probes are still running; the adapter abandons them and answers with an error rather than a late result. The code is -32007 deadline_exceeded: an abandoned request ran out of time, which is a different condition from declining a budget up front.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}
