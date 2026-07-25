@@ -270,8 +270,9 @@ func TestAuthoritativeInfoRootBindsLocatorsAndFingerprints(t *testing.T) {
 	if health.Status != recall.HealthHealthy {
 		t.Fatalf("health = %q (%v), want healthy", health.Status, health.Diagnostics)
 	}
-	if got := health.Diagnostics[protocol.DiagStoreIdentity]; got != actualRoot {
-		t.Errorf("store_identity = %v, want td's authoritative root %s", got, actualRoot)
+	identity, _ := health.Diagnostics[protocol.DiagStoreIdentity].(string)
+	if !strings.HasPrefix(identity, "td:") || strings.Contains(identity, actualRoot) {
+		t.Errorf("store_identity = %q, want opaque td hash", identity)
 	}
 
 	resp, err := search(t, a, "adapter")
@@ -285,9 +286,109 @@ func TestAuthoritativeInfoRootBindsLocatorsAndFingerprints(t *testing.T) {
 	if !strings.HasPrefix(top.Locator.Local, "api/") {
 		t.Errorf("locator = %q, want authoritative workspace api", top.Locator.Local)
 	}
-	if got := top.Metadata["workspace_root"]; got != actualRoot {
-		t.Errorf("candidate workspace_root = %v, want %s", got, actualRoot)
+	if got := top.Metadata["workspace_store"]; got != identity {
+		t.Errorf("candidate workspace_store = %v, want %s", got, identity)
 	}
+}
+
+func TestIdentityChangeDuringSearchDiscardsEvidence(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "api")
+	second := filepath.Join(t.TempDir(), "api")
+	cli := switchingWorkspace(t, first, second)
+	a, err := initAdapter(t, cli, first, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	resp, err := search(t, a, "adapter")
+	if err == nil {
+		t.Fatal("search succeeded after td changed databases mid-read")
+	}
+	if !resp.Outcome.Degrades() || len(resp.Candidates) != 0 {
+		t.Fatalf("search outcome = %q with %d candidates, want failed with no evidence",
+			resp.Outcome, len(resp.Candidates))
+	}
+	if !strings.Contains(err.Error(), "evidence discarded") {
+		t.Errorf("error does not explain discarded evidence: %v", err)
+	}
+	for _, root := range []string{first, second} {
+		if strings.Contains(fmt.Sprint(resp.Diagnostics), root) || strings.Contains(err.Error(), root) {
+			t.Errorf("failure disclosed absolute root %s: %v / %v", root, err, resp.Diagnostics)
+		}
+	}
+}
+
+func TestIdentityChangeDuringExpandDiscardsEvidence(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "api")
+	second := filepath.Join(t.TempDir(), "api")
+	cli := switchingWorkspace(t, first, second)
+	a, err := initAdapter(t, cli, first, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	resp, err := expand(t, a, "api/"+idAdapter, recall.DetailFull, 0)
+	if err == nil {
+		t.Fatal("expand returned evidence after td changed databases mid-read")
+	}
+	if resp.Content != "" || resp.Provenance != "" {
+		t.Fatalf("expand leaked raced evidence: %+v", resp)
+	}
+	if !strings.Contains(err.Error(), "evidence discarded") {
+		t.Errorf("error does not explain discarded evidence: %v", err)
+	}
+}
+
+func TestDiagnosticsAndEvidenceNeverDiscloseWorkspacePaths(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "private-owner", "api")
+	cli := switchingWorkspace(t, root, root)
+	a, err := initAdapter(t, cli, root, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	searchResp, err := search(t, a, "adapter")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	expandResp, err := expand(t, a, "api/"+idAdapter, recall.DetailFull, 0)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	rendered := fmt.Sprintf("%v\n%v\n%+v", health.Diagnostics, searchResp, expandResp)
+	if strings.Contains(rendered, root) || strings.Contains(rendered, filepath.Dir(root)) {
+		t.Fatalf("adapter output disclosed absolute workspace path:\n%s", rendered)
+	}
+	if identity, _ := health.Diagnostics[protocol.DiagStoreIdentity].(string); !strings.HasPrefix(identity, "td:") {
+		t.Errorf("store identity %q is not opaque", identity)
+	}
+}
+
+func switchingWorkspace(t *testing.T, firstRoot, secondRoot string) *fakeCLI {
+	t.Helper()
+	base := recordedWorkspace(t)
+	reply := base.reply
+	infoCalls := 0
+	base.reply = func(args []string) (td.Result, error) {
+		if args[0] != "info" {
+			return reply(args)
+		}
+		infoCalls++
+		root := firstRoot
+		if infoCalls > 1 {
+			root = secondRoot
+		}
+		return ok([]byte(fmt.Sprintf(`{
+			"project":"api",
+			"database":%q,
+			"issues":{"total":5,"open":3,"in_progress":1,"closed":1}
+		}`, filepath.Join(root, ".todos", "issues.db")))), nil
+	}
+	return base
 }
 
 func TestSameBasenameSeparateDatabasesDoNotShareFingerprints(t *testing.T) {

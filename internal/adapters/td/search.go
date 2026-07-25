@@ -90,6 +90,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	if exactErr != nil {
 		return fail(exactErr, gathered.timing())
 	}
+	if err := a.verifyWorkspaceUnchanged(ctx, ws); err != nil {
+		return fail(err, gathered.timing())
+	}
 
 	ranked := rank(gathered, exact, terms, set, req.Filters)
 	matched := len(ranked)
@@ -113,7 +116,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	diagnostics := gathered.timing()
 	diagnostics["workspace"] = ws.Name
 	if ws.StoreIdentity != "" {
-		diagnostics["workspace_root"] = ws.StoreIdentity
+		diagnostics[protocol.DiagStoreIdentity] = ws.StoreIdentity
 	}
 	diagnostics["query_mode"] = queryMode(exact, probes)
 	diagnostics["search_scope"] = searchScope
@@ -713,8 +716,9 @@ func (a *Adapter) candidate(
 
 // fingerprint identifies the observation: which store, issue, and version.
 //
-// The root is the resolved store identity verified against `td info`, not the
-// configured location. Two instances at a repository and its subdirectory
+// storeRoot is the opaque digest of the resolved store verified against
+// `td info`, not the configured location or a disclosed path. Two instances
+// at a repository and its subdirectory
 // therefore agree, while two separate databases with the same directory name
 // cannot collapse merely because td happened to mint the same issue id at the
 // same timestamp.

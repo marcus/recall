@@ -1,6 +1,6 @@
 {
   "case": "handshake",
-  "description": "A version range the adapter can satisfy: it negotiates 1, declares a manifest that claims live retrieval and as_of none, and answers a health probe. Health is a td info probe plus the workspace listing, so the record count, the coverage, and the watermark all come from the workspace rather than from the fact that a command returned. The identity is the base name of the directory the location resolves to, and the case also declares it as the `workspace` setting, so the diagnostics record an identity that was asserted as well as observed \u2014 a setting naming anything else is refused at the handshake rather than renaming another workspace's database. A replaying instance claims no store, because a recording is not a database.",
+  "description": "A version range the adapter can satisfy: it negotiates 1, declares live retrieval and as_of none, and answers a health probe. Health is one td info probe. The configured workspace assertion is reported as asserted; a live instance validates it against the database td opens before use. A replaying instance claims no physical store because a recording is not a database. Diagnostics carry only a redacted location label, never an absolute path.",
   "flow": "lockstep",
   "placeholders": {
     "FIXTURE": "absolute path of this case's fixture/ directory",
@@ -9,8 +9,6 @@
   "volatile": [
     "/result/checked_at",
     "/result/last_success_at",
-    "/result/diagnostics/workspace_root",
-    "/result/diagnostics/workspace_location",
     "/result/diagnostics/cli_wall_ms"
   ],
   "responses": 2

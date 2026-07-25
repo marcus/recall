@@ -399,7 +399,6 @@ func TestCandidatesCarryTheWorkspaceAndTheirTypedFields(t *testing.T) {
 	}
 	for key, want := range map[string]any{
 		"workspace":      "tdfix",
-		"workspace_root": workspaceRoot,
 		"status":         "open",
 		"type":           "task",
 		"priority":       "P1",
@@ -410,6 +409,9 @@ func TestCandidatesCarryTheWorkspaceAndTheirTypedFields(t *testing.T) {
 		if got := top.Metadata[key]; got != want {
 			t.Errorf("metadata[%s] = %#v, want %#v", key, got, want)
 		}
+	}
+	if store, _ := top.Metadata["workspace_store"].(string); !strings.HasPrefix(store, "td:") || strings.Contains(store, workspaceRoot) {
+		t.Errorf("metadata[workspace_store] = %q, want opaque identity", store)
 	}
 	if labels, _ := top.Metadata["labels"].([]string); !slices.Contains(labels, "track-adapter") {
 		t.Errorf("metadata[labels] = %#v, want the issue's labels as a list", top.Metadata["labels"])

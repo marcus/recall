@@ -50,7 +50,11 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 			protocol.ErrLocatorExpired, id, rec.ID)
 	}
 
-	content := render(rec, req.Detail, a.expansionContext(ctx, id, req.Detail))
+	surrounding := a.expansionContext(ctx, id, req.Detail)
+	if err := a.verifyWorkspaceUnchanged(ctx, ws); err != nil {
+		return recall.ExpandResponse{}, err
+	}
+	content := render(rec, req.Detail, surrounding)
 	truncated, boundary := false, ""
 	if req.Budget > 0 && int64(len(content)) > req.Budget {
 		content = truncate(content, int(req.Budget))
@@ -69,7 +73,7 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 		// Provenance names the workspace, not only the issue. Two workspaces
 		// can hold ids of the same shape, so evidence that said only
 		// "td-369eef" would be a reference no one could resolve.
-		Provenance: "workspace " + ws.Name + " (" + ws.Root + ") issue " + rec.ID,
+		Provenance: "workspace " + ws.Name + " issue " + rec.ID,
 	}, nil
 }
 

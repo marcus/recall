@@ -256,11 +256,13 @@ func (i issue) headline() string {
 // would make provenance a property of configuration rather than of evidence.
 func (i issue) metadata(w workspace, hit *searchHit) map[string]any {
 	meta := map[string]any{
-		"workspace":      w.Name,
-		"workspace_root": w.Root,
-		"status":         i.Status,
-		"type":           i.Type,
-		"headline":       i.headline(),
+		"workspace": w.Name,
+		"status":    i.Status,
+		"type":      i.Type,
+		"headline":  i.headline(),
+	}
+	if w.StoreIdentity != "" {
+		meta["workspace_store"] = w.StoreIdentity
 	}
 	putString(meta, "priority", i.Priority)
 	if i.Points > 0 {

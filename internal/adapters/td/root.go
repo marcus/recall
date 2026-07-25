@@ -18,9 +18,11 @@ const (
 // resolveRoot answers the question the configured location cannot: which
 // database will td open when it is pointed here.
 //
-// td does not resolve its database from the directory it is given. It walks
-// UPWARD — honoring a `.td-root` redirect, an existing `.todos/`, a recorded
-// directory association, then the git root and the main worktree — so a
+// td does not resolve its database from the directory it is given. The CLI
+// resolves its work directory once, then db.Open applies the same resolver to
+// that result before opening .todos/issues.db. Each pass honors a local
+// `.td-root` redirect, an existing `.todos/`, a recorded directory
+// association, then the git root and the main worktree, so a
 // subdirectory, a worktree, or a submodule path all reach the SAME database as
 // the repository they sit inside. Identity taken from the configured path
 // therefore names something that need not exist: two sources configured at
@@ -46,27 +48,36 @@ func resolveRoot(location string) string {
 	if location == "" {
 		return ""
 	}
-	// td resolves from the checkout root of the directory it was given, not
-	// from the directory itself, so a path deep inside a repository is lifted
-	// to the checkout before any marker is looked for.
-	worktree := gitTopLevel(location)
-	if worktree == "" {
-		worktree = location
-	}
-	return canonicalPath(resolveBaseDir(canonicalPath(worktree)))
+	// The configured directory itself is checked first. Do not canonicalize it
+	// before lookup: td associations are keyed by the cleaned configured path,
+	// including a symlink spelling. This order is
+	// load-bearing: td honors a local .td-root, local .todos, or directory
+	// association before consulting git. Lifting to the git root first loses
+	// those redirects and can falsely bind a different same-basename store.
+	first := resolveBaseDir(filepath.Clean(location))
+
+	// td's commands pass the already-resolved CLI baseDir into db.Open, which
+	// resolves it once more. Mirroring only initBaseDir identifies the project
+	// td reports, but not necessarily the database db.Open actually opened.
+	second := resolveBaseDir(first)
+	return canonicalPath(second)
 }
 
 // resolveBaseDir mirrors td's marker search, in td's order. The order is the
 // whole content of the function: a `.td-root` beats an adjacent `.todos/`, and
 // both beat anything git would say, because that is the precedence td applies.
 func resolveBaseDir(dir string) string {
+	return resolveBaseDirUsing(dir, association)
+}
+
+func resolveBaseDirUsing(dir string, lookup func(string) (string, bool)) string {
 	if root, ok := readTdRoot(dir); ok {
 		return root
 	}
 	if hasTodosDir(dir) {
 		return dir
 	}
-	if target, ok := association(dir); ok {
+	if target, ok := lookup(dir); ok {
 		return target
 	}
 
@@ -81,7 +92,7 @@ func resolveBaseDir(dir string) string {
 	if hasTodosDir(gitRoot) {
 		return gitRoot
 	}
-	if target, ok := association(gitRoot); ok {
+	if target, ok := lookup(gitRoot); ok {
 		return target
 	}
 

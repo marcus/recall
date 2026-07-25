@@ -1,6 +1,8 @@
 package td
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -104,6 +106,23 @@ func resolveWorkspace(location, configured string, replaying bool) (workspace, e
 		}
 	}
 	return workspace{Name: name, Location: loc, Root: root, Asserted: asserted}, nil
+}
+
+// storeIdentity is an equality-only, opaque name for a verified td root. Raw
+// absolute paths never cross the adapter boundary.
+func storeIdentity(root string) string {
+	sum := sha256.Sum256([]byte(canonicalPath(root)))
+	return "td:" + hex.EncodeToString(sum[:8])
+}
+
+// locationLabel is safe operator context for a configured location. It names
+// only the final path component, never a home directory or absolute root.
+func locationLabel(location string) string {
+	label := filepath.Base(filepath.Clean(location))
+	if label == "." || label == string(filepath.Separator) || label == "" {
+		return "workspace"
+	}
+	return label
 }
 
 // checkWorkspaceName rejects names that would not survive a round trip through

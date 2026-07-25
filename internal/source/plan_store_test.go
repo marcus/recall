@@ -14,8 +14,8 @@ func TestPlanRefusesEveryInstanceReadingOneStore(t *testing.T) {
 		{UID: "uid-b", ID: "td-subdir", Adapter: "td"},
 	}
 	verdicts := []verdict{
-		storeVerdict(instances[0], "/work/recall"),
-		storeVerdict(instances[1], "/work/recall"),
+		storeVerdict(instances[0], "td:abcd1234"),
+		storeVerdict(instances[1], "td:abcd1234"),
 	}
 
 	refuseDuplicateStores(instances, verdicts)
@@ -24,8 +24,8 @@ func TestPlanRefusesEveryInstanceReadingOneStore(t *testing.T) {
 		if got.reason != ReasonStoreConflict || got.target.Instance != nil {
 			t.Errorf("verdict %d = %+v, want store conflict refusal", i, got)
 		}
-		if root := got.diagnostics[protocol.DiagStoreIdentity]; root != "/work/recall" {
-			t.Errorf("verdict %d store identity = %v, want conflicting root", i, root)
+		if root := got.diagnostics[protocol.DiagStoreIdentity]; root != "td:abcd1234" {
+			t.Errorf("verdict %d store identity = %v, want opaque conflicting identity", i, root)
 		}
 	}
 }
@@ -36,8 +36,8 @@ func TestPlanKeepsSameBasenameSeparateStoresDistinct(t *testing.T) {
 		{UID: "uid-b", ID: "oss-api", Adapter: "td"},
 	}
 	verdicts := []verdict{
-		storeVerdict(instances[0], "/work/api"),
-		storeVerdict(instances[1], "/oss/api"),
+		storeVerdict(instances[0], "td:11111111"),
+		storeVerdict(instances[1], "td:22222222"),
 	}
 
 	refuseDuplicateStores(instances, verdicts)
@@ -55,8 +55,8 @@ func TestPlanComparesStoreIdentityOnlyWithinOneAdapter(t *testing.T) {
 		{UID: "uid-b", ID: "docs", Adapter: "documents"},
 	}
 	verdicts := []verdict{
-		storeVerdict(instances[0], "/work/shared"),
-		storeVerdict(instances[1], "/work/shared"),
+		storeVerdict(instances[0], "store:shared"),
+		storeVerdict(instances[1], "store:shared"),
 	}
 
 	refuseDuplicateStores(instances, verdicts)

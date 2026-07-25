@@ -174,8 +174,8 @@ func TestLiveWorkspaceBoundary(t *testing.T) {
 	if homeHit.Metadata["workspace"] != "home" || workHit.Metadata["workspace"] != "work" {
 		t.Errorf("workspace metadata = %v and %v", homeHit.Metadata["workspace"], workHit.Metadata["workspace"])
 	}
-	if homeHit.Metadata["workspace_root"] == workHit.Metadata["workspace_root"] {
-		t.Error("both candidates claim the same workspace root")
+	if homeHit.Metadata["workspace_store"] == workHit.Metadata["workspace_store"] {
+		t.Error("both candidates claim the same opaque workspace store")
 	}
 
 	// The boundary itself: one instance must refuse the other's locator rather
@@ -445,6 +445,45 @@ func TestLiveSameBaseNameTwoDatabases(t *testing.T) {
 	}
 	if a, b := workHealth.Diagnostics[protocol.DiagStoreIdentity], ossHealth.Diagnostics[protocol.DiagStoreIdentity]; a == b {
 		t.Errorf("two separate databases both claim the store %v; the duplicate check would refuse a sound configuration", a)
+	}
+}
+
+func TestLiveLocalRedirectWinsBeforeSameBasenameGitRoot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: -short excludes tests that spawn the real td CLI")
+	}
+	binary := liveBinary(t)
+	gitRoot := liveWorkspace(t, binary, "api", issueSpec{
+		title: "Git root issue", priority: "P2",
+	})
+	redirectedRoot := liveWorkspace(t, binary, "api", issueSpec{
+		title: "Redirected database issue", priority: "P1",
+	})
+	gitInit(t, gitRoot)
+	local := filepath.Join(gitRoot, "nested")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, ".td-root"), []byte(redirectedRoot+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	redirected := newLiveAdapter(t, binary, "td-redirected", local)
+	direct := newLiveAdapter(t, binary, "td-direct", redirectedRoot)
+	git := newLiveAdapter(t, binary, "td-git", gitRoot)
+
+	redirectedHealth := health(t, redirected)
+	directHealth := health(t, direct)
+	gitHealth := health(t, git)
+	if got, want := redirectedHealth.Diagnostics[protocol.DiagStoreIdentity], directHealth.Diagnostics[protocol.DiagStoreIdentity]; got != want {
+		t.Fatalf("redirected store %v != direct store %v", got, want)
+	}
+	if got, other := redirectedHealth.Diagnostics[protocol.DiagStoreIdentity], gitHealth.Diagnostics[protocol.DiagStoreIdentity]; got == other {
+		t.Fatalf("redirected and git-root databases share identity %v", got)
+	}
+	hit := only(t, redirected, "redirected")
+	if !strings.HasPrefix(hit.Title, "Redirected") {
+		t.Errorf("redirected source returned wrong database evidence: %q", hit.Title)
 	}
 }
 

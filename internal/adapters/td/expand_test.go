@@ -109,10 +109,13 @@ func TestProvenanceNamesTheWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expand: %v", err)
 	}
-	for _, want := range []string{"tdfix", workspaceRoot, idAdapter} {
+	for _, want := range []string{"tdfix", idAdapter} {
 		if !strings.Contains(resp.Provenance, want) {
 			t.Errorf("provenance %q is missing %q", resp.Provenance, want)
 		}
+	}
+	if strings.Contains(resp.Provenance, workspaceRoot) {
+		t.Errorf("provenance discloses absolute workspace root: %q", resp.Provenance)
 	}
 	// The issue's own last-write time is the closest thing td has to a
 	// revision of one record, and it does not move when an unrelated issue

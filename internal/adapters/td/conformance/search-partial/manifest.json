@@ -9,7 +9,6 @@
   "volatile": [
     "/result/candidates/*/observed_at",
     "/result/candidates/*/confirmed_at",
-    "/result/candidates/*/metadata/workspace_root",
     "/result/diagnostics/cli_wall_ms"
   ],
   "responses": 2

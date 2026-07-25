@@ -328,6 +328,22 @@ func (a *Adapter) verifiedWorkspace(ctx context.Context) (workspace, error) {
 	return ws, nil
 }
 
+// verifyWorkspaceUnchanged closes the check/use interval around evidence
+// reads. td is a one-shot CLI, so identity and evidence cannot be returned by
+// one process on current td; a mandatory post-read probe is the fail-closed
+// alternative. The caller discards everything it read when this fails.
+func (a *Adapter) verifyWorkspaceUnchanged(ctx context.Context, before workspace) error {
+	after, err := a.verifiedWorkspace(ctx)
+	if err != nil {
+		return err
+	}
+	if before.Root != after.Root || before.Name != after.Name {
+		return fmt.Errorf("%w: td workspace changed while evidence was being read; evidence discarded",
+			protocol.ErrSourceUnavailable)
+	}
+	return nil
+}
+
 // probeWorkspace asks td which database it opened. It is kept separate from
 // Health so a direct Search or Expand cannot bypass the identity check.
 func (a *Adapter) probeWorkspace(ctx context.Context) (workspaceInfo, Result, error) {
@@ -357,8 +373,8 @@ func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) 
 	authoritativeRoot := false
 	if strings.TrimSpace(info.Root) != "" {
 		if !filepath.IsAbs(info.Root) {
-			return workspace{}, fmt.Errorf("%w: td info root %q is not absolute",
-				protocol.ErrSourceUnavailable, info.Root)
+			return workspace{}, fmt.Errorf("%w: td info reported a non-absolute workspace root",
+				protocol.ErrSourceUnavailable)
 		}
 		root = canonicalPath(info.Root)
 		authoritativeRoot = true
@@ -367,12 +383,12 @@ func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) 
 		database := canonicalPath(info.Database)
 		if filepath.Base(database) != "issues.db" || filepath.Base(filepath.Dir(database)) != todosDir {
 			return workspace{}, fmt.Errorf("%w: td info database %q does not identify a .todos/issues.db store",
-				protocol.ErrSourceUnavailable, info.Database)
+				protocol.ErrSourceUnavailable, filepath.Base(info.Database))
 		}
 		databaseRoot := filepath.Dir(filepath.Dir(database))
 		if authoritativeRoot && canonicalPath(root) != canonicalPath(databaseRoot) {
-			return workspace{}, fmt.Errorf("%w: td info root %s and database %s identify different stores",
-				protocol.ErrSourceUnavailable, root, info.Database)
+			return workspace{}, fmt.Errorf("%w: td info root and database identify different stores",
+				protocol.ErrSourceUnavailable)
 		}
 		root = databaseRoot
 		authoritativeRoot = true
@@ -384,12 +400,12 @@ func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) 
 	if database := strings.TrimSpace(info.Database); database != "" && !filepath.IsAbs(database) {
 		clean := filepath.Clean(database)
 		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return workspace{}, fmt.Errorf("%w: td info database %q escapes workspace root %s",
-				protocol.ErrSourceUnavailable, database, root)
+			return workspace{}, fmt.Errorf("%w: td info database escapes its workspace root",
+				protocol.ErrSourceUnavailable)
 		}
 		if clean != filepath.Join(todosDir, "issues.db") {
-			return workspace{}, fmt.Errorf("%w: td info database %q does not identify the store at root %s",
-				protocol.ErrSourceUnavailable, database, root)
+			return workspace{}, fmt.Errorf("%w: td info database does not identify .todos/issues.db",
+				protocol.ErrSourceUnavailable)
 		}
 	}
 
@@ -399,19 +415,19 @@ func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) 
 		if authoritativeRoot {
 			kind = "reported"
 		}
-		return workspace{}, fmt.Errorf("%w: td opened project %q, but its %s root is %s (workspace %q); "+
+		return workspace{}, fmt.Errorf("%w: td opened project %q, but its %s root names workspace %q; "+
 			"locators from this source would name a workspace it is not reading",
-			protocol.ErrSourceUnavailable, project, kind, root, rootProject)
+			protocol.ErrSourceUnavailable, project, kind, rootProject)
 	}
 	if configured.Asserted != "" && !strings.EqualFold(configured.Asserted, project) {
-		return workspace{}, fmt.Errorf("%w: td settings assert workspace %q, but td opened project %q at %s; "+
+		return workspace{}, fmt.Errorf("%w: td settings assert workspace %q, but td opened project %q; "+
 			"a configured name cannot rename another workspace's database",
-			protocol.ErrSourceUnavailable, configured.Asserted, project, root)
+			protocol.ErrSourceUnavailable, configured.Asserted, project)
 	}
 
 	configured.Name = rootProject
 	configured.Root = root
-	configured.StoreIdentity = root
+	configured.StoreIdentity = storeIdentity(root)
 	return configured, nil
 }
 
@@ -454,11 +470,10 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 			CheckedAt: checked,
 			Coverage:  recall.IndexUnknown,
 			Diagnostics: map[string]any{
-				"workspace":          configured.Name,
-				"workspace_location": configured.Location,
-				"workspace_root":     configured.Root,
-				"td_project":         info.Project,
-				"identity":           err.Error(),
+				"workspace":      configured.Name,
+				"location_label": locationLabel(configured.Location),
+				"td_project":     info.Project,
+				"identity":       err.Error(),
 			},
 		}, nil
 	}
@@ -469,16 +484,15 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		RecordCount: info.Issues.Total,
 		Coverage:    recall.IndexComplete,
 		Diagnostics: map[string]any{
-			"workspace":          ws.Name,
-			"workspace_location": ws.Location,
-			"workspace_root":     ws.Root,
-			"td_project":         info.Project,
-			"open":               info.Issues.Open,
-			"in_progress":        info.Issues.InProgress,
-			"blocked":            info.Issues.Blocked,
-			"in_review":          info.Issues.InReview,
-			"closed":             info.Issues.Closed,
-			"cli_wall_ms":        res.Elapsed.Milliseconds(),
+			"workspace":      ws.Name,
+			"location_label": locationLabel(ws.Location),
+			"td_project":     info.Project,
+			"open":           info.Issues.Open,
+			"in_progress":    info.Issues.InProgress,
+			"blocked":        info.Issues.Blocked,
+			"in_review":      info.Issues.InReview,
+			"closed":         info.Issues.Closed,
+			"cli_wall_ms":    res.Elapsed.Milliseconds(),
 		},
 	}
 	if ws.Asserted != "" {
@@ -500,11 +514,11 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 	default:
 		// The store this instance opened, under the key `recall doctor` reads
 		// to find two sources reading one store. See docs/adapter-protocol.md.
-		// The resolved root is the honest value because it is what
+		// The resolved root is the honest input because it is what
 		// distinguishes two databases sharing a directory name, which td's
-		// project name alone cannot — and it is published only here, once the
-		// resolution has been confirmed against td's own answer, so a value
-		// nothing verified never reaches the check.
+		// project name alone cannot. Only its deterministic opaque digest is
+		// published, after resolution has been confirmed, so neither an
+		// unverified value nor an absolute path reaches the check.
 		health.Diagnostics[protocol.DiagStoreIdentity] = ws.StoreIdentity
 	}
 
