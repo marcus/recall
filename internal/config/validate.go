@@ -2,6 +2,7 @@ package config
 
 import (
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -19,6 +20,7 @@ func (c *Config) validate() error {
 	var probs problems
 
 	probs.add(c.validateDefaults())
+	probs.add(c.validateEvaluation())
 	for _, name := range slices.Sorted(maps.Keys(c.Adapters)) {
 		probs.add(c.validateAdapter(c.Adapters[name]))
 	}
@@ -32,6 +34,28 @@ func (c *Config) validate() error {
 
 	for _, name := range c.ProfileNames() {
 		probs.add(c.validateProfile(c.Profiles[name]))
+	}
+	return probs.err()
+}
+
+func (c *Config) validateEvaluation() error {
+	var probs problems
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{name: "development_pack", value: c.Evaluation.DevelopmentPack},
+		{name: "development_baseline", value: c.Evaluation.DevelopmentBaseline},
+	} {
+		name, value := field.name, field.value
+		if value == "" {
+			continue
+		}
+		if !filepath.IsAbs(value) {
+			probs.add(invalidErrorf(c.evaluationOrigins[name].File, "evaluation."+name,
+				"must be an absolute path; private evaluation artifacts must not depend "+
+					"on the directory Recall was started in"))
+		}
 	}
 	return probs.err()
 }

@@ -148,6 +148,60 @@ func TestUserLayerLoads(t *testing.T) {
 	}
 }
 
+func TestDevelopmentEvaluationPathsAreUserOwnedAndHaveNoDefault(t *testing.T) {
+	bare := mustLoad(t, t.TempDir(), "")
+	if bare.Evaluation.DevelopmentPack != "" || bare.Evaluation.DevelopmentBaseline != "" {
+		t.Fatalf("bare evaluation config = %+v, want no built-in private paths", bare.Evaluation)
+	}
+
+	pack := filepath.Join(t.TempDir(), "dev-pack")
+	baseline := filepath.Join(t.TempDir(), "dev-baseline.json")
+	home := writeHome(t, `
+[evaluation]
+development_pack = "`+pack+`"
+development_baseline = "`+baseline+`"
+`)
+	cfg := mustLoad(t, home, "")
+	if cfg.Evaluation.DevelopmentPack != pack ||
+		cfg.Evaluation.DevelopmentBaseline != baseline {
+		t.Fatalf("evaluation config = %+v", cfg.Evaluation)
+	}
+	explained := cfg.Explain().Evaluation
+	for _, name := range []string{"development_pack", "development_baseline"} {
+		if explained[name].Layer != config.LayerUser {
+			t.Errorf("%s layer = %q, want user", name, explained[name].Layer)
+		}
+	}
+}
+
+func TestDevelopmentEvaluationPathsMustBeAbsolute(t *testing.T) {
+	home := writeHome(t, `
+[evaluation]
+development_pack = "eval/packs/dev"
+development_baseline = "eval/baselines/dev.json"
+`)
+	_, err := load(t, home, "")
+	if !errors.Is(err, config.ErrInvalid) {
+		t.Fatalf("err = %v, want ErrInvalid", err)
+	}
+	for _, want := range []string{"evaluation.development_pack", "evaluation.development_baseline", "absolute path"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
+		}
+	}
+}
+
+func TestProjectMayNotNamePrivateEvaluationArtifacts(t *testing.T) {
+	project := writeProject(t, `
+[evaluation]
+development_pack = "/tmp/dev-pack"
+`)
+	_, err := load(t, t.TempDir(), project)
+	if !errors.Is(err, config.ErrTrustBoundary) {
+		t.Fatalf("err = %v, want ErrTrustBoundary", err)
+	}
+}
+
 // Project over user, field by field. What the project did not mention keeps
 // the user's value and, just as importantly, keeps the user's origin.
 func TestProjectLayerOverridesUser(t *testing.T) {

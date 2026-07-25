@@ -115,10 +115,34 @@ func readLayers(paths Paths, projectFile string) ([]sourceFile, error) {
 func (c *Config) mergeFile(f sourceFile) error {
 	var probs problems
 	probs.add(c.mergeDefaults(f))
+	probs.add(c.mergeEvaluation(f))
 	probs.add(c.mergeAdapters(f))
 	probs.add(c.mergeSources(f))
 	probs.add(c.mergeProfiles(f))
 	return probs.err()
+}
+
+func (c *Config) mergeEvaluation(f sourceFile) error {
+	e := f.Raw.Evaluation
+	if e == nil {
+		return nil
+	}
+	if f.Origin.Layer != LayerUser {
+		return fmt.Errorf("%w: %s declares [evaluation]; private development "+
+			"artifact paths are user configuration", ErrTrustBoundary, f.Origin.File)
+	}
+	if c.evaluationOrigins == nil {
+		c.evaluationOrigins = map[string]Origin{}
+	}
+	if e.DevelopmentPack != nil {
+		c.Evaluation.DevelopmentPack = *e.DevelopmentPack
+		c.evaluationOrigins["development_pack"] = f.Origin
+	}
+	if e.DevelopmentBaseline != nil {
+		c.Evaluation.DevelopmentBaseline = *e.DevelopmentBaseline
+		c.evaluationOrigins["development_baseline"] = f.Origin
+	}
+	return nil
 }
 
 func (c *Config) mergeDefaults(f sourceFile) error {

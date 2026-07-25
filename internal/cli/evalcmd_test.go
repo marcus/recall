@@ -241,7 +241,7 @@ func TestCompareJSONReachesTheSameVerdict(t *testing.T) {
 // every later comparison meaningless, and the loud failure belongs here rather
 // than in CI, where it would read as a ranking regression.
 func TestCommittedBaselinesMatchTheCommittedPacks(t *testing.T) {
-	for _, name := range []string{"smoke", "dev"} {
+	for _, name := range []string{"smoke"} {
 		t.Run(name, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join("..", "..", "eval", "baselines", name+".json"))
 			if err != nil {
@@ -271,6 +271,76 @@ func TestCommittedBaselinesMatchTheCommittedPacks(t *testing.T) {
 					base.Pack.ContentHash, hash, name, name)
 			}
 		})
+	}
+}
+
+func TestEvalValidateUsesOnlyAnExplicitOrUserConfiguredPack(t *testing.T) {
+	h := newHarness(t, harnessOptions{})
+	code, _, stderr := h.run("eval", "validate", "--json")
+	if code != cli.ExitError {
+		t.Fatalf("without configured path exit = %d, want %d", code, cli.ExitError)
+	}
+	if !strings.Contains(stderr, "evaluation.development_pack") {
+		t.Fatalf("missing-path error does not name user configuration:\n%s", stderr)
+	}
+
+	pack, err := filepath.Abs(filepath.Join("..", "..", "eval", "packs", "smoke"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h = newHarness(t, harnessOptions{userTOML: `
+[evaluation]
+development_pack = "` + pack + `"
+`})
+	code, out, stderr := h.run("eval", "validate", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("configured pack exit = %d: %s%s", code, out, stderr)
+	}
+	var got struct {
+		PackID string `json:"pack_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PackID != "smoke" {
+		t.Fatalf("pack_id = %q, want smoke", got.PackID)
+	}
+}
+
+func TestEvalRunHasNoBuiltInDevelopmentPack(t *testing.T) {
+	h := newHarness(t, harnessOptions{})
+	code, _, stderr := h.run("eval", "run", "--json")
+	if code != cli.ExitError {
+		t.Fatalf("without configured path exit = %d, want %d", code, cli.ExitError)
+	}
+	if !strings.Contains(stderr, "evaluation.development_pack") {
+		t.Fatalf("missing-path error does not name user configuration:\n%s", stderr)
+	}
+}
+
+func TestEvalCompareUsesOnlyAnExplicitOrUserConfiguredBaseline(t *testing.T) {
+	candidate := writeRunDir(t, runAt("candidate", 0.7665), []eval.CaseScore{{CaseID: "c1"}})
+
+	h := newHarness(t, harnessOptions{})
+	code, _, stderr := h.run("eval", "compare", candidate)
+	if code != cli.ExitError {
+		t.Fatalf("without configured baseline exit = %d, want %d", code, cli.ExitError)
+	}
+	if !strings.Contains(stderr, "evaluation.development_baseline") {
+		t.Fatalf("missing-baseline error does not name user configuration:\n%s", stderr)
+	}
+
+	baseline := writeBaselineFile(t, runAt("baseline", 0.7665))
+	h = newHarness(t, harnessOptions{userTOML: `
+[evaluation]
+development_baseline = "` + baseline + `"
+`})
+	code, out, stderr := h.run("eval", "compare", candidate)
+	if code != cli.ExitOK {
+		t.Fatalf("configured baseline exit = %d: %s%s", code, out, stderr)
+	}
+	if !strings.Contains(out, "No regression") {
+		t.Fatalf("configured comparison did not run:\n%s", out)
 	}
 }
 

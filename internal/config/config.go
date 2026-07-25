@@ -15,9 +15,10 @@ import (
 // only because a person wrote both halves in one place — which is why the
 // locator layer takes it as an interface and this type satisfies it.
 type Config struct {
-	Paths    Paths                        `json:"paths"`
-	Defaults Defaults                     `json:"defaults"`
-	Adapters map[string]AdapterDefinition `json:"adapters"`
+	Paths      Paths                        `json:"paths"`
+	Defaults   Defaults                     `json:"defaults"`
+	Evaluation Evaluation                   `json:"evaluation"`
+	Adapters   map[string]AdapterDefinition `json:"adapters"`
 
 	// Sources is every configured source instance, ordered by source_id.
 	Sources []*SourceInstance `json:"sources"`
@@ -28,9 +29,23 @@ type Config struct {
 	files []sourceFile
 	// defaultOrigins records which file supplied each entry in Defaults.
 	defaultOrigins map[string]Origin
+	// evaluationOrigins records which user file supplied private evaluation
+	// paths. There are deliberately no built-in development-pack paths.
+	evaluationOrigins map[string]Origin
 
 	index map[string]*SourceInstance
 	uids  map[recall.SourceUID]*SourceInstance
+}
+
+// Evaluation names optional, user-owned development evaluation artifacts.
+//
+// The real development pack can contain authored questions and references to
+// private source material, so it belongs in user configuration rather than in
+// a repository or a compiled-in default. Empty fields mean no private
+// development artifacts have been configured.
+type Evaluation struct {
+	DevelopmentPack     string `json:"development_pack,omitempty"`
+	DevelopmentBaseline string `json:"development_baseline,omitempty"`
 }
 
 // find returns the instance currently resolved under a display name, or nil.

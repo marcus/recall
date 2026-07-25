@@ -107,6 +107,12 @@ func renderExplanation(o *out, e *config.Explanation) {
 	o.line("defaults")
 	renderFields(o, "  ", e.Defaults)
 
+	if len(e.Evaluation) > 0 {
+		o.blank()
+		o.line("evaluation")
+		renderFields(o, "  ", e.Evaluation)
+	}
+
 	o.blank()
 	o.line("adapters")
 	for _, a := range e.Adapters {

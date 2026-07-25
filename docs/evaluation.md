@@ -45,10 +45,37 @@ answer/abstain/fail, unavailable/denied/partial/timed-out sources, expansion
 and locator revision checks, `as_of` against a source declaring `none`, the
 config trust boundary, and suppression.
 
-**Private development pack.** Real questions from the configured personal or
-work system. Stored outside the public tree; evidence resolved by
-`source_uid` + locator, never by copied bodies. Visible to a human researcher
-and, in stage 2, to a research agent.
+**Development pack.** Real questions from the configured system, over the two
+sources of the first vertical slice: indexed project documents and live
+structured tasks. It is what catches a change that improves fixture retrieval
+while making real questions worse, which the smoke pack cannot see.
+The paired `abstain-wifi-016` and `abstain-sentence-018` cases require a keyword
+query and its natural-question form to abstain together; the documents query
+analyzer made that phrasing invariant, so the pack requires 1.0 abstention
+accuracy.
+
+The development pack is private by contract. It lives outside every checkout,
+is selected by an absolute path in the user layer, and contains 15–25 authored
+cases spanning exact, paraphrase, implicit, cross-source, temporal, and
+no-answer questions. Its judgments name evidence through the persisted locator
+form `<source_uid>:<local locator>`; they never copy source bodies into the
+pack. Any snapshot or replay material needed for determinism lives beside the
+private pack and inherits the source corpus's sensitivity.
+
+There is no built-in development-pack path. A machine opts in through its
+uncommitted `$XDG_CONFIG_HOME/recall/config.toml`:
+
+```toml
+[evaluation]
+development_pack = "/absolute/private/path/to/packs/dev"
+development_baseline = "/absolute/private/path/to/baselines/dev.json"
+```
+
+Both paths must be absolute. A project `recall.toml` and `adapters.d` are
+forbidden from declaring them. `recall eval validate` and `run` use
+`development_pack` when `--pack` is omitted; `compare` uses
+`development_baseline` when given only a candidate. An explicit path always
+remains available for automation.
 
 **Private holdout pack.** *(stage 2)* Real questions withheld from
 implementation and research agents, evaluated by a trusted runner after
@@ -68,33 +95,46 @@ eval/
   baselines/    smoke.json
 ```
 
-Private packs live elsewhere and are selected by absolute path or profile. The
-repository holds schemas, synthetic fixtures, and public baselines — never
-personal or employer source data.
+The repository holds schemas, a synthetic smoke pack, and the smoke baseline.
+It never holds authored development questions, development judgments, copied
+source bodies, personal absolute paths, or development run artifacts. Tests
+enforce the committed-pack allowlist and scan committed evaluation artifacts
+for personal absolute paths.
 
 Run artifacts contain excerpts even when packs do not. They inherit the pack's
 sensitivity, default to `$XDG_STATE_HOME/recall/<profile>/eval/`, and are never
 committed.
 
-`baselines/smoke.json` is one such artifact's `run.json`, and only that file.
-The `cases.jsonl` beside it carries excerpts and locators, so the baseline is
-the record alone — which is why `recall eval compare` accepts a run directory
-or a bare run record for either side. A comparison against a bare record reports
+A baseline is one such artifact's `run.json`, and only that file. The
+`cases.jsonl` beside it carries excerpts and locators, so the baseline is the
+record alone — which is why `recall eval compare` accepts a run directory or a
+bare run record for either side. A comparison against a bare record reports
 metric deltas and no per-case changes, because the baseline never claimed
 anything about individual cases.
 
-Refresh it deliberately, never as a side effect of a run:
+Refresh one deliberately, never as a side effect of a run:
 
 ```sh
 recall eval run --pack eval/packs/smoke --output "$d"
 cp "$d/run.json" eval/baselines/smoke.json
+
+# Uses the private development_pack and development_baseline from user config.
+recall eval run --output "$private_run"
+cp "$private_run/run.json" "$private_development_baseline"
 ```
 
 Changing any measured pack input changes its content hash, and a baseline
-naming a different hash is not comparable at all. A test asserts the committed
+naming a different hash is not comparable at all. Tests assert the committed
 smoke baseline names the committed smoke pack, so a pack edit that forgets the
 refresh step fails in `make test` rather than surfacing in CI as a phantom
-ranking regression.
+ranking regression. Private development baseline discipline is checked by the
+local comparison.
+
+Earlier commits contained a development-pack snapshot that crossed this
+boundary. The current tree removes it, but ordinary deletion does not erase
+immutable Git history. This change intentionally does not rewrite history; if
+the repository was shared beyond its intended audience, treat the prior
+snapshot as exposed and coordinate a separate history rewrite and cache review.
 
 The hash covers the parsed manifest, cases, and judgments, plus the raw bytes
 and slash-normalized relative path of every regular file in declared `sources/`
@@ -190,10 +230,43 @@ pack that needs it:
   explanation carries it.
 - **An expansion's detail level cannot be stated**, so detail coverage lives in
   tags by convention.
-- **A committed document corpus cannot express reproducible temporal
+- **A filesystem snapshot cannot express reproducible temporal
   behavior.** The documents adapter derives `as_of` from file mtime, which git
   does not preserve, so temporal cases belong on a stream source whose records
-  carry their own event time.
+  carry their own event time. A development temporal case must use a
+  deterministic boundary and ask the honest question: does the run report
+  degraded coverage and abstain, or answer a past question from present state?
+
+Writing the private development pack found four more contract edges. Two are
+now enforced directly:
+
+- **Every declared assertion is evaluated.** `required_sources` and
+  `forbidden_sources` inspect the immutable source identities that contributed
+  returned candidates; `visible_lineages` inspects final ranked roots; and
+  `suppressed_lineages` requires positive suppression telemetry for that root,
+  with reason `lineage_suppressed` and a non-zero candidate count. Mere absence
+  from final ranking is not suppression. `max_latency_ms` measures case wall
+  time. `max_expansion_bytes` is passed as the expansion budget and checked
+  against returned content bytes; an answer case returning no expansion fails
+  its precondition rather than passing a vacuous ceiling. `expected_revisions`
+  likewise requires the named lineage to resolve. An `expected_behavior` of
+  `abstain` is the schema's explicit allowance for a no-result case. A violation
+  is named on the case score and fails the `declared_assertions` hard gate, so
+  it cannot be diluted by a large pack.
+- **The threshold vocabulary is closed.** Only
+  `exact_identifier_success_at_1` and `abstention_accuracy` are accepted because
+  those are the two absolute thresholds `EvaluateGates` implements.
+  `ndcg_at_10` and `recall_at_5` remain ranking metrics protected by `compare`
+  against a frozen baseline; placing either in `thresholds` is rejected rather
+  than silently ignored.
+- **Forbidden@5 may have a small population on a healthy corpus.** Forbidden
+  evidence means superseded, out of scope, or over the ceiling. Reports always
+  retain the metric's population count, so a passing value over one case is not
+  mistaken for broad coverage.
+- **Natural-language abstention exposes stopword behavior.** A development
+  no-answer case must keep its authored wording even when a shorter reformulation
+  would pass. Quietly editing a real query until it abstains would delete the
+  finding the pack exists to preserve.
 
 ## Reproducible Execution
 
@@ -210,9 +283,9 @@ transcripts (see [conformance](adapter-protocol.md#conformance)) rather than
 running live.
 
 ```text
-recall eval validate --pack <path>
-recall eval run      --pack <path> --output <dir>
-recall eval compare  <baseline> <candidate>
+recall eval validate [--pack <path>]
+recall eval run      [--pack <path>] --output <dir>
+recall eval compare  [<baseline>] <candidate>
 recall eval report   <run>
 recall eval export-trec <run>          (stage 2)
 ```
@@ -225,13 +298,19 @@ A run produces `run.json` (environment, metrics, gates, status),
 two runs are not comparable **or** when any rate moved down, overall or in any
 case-tag group. Both are the same verdict to a script: do not promote this.
 Latency is not compared — it is a property of the machine, and a baseline frozen
-on one host would fail every build on another. CI runs both against the
-committed baseline on every change:
+on one host would fail every build on another. CI runs only the synthetic smoke
+pack against its committed baseline:
 
 ```sh
 recall eval run     --pack eval/packs/smoke --output "$d"
 recall eval compare eval/baselines/smoke.json "$d"
 ```
+
+The private development pack remains a required local development and release
+gate. It covers real questions over prose nobody wrote to be retrieved, which
+synthetic fixtures cannot produce, while the smoke pack covers the failure
+vocabulary a healthy corpus cannot produce. CI cannot access the private pack
+and must never substitute a committed copy.
 
 A rate is called a regression when it moves down by more than 1e-9. That is not
 slack for real movement: the smallest change one case can make to a forty-case
@@ -309,13 +388,11 @@ be visible along.
 **Always say which population a number came from.** Overall and macro are
 different measurements of the same run and they do not agree by construction:
 overall pools the cases where a metric is defined, the case-tag macro weights
-each of the forty tag groups equally, and the source-family macro weights each
-of the five families equally. On the smoke pack today that is nDCG@10 0.7665
-pooled over 36 cases, 0.7615 across tags, and 0.7454 across families. Quoting
-one and later reading another off the bottom of `summary.md` produced a reported
-five-thousandth "regression" that a bisect proved had never happened: the
-metrics were byte-identical across every commit involved. A metric written down
-without its population is a trap laid for the next reader.
+each tag group equally, and the source-family macro weights each family equally.
+Quoting one and later reading another off the bottom of `summary.md` can invent
+a regression that never happened. A metric written down without its population
+is a trap laid for the next reader. Smoke and private-development numbers are
+also different populations and must never be compared to one another.
 
 Latency has no macro average. A percentile of percentiles is not a percentile;
 latency is pooled within each population and reported per group and overall.
@@ -345,8 +422,9 @@ Thresholds are absolute values recorded in the pack. They stay absolute: they
 are floors on behavior a release must clear at all, and they are checked by
 `run` on a single run with nothing to compare against.
 
-Regression protection is the separate job of `compare` against
-`baselines/smoke.json`, and on this pack it is exact rather than statistical.
+Regression protection is the separate job of `compare` against the pack's
+baseline. The smoke baseline is committed; the development baseline is private.
+On both packs comparison is exact rather than statistical.
 Every rate is deterministic — the same pack over the same commit produces the
 same number to the last bit, on repeated runs and across ten commits — so run
 variance is zero and any downward movement is a real change to explain. A pack

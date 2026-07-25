@@ -358,3 +358,15 @@ freshness_mode = "indexed"
 		t.Fatalf("err = %v, want ErrInvalid", err)
 	}
 }
+
+func TestAdaptersDirMayNotNamePrivateEvaluationArtifacts(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, home+"/recall/adapters.d/oops.toml", `
+[evaluation]
+development_pack = "/tmp/dev-pack"
+`)
+	_, err := config.Load(config.Options{Paths: tempPaths(t, home), Builtins: builtins})
+	if !errors.Is(err, config.ErrInvalid) {
+		t.Fatalf("err = %v, want ErrInvalid", err)
+	}
+}

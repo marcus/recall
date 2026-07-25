@@ -17,13 +17,14 @@ import (
 // It carries no secret material. Secrets are references throughout, and this
 // view renders the reference, never a lookup of it.
 type Explanation struct {
-	Paths    PathsView         `json:"paths"`
-	Files    []FileView        `json:"files"`
-	Defaults map[string]Field  `json:"defaults"`
-	Adapters []AdapterView     `json:"adapters"`
-	Sources  []SourceView      `json:"sources"`
-	Profiles []ProfileView     `json:"profiles"`
-	Identity []IdentityMapping `json:"identity"`
+	Paths      PathsView         `json:"paths"`
+	Files      []FileView        `json:"files"`
+	Defaults   map[string]Field  `json:"defaults"`
+	Evaluation map[string]Field  `json:"evaluation,omitempty"`
+	Adapters   []AdapterView     `json:"adapters"`
+	Sources    []SourceView      `json:"sources"`
+	Profiles   []ProfileView     `json:"profiles"`
+	Identity   []IdentityMapping `json:"identity"`
 }
 
 // Field is one resolved value and where it came from.
@@ -108,6 +109,17 @@ func (c *Config) Explain() *Explanation {
 		},
 		Files:    c.Files(),
 		Defaults: c.explainDefaults(),
+	}
+	if c.Evaluation.DevelopmentPack != "" || c.Evaluation.DevelopmentBaseline != "" {
+		e.Evaluation = map[string]Field{}
+		if c.Evaluation.DevelopmentPack != "" {
+			e.Evaluation["development_pack"] = newField(
+				c.Evaluation.DevelopmentPack, c.evaluationOrigins["development_pack"])
+		}
+		if c.Evaluation.DevelopmentBaseline != "" {
+			e.Evaluation["development_baseline"] = newField(
+				c.Evaluation.DevelopmentBaseline, c.evaluationOrigins["development_baseline"])
+		}
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(c.Adapters)) {

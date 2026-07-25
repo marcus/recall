@@ -18,9 +18,10 @@ import (
 
 const evalHelp = `usage: recall eval <validate|run|compare|report> [flags]
 
-  validate --pack <dir>              check a pack against the schemas
-  run      --pack <dir> [--output d] run every case and write the artifacts
-  compare  <baseline> <candidate>    diff two runs, and refuse a regression
+  validate [--pack <dir>]            check a pack against the schemas
+  run      [--pack <dir>] [--output d]
+                                      run every case and write the artifacts
+  compare  [<baseline>] <candidate>  diff two runs, and refuse a regression
   report   <run>                     re-render a run's summary
 
 A run argument is either a run directory or a run.json on its own. The
@@ -32,6 +33,7 @@ excerpts and belongs outside the repository:
 
 flags:
   --pack <dir>     the pack directory holding pack.json
+                   defaults to evaluation.development_pack from user config
   --output <dir>   where run artifacts go; defaults under the state directory
   --cold           declare this a cold-cache run, so its latency is not pooled
                    with warm runs
@@ -39,6 +41,10 @@ flags:
 
 Artifacts carry excerpts even when packs carry only references, so they inherit
 the pack's sensitivity and are written outside the repository.
+
+With no --pack, validate and run use evaluation.development_pack from user
+config. With one positional argument, compare uses
+evaluation.development_baseline. Neither path has a built-in default.
 
 exit codes: 0 the run passed every gate and the comparison found no
 regression, 1 the command could not run, 3 the answer is no — a gate failed,
@@ -145,7 +151,16 @@ func evalValidate(env Env, args []string) int {
 		return code
 	}
 	if *packDir == "" {
-		return usageErr(env, evalHelp, errors.New("validate needs --pack"))
+		cfg, err := env.load()
+		if err != nil {
+			fail(env, err)
+			return ExitError
+		}
+		*packDir = cfg.Evaluation.DevelopmentPack
+		if *packDir == "" {
+			return usageErr(env, evalHelp, errors.New(
+				"validate needs --pack or evaluation.development_pack in user config"))
+		}
 	}
 
 	pack, cases, judgments, err := loadPack(*packDir)
@@ -187,7 +202,16 @@ func evalRun(ctx context.Context, env Env, args []string) int {
 		return code
 	}
 	if *packDir == "" {
-		return usageErr(env, evalHelp, errors.New("run needs --pack"))
+		cfg, err := env.load()
+		if err != nil {
+			fail(env, err)
+			return ExitError
+		}
+		*packDir = cfg.Evaluation.DevelopmentPack
+		if *packDir == "" {
+			return usageErr(env, evalHelp, errors.New(
+				"run needs --pack or evaluation.development_pack in user config"))
+		}
 	}
 
 	pack, cases, judgments, err := loadPack(*packDir)
@@ -290,16 +314,33 @@ func evalCompare(env Env, args []string) int {
 	if ok, code := parse(env, fs, evalHelp, args); !ok {
 		return code
 	}
-	if fs.NArg() != 2 {
-		return usageErr(env, evalHelp, errors.New("compare takes a baseline and a candidate run directory"))
+	var baseline, candidate string
+	switch fs.NArg() {
+	case 1:
+		cfg, err := env.load()
+		if err != nil {
+			fail(env, err)
+			return ExitError
+		}
+		baseline = cfg.Evaluation.DevelopmentBaseline
+		if baseline == "" {
+			return usageErr(env, evalHelp, errors.New(
+				"compare needs a baseline or evaluation.development_baseline in user config"))
+		}
+		candidate = fs.Arg(0)
+	case 2:
+		baseline, candidate = fs.Arg(0), fs.Arg(1)
+	default:
+		return usageErr(env, evalHelp, errors.New(
+			"compare takes a candidate, or an explicit baseline and candidate"))
 	}
 
-	base, baseScores, err := readRun(fs.Arg(0))
+	base, baseScores, err := readRun(baseline)
 	if err != nil {
 		fail(env, err)
 		return ExitError
 	}
-	cand, candScores, err := readRun(fs.Arg(1))
+	cand, candScores, err := readRun(candidate)
 	if err != nil {
 		fail(env, err)
 		return ExitError

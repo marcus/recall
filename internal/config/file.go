@@ -19,16 +19,22 @@ import (
 // distinguishable. The merge and [Config.Explain] both depend on that
 // difference: a default must never be reported as something a user wrote.
 type rawFile struct {
-	Defaults *rawDefaults          `toml:"defaults"`
-	Adapters map[string]rawAdapter `toml:"adapters"`
-	Sources  []rawSource           `toml:"sources"`
-	Profiles map[string]rawProfile `toml:"profiles"`
+	Defaults   *rawDefaults          `toml:"defaults"`
+	Evaluation *rawEvaluation        `toml:"evaluation"`
+	Adapters   map[string]rawAdapter `toml:"adapters"`
+	Sources    []rawSource           `toml:"sources"`
+	Profiles   map[string]rawProfile `toml:"profiles"`
 }
 
 type rawDefaults struct {
 	Profile         *string `toml:"profile"`
 	TimeoutMS       *int    `toml:"timeout_ms"`
 	FusionReserveMS *int    `toml:"fusion_reserve_ms"`
+}
+
+type rawEvaluation struct {
+	DevelopmentPack     *string `toml:"development_pack"`
+	DevelopmentBaseline *string `toml:"development_baseline"`
 }
 
 type rawAdapter struct {
@@ -295,6 +301,8 @@ func parseAdaptersDir(dir string) ([]sourceFile, error) {
 			return nil, invalidErrorf(path, "profiles", "adapters.d files register adapters only")
 		case f.Raw.Defaults != nil:
 			return nil, invalidErrorf(path, "defaults", "adapters.d files register adapters only")
+		case f.Raw.Evaluation != nil:
+			return nil, invalidErrorf(path, "evaluation", "adapters.d files register adapters only")
 		}
 		files = append(files, f)
 	}
