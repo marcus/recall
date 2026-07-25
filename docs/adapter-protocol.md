@@ -1,0 +1,247 @@
+# Recall Adapter Protocol
+
+**Version:** 1 — normative
+
+This document defines the adapter contract: message shapes, transport, and
+conformance. See the [specification](spec.md) for core behavior.
+
+Built-in and external adapters implement the same contract. Built-in adapters
+implement the Go interface directly; external adapters implement it over
+JSON-RPC. There is one contract with two transports, and both are exercised by
+the same conformance suite.
+
+## Transport
+
+Newline-delimited JSON-RPC 2.0 over stdio.
+
+- One JSON-RPC message per line on stdin/stdout. Messages contain no raw
+  newlines.
+- stdout carries protocol frames only. stderr is free-form adapter logging and
+  is captured into diagnostics, never parsed.
+- The core is the client; the adapter is the server.
+- Payloads are validated against JSON Schema on both sides.
+
+Recall messages are compact by design — candidates are pointers and expansion
+is budget-bounded — so line framing costs nothing and keeps transcripts
+diffable. A future network transport reuses these messages unchanged over a
+socket or HTTP.
+
+## Methods
+
+```text
+recall/initialize   handshake: version range + workdir -> manifest, capabilities
+recall/search       search request -> candidates envelope
+recall/expand       locator + budget -> evidence
+recall/health       probe -> health report
+recall/cancel       notification: abandon a request id
+recall/shutdown     request clean exit
+```
+
+Rules:
+
+- Version negotiation happens once, in `recall/initialize`. An adapter that
+  cannot satisfy the requested range fails the handshake explicitly rather than
+  degrading.
+- Every request carries a deadline. `recall/cancel` is advisory; the core
+  enforces deadlines with SIGTERM then SIGKILL and reports the source outcome
+  as `timeout` or `failed`, never as empty success.
+- An adapter process is long-lived and pooled per source instance. It must
+  tolerate concurrent in-flight requests or declare `max_concurrency: 1` in its
+  manifest.
+- `recall/initialize` supplies a writable `workdir` under Recall's state
+  directory. An adapter writes indexes and checkpoints only there.
+
+## Errors
+
+JSON-RPC error codes, plus Recall codes in the implementation-defined range:
+
+```text
+-32000  source_unavailable        cannot reach the source
+-32001  source_denied             permission refused
+-32002  locator_unknown           locator does not parse for this adapter
+-32003  locator_expired           source changed incompatibly
+-32004  source_not_configured     locator names an unconfigured source
+-32005  as_of_unsupported         historical boundary cannot be honored
+-32006  budget_exceeded           request cannot be served in budget
+```
+
+Errors carry safe diagnostics only. A denied source must not leak record
+existence.
+
+## Manifest
+
+Returned from `recall/initialize`:
+
+```text
+protocol_version     negotiated version
+adapter_id           implementation identity and version
+display_name         human-readable name
+record_types         person | task | document | message | event | ...
+query_modes          exact | lexical | semantic | structured | temporal
+freshness_modes      live | indexed | hybrid  (supported set)
+as_of_support        none | filter | snapshot
+derives_from         optional source_uid this source projects wholesale
+capabilities         search | expand | enumerate | checkpoint | context_expansion
+max_concurrency      optional, default unbounded
+freshness_policy     expected refresh or verification behavior
+sensitivity          default classification floor
+settings_schema      JSON Schema for the instance's settings block
+```
+
+The manifest describes the adapter's capabilities. Identity, priors, and
+policy come from configuration; an adapter never names its own `source_uid`.
+
+## Health
+
+```text
+status               healthy | degraded | unavailable | denied
+checked_at           probe time
+last_success_at      latest complete successful operation
+source_watermark     latest source revision, timestamp, or cursor
+index_watermark      indexed revision, when applicable
+index_generation     published generation identity, when applicable
+index_model          embedding model id and version, when applicable
+record_count         exact or estimated
+indexed_count        records represented by the current index
+failed_count         records rejected or not indexed
+coverage             complete | partial | unknown
+diagnostics          safe operational detail
+```
+
+An unavailable source never looks like a successful search with zero matches.
+A partial source or index reports `healthy` only when its declared freshness
+policy permits that exact partial boundary. A recent index timestamp alone is
+not health.
+
+## Search
+
+Request:
+
+```text
+query                original user query text
+context              optional bounded prior message texts; honored only when
+                     the manifest declares context_expansion
+filters              time, record type, entity, project, source scope
+as_of                optional historical boundary
+limit                maximum candidates requested
+deadline             absolute deadline
+```
+
+The core sends the query text as given. It does not synthesize query variants;
+term expansion, stemming, and synonyms are source-local concerns owned by the
+adapter.
+
+Response:
+
+```text
+candidates           ranked source-local candidates
+diagnostics          timing, query mode used, fallback, truncation
+source_watermark     freshness evidence for this search
+outcome              success | partial | unavailable | denied | failed | timeout
+```
+
+The adapter owns local retrieval and ordering, by SQL, FTS, vector search,
+exact lookup, an API, or any combination.
+
+## Candidate Envelope
+
+```text
+candidate_id         stable within the source revision
+source_record_id     stable native or adapter-defined record identity
+locator              stable printable expansion reference
+derived_from         optional upstream locators, for lineage
+record_type          person | task | document | message | event | ...
+title                compact human-readable label
+excerpt              bounded evidence preview
+local_rank           mandatory rank within this source's result list
+local_score          optional native score, diagnostic only
+match_signals        exact_identifier | lexical | semantic | field | alias
+observed_at          when Recall observed this record
+confirmed_at         when a complete source boundary last confirmed it
+event_time           when the source event happened, if applicable
+valid_from           optional fact validity start
+valid_to             optional fact validity end
+source_revision      revision or watermark used for retrieval
+sensitivity          candidate classification; may raise the source floor,
+                     never lower it
+metadata             small typed fields for routing and display
+content_fingerprint  optional normalized content hash, advisory only
+```
+
+`source_uid` is attached by the core, not the adapter. `local_score` is never
+compared across sources.
+
+An adapter emits `exact_identifier` only for an exact match on a stable
+identifier or a declared alias, at token boundaries. Unbounded substring
+matches never carry this signal.
+
+## Expand
+
+Request:
+
+```text
+locator              candidate reference
+detail               summary | excerpt | full | context
+budget               hard output limit in bytes
+deadline             absolute deadline
+```
+
+Response:
+
+```text
+content              evidence text
+source_revision      revision the evidence was read from
+truncated            bool, with the boundary applied
+provenance           path, range, or record reference
+```
+
+Expansion fails with `locator_expired` when the source changed incompatibly.
+It never silently returns a different revision or a nearby record.
+
+## Index Obligations
+
+An adapter maintaining an index must satisfy the index rules in
+[spec.md](spec.md#index-obligations): atomic generation publication after a
+complete source boundary, durable-then-checkpoint ordering, model identity per
+generation, and deletion honored on publication. Health fields are how the core
+verifies these; the evaluation gates assert on them.
+
+## Conformance
+
+Conformance is recorded transcripts. Each adapter ships:
+
+```text
+conformance/
+  <case>/request.jsonl      one JSON-RPC message per line
+  <case>/response.jsonl     expected responses, order-significant
+  <case>/fixture/           source data for the case
+```
+
+`recall doctor --conformance <adapter>` replays each case and diffs responses,
+ignoring declared-volatile fields (timestamps, latency). Required cases:
+
+- Handshake, including a version-range rejection.
+- Search returning ranked candidates with stable locators.
+- Search returning `partial` with honest coverage.
+- Search against an unavailable source.
+- Expand at each detail level, including a budget truncation.
+- Expand with an expired locator.
+- Cancellation of an in-flight request.
+- Clean shutdown.
+
+The same transcripts serve evaluation determinism: a fixture pack replays
+recorded adapter responses instead of running live sources, so model-backed and
+network-backed adapters produce reproducible benchmark runs.
+
+## Writing An Adapter
+
+An external adapter is an executable that reads JSON-RPC lines on stdin and
+writes them on stdout, implementing six handlers. Any language with a JSON
+library suffices; debugging is `echo` and `jq`.
+
+The core owns spawn, handshake, deadline enforcement, kill, restart policy, and
+pooling. Adapters own retrieval, ranking within their source, indexing, and
+locator semantics.
+
+Adapter commands are declared only in user-level configuration. See the
+[trust boundary](spec.md#layers-and-trust-boundary).
