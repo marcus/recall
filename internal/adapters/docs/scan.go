@@ -89,13 +89,24 @@ func scanCorpus(root string, s Settings) (scan, error) {
 }
 
 // skipDir keeps the walk out of directories that are never corpus content.
+//
+// Dot-directories are excluded as a class, not by name. They hold tool state —
+// caches, build output, virtualenvs, agent worktrees — and the failure they
+// cause is worse than indexing junk: a directory like `.claude/worktrees/`
+// contains whole checkouts of the corpus, so the same document is indexed
+// several times under distinct paths. Lineage groups on source_record_id, and
+// those copies carry different ones, so a single document arrives as several
+// independent lineage roots and corroborates itself. Nothing downstream can
+// detect that, because at that point the copies genuinely are distinct records.
+//
+// The cost is `.github/`, which is the one dot-directory people write prose in.
+// A corpus that needs it can point an instance's location or Root straight at
+// it, which is explicit and cannot silently pull in a checkout.
 func skipDir(name string) bool {
-	switch name {
-	case ".git", ".hg", ".svn", "node_modules":
+	if len(name) > 1 && strings.HasPrefix(name, ".") {
 		return true
-	default:
-		return false
 	}
+	return name == "node_modules"
 }
 
 // watermark identifies a corpus state.
