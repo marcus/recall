@@ -59,6 +59,34 @@ type Adapter interface {
 	Close() error
 }
 
+// PreparedSearcher lets a built-in adapter carry one request's health
+// handshake into, or safely perform it beside, its immediately following
+// search.
+//
+// Preparation is opaque to the core and lives only on the in-memory retrieval
+// plan. It is never serialized, cached globally, or reused by another request.
+// PrepareSearch must make the same eligibility decision as Health. Work
+// overlapped with that decision is speculative until the health and source
+// identity checks admit it, and must be discarded on disagreement.
+// SearchPrepared must preserve Search's result and cancellation contracts.
+//
+// This seam is optional. It exists for built-in sources whose health and
+// search otherwise repeat or serialize expensive setup. External adapters
+// keep using the ordinary wire contract until that protocol has an equivalent
+// request-scoped token.
+type PreparedSearcher interface {
+	PrepareSearch(ctx context.Context, req recall.SearchRequest) (recall.Health, SearchPreparation, error)
+	SearchPrepared(ctx context.Context, req recall.SearchRequest, preparation SearchPreparation) (recall.SearchResponse, error)
+}
+
+// SearchPreparation is the opaque result of planning one prepared search.
+// Elapsed is the adapter-observed search duration, including work overlapped
+// with its health handshake.
+type SearchPreparation struct {
+	State   any
+	Elapsed time.Duration
+}
+
 // Config is the handshake input: protocol version range, writable workdir,
 // location, and the adapter-owned settings block.
 //

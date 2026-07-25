@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/td"
@@ -324,6 +326,264 @@ func TestSearchPinsEveryEvidenceReadAcrossAssociationABA(t *testing.T) {
 	if len(cli.pinnedInvocations()) < 2 {
 		t.Fatal("pinned info and evidence commands were not both observed")
 	}
+}
+
+func TestPreparedSearchCarriesHealthWorkspaceAndBoundsSpawns(t *testing.T) {
+	cli := recordedWorkspace(t)
+	a := newAdapter(t, cli, nil)
+
+	resp, err := preparedSearch(t, a, recall.SearchRequest{
+		Query: "vertical slice",
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("prepared search: %v", err)
+	}
+	if resp.Outcome != recall.SearchSuccess {
+		t.Fatalf("outcome = %q, want success", resp.Outcome)
+	}
+
+	// One ordinary info establishes the workspace while one pinned info
+	// verifies --work-dir beside the list and three text probes. Planning and
+	// retrieval are one startup wave, without resolving the mutable configured
+	// location twice.
+	for command, want := range map[string]int{
+		"info": 2, "list": 1, "search": 3,
+	} {
+		if got := cli.countCalls(command); got != want {
+			t.Errorf("%s invocations = %d, want %d", command, got, want)
+		}
+	}
+	if got := cli.ordinaryInvocations(); got != 1 {
+		t.Errorf("ordinary invocations = %d, want only the planning info probe", got)
+	}
+	for i, root := range cli.pinnedInvocations() {
+		if root != workspaceRoot {
+			t.Errorf("pinned command %d used %q, want %q", i, root, workspaceRoot)
+		}
+	}
+}
+
+func TestPreparedSearchActuallyOverlapsHealthAndPinnedRetrieval(t *testing.T) {
+	base := recordedWorkspace(t)
+	runner := &overlapRunner{
+		fakeCLI:         base,
+		ordinaryStarted: make(chan struct{}),
+		pinnedStarted:   make(chan struct{}),
+	}
+	a := newAdapter(t, runner, nil)
+	req := recall.SearchRequest{
+		Query: "vertical slice", Limit: 20, Deadline: time.Now().Add(time.Second),
+	}
+
+	resp, err := preparedSearch(t, a, req)
+	if err != nil {
+		t.Fatalf("prepared search: %v", err)
+	}
+	if resp.Outcome != recall.SearchSuccess {
+		t.Fatalf("outcome = %q, want success", resp.Outcome)
+	}
+	if base.ordinaryInvocations() != 1 || len(base.pinnedInvocations()) != 5 {
+		t.Fatalf("invocations ordinary/pinned = %d/%d, want 1/5",
+			base.ordinaryInvocations(), len(base.pinnedInvocations()))
+	}
+}
+
+type overlapRunner struct {
+	*fakeCLI
+	ordinaryStarted chan struct{}
+	pinnedStarted   chan struct{}
+	ordinaryOnce    sync.Once
+	pinnedOnce      sync.Once
+}
+
+func (r *overlapRunner) Run(ctx context.Context, args ...string) (td.Result, error) {
+	r.ordinaryOnce.Do(func() { close(r.ordinaryStarted) })
+	select {
+	case <-r.pinnedStarted:
+	case <-ctx.Done():
+		return td.Result{}, ctx.Err()
+	}
+	return r.fakeCLI.Run(ctx, args...)
+}
+
+func (r *overlapRunner) RunPinned(
+	ctx context.Context,
+	root string,
+	args ...string,
+) (td.Result, error) {
+	r.pinnedOnce.Do(func() { close(r.pinnedStarted) })
+	select {
+	case <-r.ordinaryStarted:
+	case <-ctx.Done():
+		return td.Result{}, ctx.Err()
+	}
+	return r.fakeCLI.RunPinned(ctx, root, args...)
+}
+
+func TestPreparedSearchStaysOnHealthWorkspaceAcrossAssociationABA(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "api")
+	second := filepath.Join(t.TempDir(), "api")
+	cli := abaWorkspace(t, first, second)
+	a, err := initAdapter(t, cli, first, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	resp, err := preparedSearch(t, a, recall.SearchRequest{Query: "adapter", Limit: 20})
+	if err != nil {
+		t.Fatalf("prepared search: %v", err)
+	}
+	if len(resp.Candidates) == 0 || strings.Contains(resp.Candidates[0].Title, "ABA B") {
+		t.Fatalf("prepared search crossed from admitted store A to B: %+v", resp.Candidates)
+	}
+	if got := cli.ordinaryInvocations(); got != 1 {
+		t.Fatalf("ordinary invocations = %d, want only Health's discovery", got)
+	}
+	for _, root := range cli.pinnedInvocations() {
+		if root != first {
+			t.Fatalf("evidence read %q after Health admitted %q", root, first)
+		}
+	}
+}
+
+func TestPreparedSearchDiscardsWrongMirrorAndFallsBackToHealthStore(t *testing.T) {
+	mirror := filepath.Join(t.TempDir(), "api")
+	authoritative := filepath.Join(t.TempDir(), "api")
+	cli := abaWorkspace(t, authoritative, mirror)
+	reply := cli.pinnedReply
+	cli.pinnedReply = func(root string, args []string) (td.Result, error) {
+		res, err := reply(root, args)
+		if root == mirror && args[0] != "info" && err == nil {
+			res.Stdout = bytes.ReplaceAll(res.Stdout,
+				[]byte("Adapter interface"), []byte("WRONG MIRROR"))
+		}
+		return res, err
+	}
+	a, err := initAdapter(t, cli, mirror, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	resp, err := preparedSearch(t, a, recall.SearchRequest{Query: "adapter", Limit: 20})
+	if err != nil {
+		t.Fatalf("prepared search: %v", err)
+	}
+	if len(resp.Candidates) == 0 {
+		t.Fatal("fallback returned no authoritative evidence")
+	}
+	for _, candidate := range resp.Candidates {
+		if strings.Contains(candidate.Title, "WRONG MIRROR") {
+			t.Fatalf("speculative mirror evidence escaped: %+v", candidate)
+		}
+	}
+	roots := cli.pinnedInvocations()
+	if !slices.Contains(roots, mirror) || !slices.Contains(roots, authoritative) {
+		t.Fatalf("pinned roots = %v, want discarded mirror and authoritative fallback", roots)
+	}
+}
+
+func TestPreparedSearchDiscardsEvidenceWhenPinnedVerificationDisagrees(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "api")
+	second := filepath.Join(t.TempDir(), "api")
+	cli := abaWorkspace(t, first, second)
+	reply := cli.pinnedReply
+	cli.pinnedReply = func(root string, args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return workspaceInfoAt(second), nil
+		}
+		return reply(root, args)
+	}
+	a, err := initAdapter(t, cli, first, nil)
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	resp, err := preparedSearch(t, a, recall.SearchRequest{Query: "adapter", Limit: 20})
+	if err == nil {
+		t.Fatal("pinned info identified another store but search succeeded")
+	}
+	if len(resp.Candidates) != 0 || !resp.Outcome.Degrades() {
+		t.Fatalf("mismatched pinned verification admitted evidence: %+v", resp)
+	}
+	if cli.countCalls("list") == 0 || cli.countCalls("search") == 0 {
+		t.Fatal("test did not exercise the concurrent verification-and-retrieval path")
+	}
+}
+
+func TestPreparedSearchCannotReuseAnotherRequestsHandshake(t *testing.T) {
+	a := newAdapter(t, recordedWorkspace(t), nil)
+	req := recall.SearchRequest{Query: "adapter", Limit: 20, Deadline: time.Now().Add(time.Minute)}
+	_, preparation, err := a.PrepareSearch(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SearchPrepared(context.Background(), req, preparation); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	resp, err := a.SearchPrepared(context.Background(), req, preparation)
+	if err == nil || len(resp.Candidates) != 0 {
+		t.Fatalf("reused preparation returned evidence: response=%+v err=%v", resp, err)
+	}
+}
+
+func TestPreparedSearchCannotAnswerAnotherRequest(t *testing.T) {
+	a := newAdapter(t, recordedWorkspace(t), nil)
+	preparedReq := recall.SearchRequest{
+		Query: "adapter", Limit: 20, Deadline: time.Now().Add(time.Minute),
+	}
+	_, preparation, err := a.PrepareSearch(context.Background(), preparedReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	otherReq := preparedReq
+	otherReq.Query = "lineage"
+	resp, err := a.SearchPrepared(context.Background(), otherReq, preparation)
+	if err == nil || len(resp.Candidates) != 0 || !resp.Outcome.Degrades() {
+		t.Fatalf("another request consumed prepared evidence: response=%+v err=%v", resp, err)
+	}
+	if _, err := a.SearchPrepared(context.Background(), preparedReq, preparation); err != nil {
+		t.Fatalf("request mismatch consumed the preparation: %v", err)
+	}
+}
+
+func TestPreparedSearchCancellationStopsVerificationAndEvidence(t *testing.T) {
+	runner := prepareThenWedge{info: fixture(t, "info.json")}
+	a := newAdapter(t, runner, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	req := recall.SearchRequest{
+		Query: "vertical slice", Limit: 20, Deadline: time.Now().Add(time.Minute),
+	}
+	_, preparation, err := a.PrepareSearch(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := a.SearchPrepared(ctx, req, preparation)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want request deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("canceled prepared search returned after %s", elapsed)
+	}
+	if len(resp.Candidates) != 0 || !resp.Outcome.Degrades() {
+		t.Fatalf("canceled prepared search returned evidence: %+v", resp)
+	}
+}
+
+type prepareThenWedge struct {
+	info []byte
+}
+
+func (r prepareThenWedge) Run(context.Context, ...string) (td.Result, error) {
+	return ok(r.info), nil
+}
+
+func (prepareThenWedge) RunPinned(ctx context.Context, _ string, _ ...string) (td.Result, error) {
+	<-ctx.Done()
+	return td.Result{}, ctx.Err()
 }
 
 func TestExpandPinsEveryEvidenceReadAcrossAssociationABA(t *testing.T) {

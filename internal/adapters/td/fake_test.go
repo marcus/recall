@@ -273,6 +273,25 @@ func searchWith(t *testing.T, a *td.Adapter, req recall.SearchRequest) (recall.S
 	return a.Search(context.Background(), req)
 }
 
+func preparedSearch(
+	t *testing.T,
+	a *td.Adapter,
+	req recall.SearchRequest,
+) (recall.SearchResponse, error) {
+	t.Helper()
+	if req.Deadline.IsZero() {
+		req.Deadline = time.Now().Add(time.Minute)
+	}
+	health, preparation, err := a.PrepareSearch(context.Background(), req)
+	if err != nil {
+		t.Fatalf("prepare search: %v", err)
+	}
+	if !health.Usable() {
+		t.Fatalf("prepared health = %+v, want usable", health)
+	}
+	return a.SearchPrepared(context.Background(), req, preparation)
+}
+
 // ids renders a result list as the issue ids it named, in rank order, which is
 // what almost every assertion in this package is really about.
 func ids(resp recall.SearchResponse) []string {

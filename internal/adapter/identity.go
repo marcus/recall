@@ -37,7 +37,11 @@ type Identity struct {
 // dropped when unknown, which is a claim about lineage rather than about who
 // is answering.
 func WithIdentity(a Adapter, id Identity) Adapter {
-	return &identityAdapter{Adapter: a, id: id}
+	bound := &identityAdapter{Adapter: a, id: id}
+	if _, ok := a.(PreparedSearcher); ok {
+		return &preparedIdentityAdapter{identityAdapter: bound}
+	}
+	return bound
 }
 
 type identityAdapter struct {
@@ -47,6 +51,13 @@ type identityAdapter struct {
 
 func (a *identityAdapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	resp, err := a.Adapter.Search(ctx, req)
+	return a.stampResponse(resp, err)
+}
+
+func (a *identityAdapter) stampResponse(
+	resp recall.SearchResponse,
+	err error,
+) (recall.SearchResponse, error) {
 	if err != nil {
 		return resp, err
 	}
@@ -77,6 +88,29 @@ func (a *identityAdapter) Search(ctx context.Context, req recall.SearchRequest) 
 	}
 	resp.Candidates = kept
 	return resp, nil
+}
+
+// preparedIdentityAdapter preserves the optional prepared-search seam through
+// the mandatory identity wrapper. Candidate stamping remains unskippable on
+// both the ordinary and prepared paths.
+type preparedIdentityAdapter struct {
+	*identityAdapter
+}
+
+func (a *preparedIdentityAdapter) PrepareSearch(
+	ctx context.Context,
+	req recall.SearchRequest,
+) (recall.Health, SearchPreparation, error) {
+	return a.Adapter.(PreparedSearcher).PrepareSearch(ctx, req)
+}
+
+func (a *preparedIdentityAdapter) SearchPrepared(
+	ctx context.Context,
+	req recall.SearchRequest,
+	preparation SearchPreparation,
+) (recall.SearchResponse, error) {
+	resp, err := a.Adapter.(PreparedSearcher).SearchPrepared(ctx, req, preparation)
+	return a.stampResponse(resp, err)
 }
 
 // stamp replaces everything a candidate is not entitled to declare about

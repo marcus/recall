@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
@@ -131,6 +132,15 @@ type Target struct {
 	// this source into the plan, not health measured after the answer was
 	// already produced from it.
 	Health recall.Health
+
+	// Request is the exact adapter request prepared while this target's
+	// deadline and eligibility were decided.
+	Request recall.SearchRequest
+
+	// Preparation is adapter-owned, request-scoped state produced beside
+	// Health. The core carries it from eligibility to Search without reading,
+	// serializing, or retaining it beyond this plan.
+	Preparation adapter.SearchPreparation
 }
 
 // Plan is the resolved retrieval plan: who may answer, with what budget, and
@@ -319,7 +329,35 @@ func (r *Registry) consider(
 	if err != nil {
 		return verdict{reason: ReasonAdapterUnavailable}
 	}
-	health, err := a.Health(ctx)
+	deadline := sourceDeadline(now(), budget, reserve, inst.Timeout)
+	searchReq := recall.SearchRequest{
+		Query:    req.Query,
+		AsOf:     req.AsOf,
+		Limit:    perSource,
+		Deadline: deadline,
+	}
+	if req.Scope != nil {
+		searchReq.Filters = recall.Filters{
+			RecordTypes: req.Scope.RecordTypes,
+			Entities:    req.Scope.Entities,
+			Since:       req.Scope.Since,
+			Until:       req.Scope.Until,
+			Project:     req.Scope.Project,
+		}
+	}
+	if manifest.Can(recall.CapContextExpansion) {
+		searchReq.Context = req.Context
+	}
+	var health recall.Health
+	var preparation adapter.SearchPreparation
+	canSearchCurrent := req.AsOf == nil || manifest.AsOfSupport.Honors()
+	canSearchTypes := typesOverlap(req, inst, manifest)
+	if prepared, ok := a.(adapter.PreparedSearcher); ok &&
+		deadline.After(now()) && canSearchCurrent && canSearchTypes {
+		health, preparation, err = prepared.PrepareSearch(ctx, searchReq)
+	} else {
+		health, err = a.Health(ctx)
+	}
 	switch {
 	case err != nil && health.Status == recall.HealthDenied:
 		return verdict{reason: ReasonDenied}
@@ -329,25 +367,26 @@ func (r *Registry) consider(
 	// A source that cannot honor a historical boundary is excluded and said so.
 	// Letting it answer from current state would be a wrong answer wearing the
 	// shape of a right one.
-	if req.AsOf != nil && !manifest.AsOfSupport.Honors() {
+	if !canSearchCurrent {
 		return verdict{reason: ReasonAsOfUnsupported}
 	}
-	if !typesOverlap(req, inst, manifest) {
+	if !canSearchTypes {
 		return verdict{reason: ReasonRecordTypeMismatch}
 	}
 
-	deadline := sourceDeadline(now(), budget, reserve, inst.Timeout)
 	if !deadline.After(now()) {
 		// The budget is already spent. Asking anyway would guarantee a timeout
 		// and charge the caller for it.
 		return verdict{reason: ReasonBudgetExhausted}
 	}
 	return verdict{target: Target{
-		Instance: inst,
-		Manifest: manifest,
-		Deadline: deadline,
-		Limit:    perSource,
-		Health:   health,
+		Instance:    inst,
+		Manifest:    manifest,
+		Deadline:    deadline,
+		Limit:       perSource,
+		Health:      health,
+		Request:     searchReq,
+		Preparation: preparation,
 	}}
 }
 

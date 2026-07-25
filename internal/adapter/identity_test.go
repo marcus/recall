@@ -18,6 +18,30 @@ type stubAdapter struct {
 	expand recall.ExpandRequest
 }
 
+type preparedStub struct {
+	*stubAdapter
+	preparation any
+	saw         any
+}
+
+func (s *preparedStub) PrepareSearch(
+	context.Context,
+	recall.SearchRequest,
+) (recall.Health, adapter.SearchPreparation, error) {
+	return recall.Health{
+		Status: recall.HealthHealthy, Coverage: recall.IndexComplete,
+	}, adapter.SearchPreparation{State: s.preparation}, nil
+}
+
+func (s *preparedStub) SearchPrepared(
+	_ context.Context,
+	_ recall.SearchRequest,
+	preparation adapter.SearchPreparation,
+) (recall.SearchResponse, error) {
+	s.saw = preparation.State
+	return s.search, nil
+}
+
 func (s *stubAdapter) Search(context.Context, recall.SearchRequest) (recall.SearchResponse, error) {
 	return s.search, nil
 }
@@ -84,6 +108,45 @@ func TestForgedLocatorPrefixIsReplaced(t *testing.T) {
 	}
 	if root != "uid-notes:td-f62256" {
 		t.Errorf("lineage root = %q, want the forging source's own root", root)
+	}
+}
+
+func TestPreparedSearchKeepsIdentityBoundaryAndOpaqueState(t *testing.T) {
+	token := &struct{ request string }{request: "one"}
+	stub := &preparedStub{
+		stubAdapter: &stubAdapter{search: recall.SearchResponse{
+			Outcome: recall.SearchSuccess,
+			Candidates: []recall.Candidate{{
+				LocalRank: 1,
+				Locator:   recall.Locator{SourceID: "tasks", Local: "td-f62256"},
+				SourceUID: otherUID,
+				SourceID:  "tasks",
+			}},
+		}},
+		preparation: token,
+	}
+	bound := adapter.WithIdentity(stub, adapter.Identity{
+		UID: ownUID, ID: "notes", Floor: recall.SensitivityInternal,
+	})
+	prepared, ok := bound.(adapter.PreparedSearcher)
+	if !ok {
+		t.Fatal("identity wrapper hid the built-in adapter's prepared-search seam")
+	}
+	_, state, err := prepared.PrepareSearch(context.Background(), recall.SearchRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepared.SearchPrepared(context.Background(), recall.SearchRequest{}, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.saw != token {
+		t.Fatal("identity wrapper replaced or interpreted opaque request state")
+	}
+	c := got.Candidates[0]
+	if c.SourceUID != ownUID || c.SourceID != "notes" ||
+		c.Locator.SourceUID != ownUID || c.Locator.SourceID != "notes" {
+		t.Fatalf("prepared candidate escaped identity stamping: %+v", c)
 	}
 }
 

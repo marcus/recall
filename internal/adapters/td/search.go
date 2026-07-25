@@ -43,6 +43,33 @@ const searchScope = "td search matches id, title, and description only; text tha
 // indistinguishable from a workspace with no matching issues, and fusion
 // downstream would believe it — invariant 2 in docs/spec.md.
 func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
+	return a.search(ctx, req, nil)
+}
+
+// SearchPrepared consumes the completed result tied to this exact request. It
+// never resolves the configured location or launches another process.
+func (a *Adapter) SearchPrepared(
+	ctx context.Context,
+	req recall.SearchRequest,
+	preparation adapter.SearchPreparation,
+) (recall.SearchResponse, error) {
+	prepared, ok := preparation.State.(*searchPreparation)
+	if !ok || prepared == nil {
+		return fail(fmt.Errorf("%w: td search preparation is missing or invalid",
+			protocol.ErrSourceUnavailable), nil)
+	}
+	response, err := prepared.consume(a, req)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fail(ctxErr, nil)
+	}
+	return response, err
+}
+
+func (a *Adapter) search(
+	ctx context.Context,
+	req recall.SearchRequest,
+	prepared *workspace,
+) (recall.SearchResponse, error) {
 	set, sourceID, floor, _ := a.config()
 	if _, _, err := a.session(); err != nil {
 		return fail(err, nil)
@@ -61,11 +88,25 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		// for.
 		return skipped(recall.SkipRecordTypeMismatch, "this source holds only td issues"), nil
 	}
-	pinned, ws, err := a.pinnedWorkspace(ctx)
-	if err != nil {
-		return fail(err, nil)
+	var ws workspace
+	verifyPinned := false
+	switch {
+	case prepared == nil:
+		pinned, resolved, err := a.pinnedWorkspace(ctx)
+		if err != nil {
+			return fail(err, nil)
+		}
+		ctx, ws = pinned, resolved
+	case set.Replay != "":
+		ws = *prepared
+	default:
+		ws = *prepared
+		if err := a.checkPinnableRoot(ws.Root); err != nil {
+			return fail(err, nil)
+		}
+		ctx = withPinnedRoot(ctx, ws.Root)
+		verifyPinned = true
 	}
-	ctx = pinned
 	if req.Filters.Project != "" && !ws.answersTo(req.Filters.Project) {
 		// A td workspace is a project, so a project filter is how a request
 		// routes to one workspace among several. A workspace that is not the
@@ -79,7 +120,30 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	terms := queryTerms(req.Query)
 	probes := probeTerms(req.Query, terms, set.maxTermProbes())
 
-	gathered := a.gather(ctx, set, probes)
+	var gathered gathered
+	if verifyPinned {
+		// The first info probe established which store this request admitted.
+		// This second probe verifies td's --work-dir pin, while the list and
+		// term probes read that same explicit root. No evidence is admitted
+		// until it agrees. On disagreement the shared context is canceled and
+		// every gathered candidate is discarded.
+		searchCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		verified := make(chan error, 1)
+		go func() {
+			_, err := a.verifyPinnedWorkspace(searchCtx, ws)
+			if err != nil {
+				cancel()
+			}
+			verified <- err
+		}()
+		gathered = a.gather(searchCtx, set, probes)
+		if err := <-verified; err != nil {
+			return fail(err, gathered.timing())
+		}
+	} else {
+		gathered = a.gather(ctx, set, probes)
+	}
 	if err := gathered.fatal(len(probes)); err != nil {
 		// Nothing that could answer this query did. Whether that is a missing
 		// workspace or a wedged process, it is a failure and not an empty

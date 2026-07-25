@@ -39,6 +39,13 @@ type fake struct {
 	searchCalls int
 	healthCalls int
 
+	// prepared opts this fake into adapter.PreparedSearcher without making
+	// every app test stop exercising the ordinary adapter contract.
+	prepared            bool
+	prepareCalls        int
+	preparedSearchCalls int
+	sawOwnPreparation   bool
+
 	// project is the project this fake serves, and sawProject is what the last
 	// search was actually asked for. Together they are how an end-to-end test
 	// reaches Filters.Project, which no host surface populated until scope
@@ -108,6 +115,29 @@ func (f *fake) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.He
 }
 
 func (f *fake) Close() error { return nil }
+
+type preparedFake struct {
+	*fake
+}
+
+func (f *preparedFake) PrepareSearch(
+	ctx context.Context,
+	_ recall.SearchRequest,
+) (recall.Health, adapter.SearchPreparation, error) {
+	f.prepareCalls++
+	health, err := f.Health(ctx)
+	return health, adapter.SearchPreparation{State: f.fake}, err
+}
+
+func (f *preparedFake) SearchPrepared(
+	ctx context.Context,
+	req recall.SearchRequest,
+	preparation adapter.SearchPreparation,
+) (recall.SearchResponse, error) {
+	f.preparedSearchCalls++
+	f.sawOwnPreparation = preparation.State == f.fake
+	return f.Search(ctx, req)
+}
 
 func manifest(types ...recall.RecordType) recall.Manifest {
 	return recall.Manifest{
@@ -225,7 +255,12 @@ func newHarness(t *testing.T, tune func(map[string]*fake)) *harness {
 
 	factories := map[string]source.Factory{}
 	for name, f := range fakes {
-		factories[name] = func() adapter.Adapter { return f }
+		factories[name] = func() adapter.Adapter {
+			if f.prepared {
+				return &preparedFake{fake: f}
+			}
+			return f
+		}
 	}
 
 	reg := source.NewRegistry(cfg, source.Options{
@@ -504,6 +539,34 @@ func TestOneHealthProbePerSourcePerQuery(t *testing.T) {
 	}
 	if probed == 0 {
 		t.Fatal("no source was probed at all; the assertion above would pass vacuously")
+	}
+}
+
+func TestPreparedHealthStateReachesOnlyThatRequestsSearch(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].prepared = true
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := h.fakes["fakedocs"]
+	if docs.prepareCalls != 1 || docs.preparedSearchCalls != 1 || !docs.sawOwnPreparation {
+		t.Fatalf("prepare/search calls = %d/%d own=%v, want one request-scoped handoff",
+			docs.prepareCalls, docs.preparedSearchCalls, docs.sawOwnPreparation)
+	}
+	if docs.healthCalls != 1 {
+		t.Fatalf("health calls = %d, want preparation to be the one eligibility probe", docs.healthCalls)
+	}
+	if len(resp.Results) == 0 || resp.Results[0].Primary.SourceUID != "01UIDDOCS" {
+		t.Fatalf("prepared path bypassed identity/ranking: %+v", resp.Results)
+	}
+	for name, f := range h.fakes {
+		if name != "fakedocs" && (f.prepareCalls != 0 || f.preparedSearchCalls != 0) {
+			t.Errorf("%s received another source's preparation", name)
+		}
 	}
 }
 

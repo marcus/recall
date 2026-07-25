@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -347,20 +348,31 @@ func (a *Adapter) pinnedWorkspace(ctx context.Context) (context.Context, workspa
 	}
 
 	pinned := withPinnedRoot(ctx, ws.Root)
-	info, _, err := a.probeWorkspace(pinned)
+	bound, err := a.verifyPinnedWorkspace(pinned, ws)
 	if err != nil {
 		return ctx, workspace{}, err
 	}
+	return pinned, bound, nil
+}
+
+// verifyPinnedWorkspace asks td to open an already verified root through its
+// supported --work-dir flag and proves it is still the same store.
+func (a *Adapter) verifyPinnedWorkspace(ctx context.Context, ws workspace) (workspace, error) {
+	info, _, err := a.probeWorkspace(ctx)
+	if err != nil {
+		return workspace{}, err
+	}
+	configured := ws
 	configured.Root = ws.Root
 	bound, err := bindWorkspace(configured, info)
 	if err != nil {
-		return ctx, workspace{}, err
+		return workspace{}, err
 	}
 	if bound.Root != ws.Root {
-		return ctx, workspace{}, fmt.Errorf("%w: pinned td work-dir resolved to another store",
+		return workspace{}, fmt.Errorf("%w: pinned td work-dir resolved to another store",
 			protocol.ErrSourceUnavailable)
 	}
-	return pinned, bound, nil
+	return bound, nil
 }
 
 // checkPinnableRoot proves the preconditions under which td --work-dir is a
@@ -503,12 +515,139 @@ func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) 
 // `database not found`, and reporting that as an empty corpus would let fusion
 // downstream treat "the workspace is gone" as "there is no such issue".
 func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
+	health, _, err := a.probeHealth(ctx)
+	return health, err
+}
+
+// PrepareSearch performs the same authoritative probe as Health while a
+// speculative search reads the configured mirror through td's supported
+// --work-dir pin.
+//
+// The mirror is only a performance hint: its result is retained only when the
+// ordinary location probe resolves to exactly the same canonical store and
+// the pinned search's own td info agrees. Any disagreement discards every
+// speculative candidate and reruns the search against the authoritative root.
+// Thus concurrency can save a startup wave, but it cannot weaken workspace
+// identity or turn a source failure into empty success.
+func (a *Adapter) PrepareSearch(
+	ctx context.Context,
+	req recall.SearchRequest,
+) (recall.Health, adapter.SearchPreparation, error) {
+	started := a.now()
+	if !req.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
+		defer cancel()
+	}
+
+	set, _, _, configured := a.config()
+	if set.Replay != "" || a.checkPinnableRoot(configured.Root) != nil {
+		health, ws, err := a.probeHealth(ctx)
+		if err != nil || !health.Usable() {
+			return health, adapter.SearchPreparation{}, err
+		}
+		resp, searchErr := a.search(ctx, req, &ws)
+		return health, adapter.SearchPreparation{
+			State: &searchPreparation{
+				owner: a, request: req, response: resp, err: searchErr,
+			},
+			Elapsed: a.now().Sub(started),
+		}, nil
+	}
+	// The root has passed the pin preconditions above. Giving the speculative
+	// workspace its deterministic store key makes any retained candidates
+	// identical to those produced after the authoritative bind.
+	configured.StoreIdentity = storeIdentity(configured.Root)
+
+	type healthResult struct {
+		health recall.Health
+		ws     workspace
+		err    error
+	}
+	type searchResult struct {
+		response recall.SearchResponse
+		err      error
+	}
+	healthCh := make(chan healthResult, 1)
+	searchCh := make(chan searchResult, 1)
+	go func() {
+		health, ws, err := a.probeHealth(ctx)
+		healthCh <- healthResult{health: health, ws: ws, err: err}
+	}()
+	go func() {
+		response, err := a.search(ctx, req, &configured)
+		searchCh <- searchResult{response: response, err: err}
+	}()
+
+	probed := <-healthCh
+	speculative := <-searchCh
+	if probed.err != nil || !probed.health.Usable() {
+		return probed.health, adapter.SearchPreparation{}, probed.err
+	}
+
+	completed := speculative
+	if !sameStore(configured, probed.ws) {
+		// The filesystem mirror and td's ordinary resolution disagreed. The
+		// speculative answer is about the wrong store by definition, even if
+		// every pinned command there succeeded.
+		completed.response, completed.err = a.search(ctx, req, &probed.ws)
+	}
+	return probed.health, adapter.SearchPreparation{
+		State: &searchPreparation{
+			owner:    a,
+			request:  req,
+			response: completed.response,
+			err:      completed.err,
+		},
+		Elapsed: a.now().Sub(started),
+	}, nil
+}
+
+type searchPreparation struct {
+	owner    *Adapter
+	request  recall.SearchRequest
+	response recall.SearchResponse
+	err      error
+
+	mu   sync.Mutex
+	used bool
+}
+
+func (p *searchPreparation) consume(
+	a *Adapter,
+	req recall.SearchRequest,
+) (recall.SearchResponse, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case p.owner != a:
+		return fail(fmt.Errorf("%w: search preparation belongs to another td source",
+			protocol.ErrSourceUnavailable), nil)
+	case !reflect.DeepEqual(p.request, req):
+		return fail(fmt.Errorf("%w: search preparation belongs to another request",
+			protocol.ErrSourceUnavailable), nil)
+	case p.used:
+		return fail(fmt.Errorf("%w: search preparation was already consumed",
+			protocol.ErrSourceUnavailable), nil)
+	default:
+		p.used = true
+		return p.response, p.err
+	}
+}
+
+func sameStore(left, right workspace) bool {
+	return left.Root != "" &&
+		canonicalPath(left.Root) == canonicalPath(right.Root) &&
+		right.StoreIdentity == storeIdentity(left.Root)
+}
+
+func (a *Adapter) probeHealth(ctx context.Context) (recall.Health, workspace, error) {
 	set, _, _, configured := a.config()
 	checked := a.now()
 
 	info, res, err := a.probeWorkspace(ctx)
 	if err != nil {
-		return adapter.Unhealthy(err), nil
+		return adapter.Unhealthy(err), workspace{}, nil
 	}
 	ws := configured
 	if set.Replay == "" {
@@ -528,7 +667,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 				"td_project":     info.Project,
 				"identity":       err.Error(),
 			},
-		}, nil
+		}, workspace{}, nil
 	}
 	health := recall.Health{
 		Status:      recall.HealthHealthy,
@@ -611,7 +750,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 			"would truncate: %d issues in this source's scope, and a listing reads at most %d",
 			scope, corpusLimit)
 	}
-	return health, nil
+	return health, ws, nil
 }
 
 // scopeBound is an upper bound on how many issues a listing for this instance

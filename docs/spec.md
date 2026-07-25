@@ -199,6 +199,14 @@ signal would stop meaning anything. A source that was eligible and could not
 answer — unhealthy, denied, out of budget, or unable to honor `as_of` —
 degrades coverage. Both are reported in `source_outcomes` either way.
 
+Built-in adapters may overlap a request's health work with retrieval when
+their source-specific contract can do so safely. That does not reverse the
+decision boundary: the health result and store identity still decide whether
+the source may answer, speculative candidates are discarded on any
+disagreement, and the request deadline cancels both sides. The optimization is
+observable only as latency; it cannot change coverage or make an unverified
+store's evidence admissible.
+
 `truncated` means budget shaping dropped trailing results. Truncation is not
 degradation.
 

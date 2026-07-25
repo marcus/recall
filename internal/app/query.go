@@ -83,7 +83,7 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 		}, err
 	}
 
-	results := a.fanOut(ctx, req, plan)
+	results := a.fanOut(ctx, plan)
 
 	// Sanitize and enforce the ceiling before anything is ranked. Both are
 	// boundary duties: a candidate that may not be shown must not influence
@@ -137,7 +137,7 @@ type searchResult struct {
 }
 
 // fanOut asks every eligible source concurrently, each under its own deadline.
-func (a *App) fanOut(ctx context.Context, req recall.QueryRequest, plan source.Plan) []searchResult {
+func (a *App) fanOut(ctx context.Context, plan source.Plan) []searchResult {
 	out := make([]searchResult, len(plan.Targets))
 	var wg sync.WaitGroup
 
@@ -145,14 +145,14 @@ func (a *App) fanOut(ctx context.Context, req recall.QueryRequest, plan source.P
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = a.searchOne(ctx, req, target)
+			out[i] = a.searchOne(ctx, target)
 		}()
 	}
 	wg.Wait()
 	return out
 }
 
-func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.Target) searchResult {
+func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 	// The health carried on the target is the probe that decided this source
 	// was eligible, and it is the only one this request makes. Probing again
 	// after the search cost a second round trip per source — for the td adapter
@@ -171,32 +171,13 @@ func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.T
 	ctx, cancel := context.WithDeadline(ctx, t.Deadline)
 	defer cancel()
 
-	sr := recall.SearchRequest{
-		Query:    req.Query,
-		AsOf:     req.AsOf,
-		Limit:    t.Limit,
-		Deadline: t.Deadline,
+	if prepared, ok := adp.(adapter.PreparedSearcher); ok {
+		res.response, res.err = prepared.SearchPrepared(ctx, t.Request, t.Preparation)
+		res.elapsed = t.Preparation.Elapsed
+	} else {
+		res.response, res.err = adp.Search(ctx, t.Request)
+		res.elapsed = a.now().Sub(started)
 	}
-	if req.Scope != nil {
-		sr.Filters = recall.Filters{
-			RecordTypes: req.Scope.RecordTypes,
-			Entities:    req.Scope.Entities,
-			Since:       req.Scope.Since,
-			Until:       req.Scope.Until,
-			// Passed to every eligible source rather than evaluated here: the
-			// core does not know which source is which project, so each one
-			// answers for itself. A source that is not the one named skips as
-			// not applicable, and a name no source serves is what makes the
-			// whole response degrade.
-			Project: req.Scope.Project,
-		}
-	}
-	if t.Manifest.Can(recall.CapContextExpansion) {
-		sr.Context = req.Context
-	}
-
-	res.response, res.err = adp.Search(ctx, sr)
-	res.elapsed = a.now().Sub(started)
 	if res.response.Outcome == recall.SearchSkipped {
 		// Skipping means the adapter did not answer this constrained question.
 		// Discard candidates even if a broken external adapter sent them.
