@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/app"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/protocol"
@@ -410,6 +411,80 @@ func TestRefreshCancellationReachesAdapterAndIsTyped(t *testing.T) {
 	}
 	if resp.Outcome != recall.RefreshFailed || resp.Sources[0].Reason != recall.RefreshCancelled {
 		t.Fatalf("response = %+v, want typed cancelled failure", resp)
+	}
+}
+
+func TestRefreshSourceTimeoutCoversRealDocumentInitialization(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, "recall")
+	corpusDir := filepath.Join(home, "corpus")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(corpusDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(corpusDir, "proof.md"), []byte("# Proof\n\nCold build.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const raw = `
+[defaults]
+profile = "work"
+timeout_ms = 2000
+
+[[sources]]
+source_uid = "01UIDDOCS"
+source_id = "docs"
+adapter = "documents"
+location = "CORPUS"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[profiles.work]
+sources = ["docs"]
+max_sensitivity = "internal"
+`
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"),
+		[]byte(strings.ReplaceAll(raw, "CORPUS", corpusDir)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(config.Options{
+		Paths: config.Paths{
+			ConfigHome: home,
+			StateHome:  filepath.Join(home, "state"),
+			CacheHome:  filepath.Join(home, "cache"),
+		},
+		Builtins: []config.Builtin{{
+			Name: "documents", FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, ok := cfg.Source("docs")
+	if !ok {
+		t.Fatal("documents source missing")
+	}
+	// Mutate after validated load so the test can deterministically expire
+	// between App entering the source and the adapter's cold handshake.
+	inst.Timeout = time.Nanosecond
+	reg := source.NewRegistry(cfg, source.Options{
+		Builtins: map[string]source.Factory{
+			"documents": func() adapter.Adapter { return docs.New() },
+		},
+		StateDir: filepath.Join(home, "adapter-state"),
+	})
+	t.Cleanup(func() { _ = reg.Close() })
+	core := app.New(app.Options{Config: cfg, Registry: reg})
+
+	resp, err := core.Refresh(t.Context(), recall.RefreshRequest{SourceID: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.RefreshFailed || len(resp.Sources) != 1 ||
+		resp.Sources[0].Reason != recall.RefreshTimedOut {
+		t.Fatalf("cold documents refresh = %+v, want typed source timeout", resp)
 	}
 }
 

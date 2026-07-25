@@ -23,7 +23,7 @@ const contextLimit = 12
 // record between versions in place, and a record rewritten into another version
 // is not the same evidence. Returning it would be the "different revision" the
 // protocol forbids expansion from silently substituting.
-func (a *Adapter) Expand(_ context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
+func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
 	s, err := a.session()
 	if err != nil {
 		return recall.ExpandResponse{}, err
@@ -41,7 +41,7 @@ func (a *Adapter) Expand(_ context.Context, req recall.ExpandRequest) (recall.Ex
 			"%q names the %s store; this source serves %s",
 			req.Locator.Local, storeOfPrefix(prefix), s.store)
 	}
-	snap, err := a.current(false)
+	snap, err := a.current(ctx, false)
 	if err != nil {
 		return recall.ExpandResponse{}, err
 	}

@@ -174,7 +174,10 @@ var ErrNotInitialized = protocol.Errorf(protocol.CodeSourceUnavailable,
 // resolves the Clara data directory, and adopts the workdir's checkpoint. It
 // parses no records: building an index inside the handshake competes with the
 // handshake timeout, which is why recall/refresh exists.
-func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Manifest, error) {
+func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Manifest, error) {
+	if err := ctx.Err(); err != nil {
+		return recall.Manifest{}, err
+	}
 	version := min(protocol.MaxVersion, cfg.ProtocolVersionMax)
 	if err := protocol.CheckNegotiated(cfg, version); err != nil {
 		return recall.Manifest{}, err
@@ -212,6 +215,9 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 
 	store := storeKind(set.Store)
 	prior := loadCheckpoint(cfg.Workdir)
+	if err := ctx.Err(); err != nil {
+		return recall.Manifest{}, err
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -362,19 +368,28 @@ func (a *Adapter) now() time.Time {
 
 // current returns a generation built from the store as it is now, rebuilding
 // and publishing a new one when any file has changed.
-func (a *Adapter) current(full bool) (*snapshot, error) {
+func (a *Adapter) current(ctx context.Context, full bool) (*snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s, err := a.session()
 	if err != nil {
 		return nil, err
 	}
 	a.buildMu.Lock()
 	defer a.buildMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	a.mu.RLock()
 	prev, dir, gen, workdir := a.snap, a.dir, a.gen, a.workdir
 	a.mu.RUnlock()
 
 	files := s.store.files(dir)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	now := a.now()
 	if prev != nil && !full && !changed(files, prev.files) {
 		switch {
@@ -391,7 +406,7 @@ func (a *Adapter) current(full bool) (*snapshot, error) {
 		// and fingerprints even when no JSONL byte changed.
 	}
 
-	next, err := build(files, s, gen+1, now)
+	next, err := build(ctx, files, s, gen+1, now)
 	if err != nil {
 		// The generation already published stays published: it is the one still
 		// answering. Callers see the failure and the older generation.
@@ -426,8 +441,8 @@ func (a *Adapter) current(full bool) (*snapshot, error) {
 
 // Health probes the store. A failed probe still reports the generation still
 // published, because that is the one still answering.
-func (a *Adapter) Health(context.Context) (recall.Health, error) {
-	snap, err := a.current(false)
+func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
+	snap, err := a.current(ctx, false)
 	if err != nil {
 		return a.degraded(err), nil
 	}
@@ -436,8 +451,13 @@ func (a *Adapter) Health(context.Context) (recall.Health, error) {
 
 // Refresh rebuilds the projection and reports the resulting health. This is
 // what the checkpoint capability means.
-func (a *Adapter) Refresh(_ context.Context, p protocol.RefreshParams) (recall.Health, error) {
-	snap, err := a.current(p.Full)
+func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	if !p.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, p.Deadline)
+		defer cancel()
+	}
+	snap, err := a.current(ctx, p.Full)
 	if err != nil {
 		// Both the error and the health of the generation still published.
 		return a.degraded(err), err

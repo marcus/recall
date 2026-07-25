@@ -195,6 +195,15 @@ func TestCancelledRefreshStopsAndKeepsPublishedGeneration(t *testing.T) {
 	if got := indexEntries(t, workdir, buildPrefix); len(got) != 0 {
 		t.Fatalf("cancelled refresh left staging directories: %v", got)
 	}
+	_, err = a.Refresh(context.Background(), protocol.RefreshParams{
+		Full: true, Deadline: time.Now().Add(-time.Second),
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expired refresh error = %v, want context.DeadlineExceeded", err)
+	}
+	if got := currentGeneration(t, workdir); got != published {
+		t.Fatalf("expired refresh published %q over %q", got, published)
+	}
 	h := health(t, a)
 	if h.IndexGeneration != published || h.Status != recall.HealthHealthy {
 		t.Fatalf("health after cancellation = %+v, want unchanged healthy generation %s", h, published)

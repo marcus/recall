@@ -54,7 +54,6 @@ func (a *App) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.Re
 	}
 
 	results := make([]recall.RefreshSourceOutcome, len(members))
-	eligible := make([]bool, len(members))
 	var wg sync.WaitGroup
 	for i, inst := range members {
 		results[i] = recall.RefreshSourceOutcome{SourceID: inst.ID, SourceUID: inst.UID}
@@ -66,41 +65,46 @@ func (a *App) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.Re
 			results[i].Status = recall.RefreshSourceSkipped
 			results[i].Reason = recall.RefreshDenied
 		default:
-			manifest, initErr := a.registry.Initialize(ctx, inst)
-			if initErr != nil {
-				results[i].Status = recall.RefreshSourceFailed
-				results[i].Reason = classifyRefreshError(initErr, recall.RefreshInitializeFailed)
-				eligible[i] = true
-				continue
-			}
-			if !manifest.Can(recall.CapCheckpoint) {
-				results[i].Status = recall.RefreshSourceSkipped
-				results[i].Reason = recall.RefreshCheckpointUnsupported
-				continue
-			}
-			eligible[i] = true
 			wg.Add(1)
 			go func(i int, inst *config.SourceInstance) {
 				defer wg.Done()
-				results[i] = a.refreshOne(ctx, inst, req.Full)
+				results[i] = a.initializeAndRefreshOne(ctx, inst, req.Full)
 			}(i, inst)
 		}
 	}
 	wg.Wait()
 
 	resp.Sources = results
-	resp.Outcome = aggregateRefresh(results, eligible, req.SourceID != "")
+	resp.Outcome = aggregateRefresh(results)
 	resp.Elapsed = a.now().Sub(started)
 	return resp, nil
 }
 
-func (a *App) refreshOne(parent context.Context, inst *config.SourceInstance, full bool) recall.RefreshSourceOutcome {
+func (a *App) initializeAndRefreshOne(
+	parent context.Context,
+	inst *config.SourceInstance,
+	full bool,
+) recall.RefreshSourceOutcome {
 	out := recall.RefreshSourceOutcome{SourceID: inst.ID, SourceUID: inst.UID}
 	started := a.now()
 
 	ctx, cancel := context.WithTimeout(parent, inst.Timeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
+
+	manifest, err := a.registry.Initialize(ctx, inst)
+	if err != nil {
+		out.Status = recall.RefreshSourceFailed
+		out.Reason = classifyRefreshError(err, recall.RefreshInitializeFailed)
+		out.Elapsed = a.now().Sub(started)
+		return out
+	}
+	if !manifest.Can(recall.CapCheckpoint) {
+		out.Status = recall.RefreshSourceSkipped
+		out.Reason = recall.RefreshCheckpointUnsupported
+		out.Elapsed = a.now().Sub(started)
+		return out
+	}
 
 	adp, err := a.registry.Adapter(inst)
 	if err != nil {
@@ -143,12 +147,9 @@ func classifyRefreshError(err error, fallback recall.RefreshReason) recall.Refre
 	}
 }
 
-func aggregateRefresh(results []recall.RefreshSourceOutcome, eligible []bool, targeted bool) recall.RefreshOutcome {
-	usable, degraded, attempted := 0, false, 0
-	for i, result := range results {
-		if eligible[i] {
-			attempted++
-		}
+func aggregateRefresh(results []recall.RefreshSourceOutcome) recall.RefreshOutcome {
+	usable, degraded := 0, false
+	for _, result := range results {
 		switch result.Status {
 		case recall.RefreshSourceRefreshed:
 			usable++
@@ -157,13 +158,9 @@ func aggregateRefresh(results []recall.RefreshSourceOutcome, eligible []bool, ta
 			degraded = true
 		case recall.RefreshSourceFailed:
 			degraded = true
-		case recall.RefreshSourceSkipped:
-			if targeted {
-				degraded = true
-			}
 		}
 	}
-	if attempted == 0 || usable == 0 {
+	if usable == 0 {
 		return recall.RefreshFailed
 	}
 	if degraded {

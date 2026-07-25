@@ -3,6 +3,7 @@ package claracorpus_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -951,6 +952,45 @@ func TestARewriteIsSeenAndDeletionIsHonored(t *testing.T) {
 		if c.SourceRecordID == "m0000002" {
 			t.Fatal("a forgotten memory is still being served")
 		}
+	}
+}
+
+func TestRefreshHonorsContextAndProtocolDeadlineWithoutPublishing(t *testing.T) {
+	a, _ := start(t, signalCorpus(t), "clara-signals", signalSettings())
+	before, err := a.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	cancelled, err := a.Refresh(ctx, protocol.RefreshParams{Full: true})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled refresh error = %v, want context.Canceled", err)
+	}
+	if cancelled.IndexGeneration != before.IndexGeneration {
+		t.Fatalf("cancelled refresh reported generation %q, want still-published %q",
+			cancelled.IndexGeneration, before.IndexGeneration)
+	}
+
+	expired, err := a.Refresh(t.Context(), protocol.RefreshParams{
+		Full: true, Deadline: time.Now().Add(-time.Second),
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expired refresh error = %v, want context.DeadlineExceeded", err)
+	}
+	if expired.IndexGeneration != before.IndexGeneration {
+		t.Fatalf("expired refresh reported generation %q, want still-published %q",
+			expired.IndexGeneration, before.IndexGeneration)
+	}
+
+	after, err := a.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.IndexGeneration != before.IndexGeneration || after.Status != recall.HealthHealthy {
+		t.Fatalf("health after cancelled refresh = %+v, want unchanged healthy generation %s",
+			after, before.IndexGeneration)
 	}
 }
 

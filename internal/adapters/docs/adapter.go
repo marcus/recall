@@ -181,9 +181,17 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 // error. That is not softening the failure: health carries the stale watermark,
 // a non-healthy status, and the reason in diagnostics, which is strictly more
 // than an error conveys. The error return means the refresh could not run.
-func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	if !p.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, p.Deadline)
+		defer cancel()
+	}
 	a.buildMu.Lock()
 	defer a.buildMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return recall.Health{}, err
+	}
 
 	a.mu.RLock()
 	root, settings, indexDir, closed := a.root, a.settings, a.indexDir, a.closed

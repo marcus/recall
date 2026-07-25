@@ -41,7 +41,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	started := a.now()
-	snap, err := a.current(false)
+	snap, err := a.current(ctx, false)
 	if err != nil {
 		// An unreadable store is never a search that succeeded with no matches.
 		// The error carries the code; the response carries the outcome for a

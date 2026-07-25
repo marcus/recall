@@ -3,6 +3,7 @@ package claracorpus
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -236,7 +237,10 @@ func changed(files []storeFile, stamps []fileStamp) bool {
 // the archive, and docs/spec.md#index-obligations requires a generation to
 // exclude what the source no longer holds. An incremental cursor over these
 // files would resurrect every one of them.
-func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, error) {
+func build(ctx context.Context, files []storeFile, s session, gen int64, at time.Time) (*snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	dir := ""
 	if len(files) > 0 {
 		dir = filepath.Dir(files[0].path)
@@ -261,9 +265,12 @@ func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, er
 	)
 	content := sha256.New()
 	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		_, _ = io.WriteString(content, filepath.Base(f.path))
 		_, _ = content.Write([]byte{0, byte(f.role), 0})
-		stamp, err := scan(f, next, s, &mem, &sig, content)
+		stamp, err := scan(ctx, f, next, s, &mem, &sig, content)
 		if err != nil {
 			return nil, err
 		}
@@ -296,6 +303,7 @@ func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, er
 
 // scan reads one file into the snapshot, returning the stamp that describes it.
 func scan(
+	ctx context.Context,
 	f storeFile,
 	snap *snapshot,
 	s session,
@@ -327,6 +335,9 @@ func scan(
 	name := filepath.Base(f.path)
 	br := bufio.NewReader(file)
 	for {
+		if err := ctx.Err(); err != nil {
+			return stamp, err
+		}
 		raw, tooLong, atEOF, err := readBoundedLine(br, digest)
 		if err != nil {
 			return stamp, protocol.Errorf(protocol.CodeSourceUnavailable,
