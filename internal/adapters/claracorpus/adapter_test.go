@@ -9,9 +9,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
-	"github.com/marcus/recall/cmd/recall-clara-corpus/claracorpus"
 	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
 )
@@ -325,6 +326,32 @@ func TestAnUnparseableRecordReportsPartial(t *testing.T) {
 	h, _ := a.Health(t.Context())
 	if h.Status != recall.HealthDegraded || h.Coverage != recall.IndexPartial {
 		t.Errorf("health = %s/%s, want degraded/partial", h.Status, h.Coverage)
+	}
+	for _, candidate := range res.Candidates {
+		if candidate.ObservedAt == nil {
+			t.Errorf("%s was not observed", candidate.SourceRecordID)
+		}
+		if candidate.ConfirmedAt != nil {
+			t.Errorf("%s confirmed_at = %v on a partial scan", candidate.SourceRecordID, candidate.ConfirmedAt)
+		}
+	}
+}
+
+func TestAnOversizeLineIsDiscardedWithoutLosingTheBoundedRemainder(t *testing.T) {
+	hostile := `{"type":"signal","schema_version":2,"id":"huge","source":"tasks","ref":"tasks:huge","title":"` +
+		strings.Repeat("x", 4<<20) + `"}` + "\n"
+	dir := corpus(t, map[string]string{"signals.jsonl": hostile + signalsLive})
+	a, _ := start(t, dir, "clara-signals", signalSettings())
+
+	res := search(t, a, recall.SearchRequest{Query: "insurance"})
+	if res.Outcome != recall.SearchPartial {
+		t.Fatalf("outcome = %s, want partial for the bounded-away line", res.Outcome)
+	}
+	if got := res.Diagnostics["failed_records"]; got != 1 {
+		t.Errorf("failed_records = %v, want 1", got)
+	}
+	if len(res.Candidates) != 3 {
+		t.Errorf("candidates = %v: records after the malicious line were lost", ids(res))
 	}
 }
 
@@ -717,6 +744,149 @@ func TestTwoInstancesOverOneStoreFingerprintTheSameRecordIdentically(t *testing.
 	}
 }
 
+func TestMemoryFingerprintCoversTextLineageSensitivityAndDecayInputs(t *testing.T) {
+	record := func() map[string]any {
+		return map[string]any{
+			"type": "memory", "schema_version": 2, "id": "m-semantic",
+			"kind": "preference", "subject": "workflow", "title": "Prefer review",
+			"body": "Ask for adversarial review.", "weight": 0.7,
+			"half_life_days": 45.0, "created": "2026-02-01",
+			"last_seen": "2026-03-01", "hits": 4, "source": "observed",
+			"effect": map[string]any{"source": "tasks", "kind": "todo", "direction": 1},
+			"provenance": map[string]any{
+				"type": "observations-v1", "threshold": 4,
+				"refs": []string{"tasks:a", "tasks:b", "tasks:c", "tasks:d"},
+			},
+		}
+	}
+	fingerprintOf := func(t *testing.T, rec map[string]any, upstream string) string {
+		t.Helper()
+		raw, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := corpus(t, map[string]string{"memory.jsonl": string(raw) + "\n"})
+		a, _ := start(t, dir, "clara-memory", merge(memorySettings(),
+			map[string]any{"upstream": map[string]any{"tasks": upstream}}))
+		res := search(t, a, recall.SearchRequest{})
+		return find(t, res, "m-semantic").ContentFingerprint
+	}
+
+	base := fingerprintOf(t, record(), "tasks")
+	cases := map[string]func(map[string]any){
+		"title":     func(r map[string]any) { r["title"] = "Prefer independent review" },
+		"body":      func(r map[string]any) { r["body"] = "Ask for two reviewers." },
+		"weight":    func(r map[string]any) { r["weight"] = 0.8 },
+		"half-life": func(r map[string]any) { r["half_life_days"] = 90.0 },
+		"last-seen": func(r map[string]any) { r["last_seen"] = "2026-03-02" },
+		"lineage": func(r map[string]any) {
+			r["provenance"].(map[string]any)["refs"] =
+				[]string{"tasks:a", "tasks:b", "tasks:c", "tasks:e"}
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			changed := record()
+			mutate(changed)
+			if got := fingerprintOf(t, changed, "tasks"); got == base {
+				t.Errorf("fingerprint stayed %q after %s changed", got, name)
+			}
+		})
+	}
+	if got := fingerprintOf(t, record(), "tasks-alternate"); got == base {
+		t.Errorf("fingerprint stayed %q after derived_from lineage changed", got)
+	}
+}
+
+func TestSignalFingerprintCoversTextLineageSensitivityAndObservationProjection(t *testing.T) {
+	var baseRecord map[string]any
+	if err := json.Unmarshal([]byte(strings.Split(strings.TrimSpace(signalsLive), "\n")[0]), &baseRecord); err != nil {
+		t.Fatal(err)
+	}
+	clone := func() map[string]any {
+		raw, _ := json.Marshal(baseRecord)
+		var copied map[string]any
+		_ = json.Unmarshal(raw, &copied)
+		return copied
+	}
+	fingerprintOf := func(t *testing.T, rec map[string]any, upstream, observation string) (string, recall.Sensitivity) {
+		t.Helper()
+		raw, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]string{"signals.jsonl": string(raw) + "\n"}
+		if observation != "" {
+			files["observations.jsonl"] = observation + "\n"
+		}
+		dir := corpus(t, files)
+		source, _ := rec["source"].(string)
+		a, _ := start(t, dir, "clara-signals", merge(signalSettings(),
+			map[string]any{"upstream": map[string]any{source: upstream}}))
+		res := search(t, a, recall.SearchRequest{Query: "insurance"})
+		c := find(t, res, "s0000001")
+		return c.ContentFingerprint, c.Sensitivity
+	}
+
+	base, baseSensitivity := fingerprintOf(t, clone(), "tasks", "")
+	for name, mutate := range map[string]func(map[string]any){
+		"title":       func(r map[string]any) { r["title"] = "Renew business insurance" },
+		"summary":     func(r map[string]any) { r["summary"] = "TODO — Renew business insurance" },
+		"raw_excerpt": func(r map[string]any) { r["raw_excerpt"] = "@finance" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := clone()
+			mutate(changed)
+			if got, _ := fingerprintOf(t, changed, "tasks", ""); got == base {
+				t.Errorf("fingerprint stayed %q after %s changed", got, name)
+			}
+		})
+	}
+	if got, _ := fingerprintOf(t, clone(), "tasks-alternate", ""); got == base {
+		t.Errorf("fingerprint stayed %q after derived_from changed", got)
+	}
+	acted := `{"type":"observation","schema_version":2,"id":"o1","ref":"tasks:aa11bb22","signal_id":"s0000001","action":"acted","source":"tasks","kind":"todo","occurred_at":"2026-03-03T09:15:00Z","metadata":{}}`
+	if got, _ := fingerprintOf(t, clone(), "tasks", acted); got == base {
+		t.Errorf("fingerprint stayed %q after observation projection changed", got)
+	}
+
+	correspondence := clone()
+	correspondence["source"] = "calendar"
+	correspondence["ref"] = "calendar:aa11bb22"
+	if got, sensitivity := fingerprintOf(t, correspondence, "calendar", ""); got == base {
+		t.Errorf("fingerprint stayed %q after sensitivity-bearing source changed", got)
+	} else if sensitivity == baseSensitivity {
+		t.Errorf("sensitivity stayed %s after correspondence change", sensitivity)
+	}
+}
+
+func TestDuplicateIDsResolveLastWriteForBothSearchAndExpand(t *testing.T) {
+	first := `{"type":"memory","schema_version":2,"id":"same","kind":"fact","subject":"duplicate","title":"First statement","body":"alpha body","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}`
+	last := `{"type":"memory","schema_version":2,"id":"same","kind":"fact","subject":"duplicate","title":"Last statement","body":"beta body","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}`
+	dir := corpus(t, map[string]string{"memory.jsonl": first + "\n" + last + "\n"})
+	a, _ := start(t, dir, "clara-memory", memorySettings())
+
+	res := search(t, a, recall.SearchRequest{})
+	if len(res.Candidates) != 1 || res.Candidates[0].Title != "Last statement" {
+		t.Fatalf("candidates = %+v, want only the last statement", res.Candidates)
+	}
+	if res.Diagnostics["duplicate_records_resolved"] != 1 {
+		t.Errorf("duplicate_records_resolved = %v", res.Diagnostics["duplicate_records_resolved"])
+	}
+	expanded, err := a.Expand(t.Context(), recall.ExpandRequest{
+		Locator:  res.Candidates[0].Locator,
+		Detail:   recall.DetailFull,
+		Budget:   4096,
+		Deadline: probeTime.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(expanded.Content, "beta body") || strings.Contains(expanded.Content, "alpha body") {
+		t.Errorf("expand disagrees with search:\n%s", expanded.Content)
+	}
+}
+
 func TestCandidatesCarryTheFourTimestampsSeparately(t *testing.T) {
 	a, _ := start(t, signalCorpus(t), "clara-signals", signalSettings())
 	c := find(t, search(t, a, recall.SearchRequest{Query: "insurance"}), "s0000004")
@@ -764,6 +934,98 @@ func TestARewriteIsSeenAndDeletionIsHonored(t *testing.T) {
 	}
 }
 
+func TestWatermarkDigestChangesWhenCountsBytesAndDatesDoNot(t *testing.T) {
+	body := `{"type":"memory","schema_version":2,"id":"m1","kind":"fact","subject":"digest","title":"Alpha","body":"same","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}` + "\n"
+	dir := corpus(t, map[string]string{"memory.jsonl": body})
+	a, _ := start(t, dir, "clara-memory", memorySettings())
+	before := search(t, a, recall.SearchRequest{}).SourceWatermark
+
+	changed := strings.Replace(body, `"Alpha"`, `"Bravo"`, 1)
+	if len(changed) != len(body) {
+		t.Fatal("test rewrite changed byte count")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory.jsonl"), []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Refresh(t.Context(), protocol.RefreshParams{Full: true}); err != nil {
+		t.Fatal(err)
+	}
+	after := search(t, a, recall.SearchRequest{}).SourceWatermark
+	if before == after {
+		t.Fatalf("watermark stayed %q after same-size semantic content changed", before)
+	}
+	if !strings.Contains(before, "digest=") || !strings.Contains(after, "digest=") {
+		t.Fatalf("watermarks do not carry content digests: %q / %q", before, after)
+	}
+}
+
+func TestUnpinnedMemoryRebuildsAcrossTheCorpusCivilDay(t *testing.T) {
+	body := strings.Join([]string{
+		`{"type":"memory","schema_version":2,"id":"fast","kind":"preference","subject":"choice-fast","title":"Choice fast","body":"choice","weight":1,"half_life_days":0.5,"created":"2026-03-10","last_seen":"2026-03-10"}`,
+		`{"type":"memory","schema_version":2,"id":"stable","kind":"fact","subject":"choice-stable","title":"Choice stable","body":"choice","weight":0.7,"created":"2026-03-10","last_seen":"2026-03-10"}`,
+	}, "\n") + "\n"
+	dir := corpus(t, map[string]string{"memory.jsonl": body})
+	now := time.Date(2026, 3, 10, 23, 30, 0, 0, time.UTC)
+	a := claracorpus.New(claracorpus.Options{Clock: func() time.Time { return now }})
+	if _, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1,
+		Workdir: t.TempDir(), SourceID: "clara-memory", Location: dir,
+		Settings: map[string]any{"store": "memory", "timezone": "UTC"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	first := search(t, a, recall.SearchRequest{Query: "choice"})
+	if got := ids(first)[0]; got != "fast" {
+		t.Fatalf("day-one order = %v, want fast first", ids(first))
+	}
+	fastBefore := find(t, first, "fast")
+	if fastBefore.Metadata["age_days"] != 0 || fastBefore.SourceRevision != "gen-1" {
+		t.Fatalf("day-one fast = age %v revision %s",
+			fastBefore.Metadata["age_days"], fastBefore.SourceRevision)
+	}
+
+	now = now.Add(time.Hour) // 2026-03-11 in the corpus timezone; files unchanged.
+	second := search(t, a, recall.SearchRequest{Query: "choice"})
+	if got := ids(second)[0]; got != "stable" {
+		t.Fatalf("day-two order = %v, want stable first after fast memory decays", ids(second))
+	}
+	fastAfter := find(t, second, "fast")
+	if fastAfter.Metadata["age_days"] != 1 || fastAfter.SourceRevision != "gen-2" {
+		t.Fatalf("day-two fast = age %v revision %s",
+			fastAfter.Metadata["age_days"], fastAfter.SourceRevision)
+	}
+	if effective := fastAfter.Metadata["effective_weight"]; effective != 0.25 {
+		t.Errorf("day-two effective_weight = %v, want 0.25", effective)
+	}
+	if fastAfter.ContentFingerprint == fastBefore.ContentFingerprint {
+		t.Errorf("fingerprint stayed %q after effective weight changed", fastAfter.ContentFingerprint)
+	}
+}
+
+func TestPinnedMemoryDoesNotRebuildWhenTheWallClockCrossesMidnight(t *testing.T) {
+	dir := corpus(t, map[string]string{"memory.jsonl": memoryLive})
+	now := time.Date(2026, 3, 10, 23, 30, 0, 0, time.UTC)
+	a := claracorpus.New(claracorpus.Options{Clock: func() time.Time { return now }})
+	if _, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1,
+		Workdir: t.TempDir(), SourceID: "clara-memory", Location: dir,
+		Settings: memorySettings(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	before := find(t, search(t, a, recall.SearchRequest{Query: "insurance"}), "m0000002")
+	now = now.Add(48 * time.Hour)
+	after := find(t, search(t, a, recall.SearchRequest{Query: "insurance"}), "m0000002")
+	if after.SourceRevision != before.SourceRevision ||
+		after.ContentFingerprint != before.ContentFingerprint ||
+		after.Metadata["effective_weight"] != before.Metadata["effective_weight"] {
+		t.Errorf("pinned memory drifted across wall-clock days: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestGenerationsAreMonotonicAcrossRestarts(t *testing.T) {
 	dir := memoryCorpus(t)
 	workdir := t.TempDir()
@@ -792,6 +1054,65 @@ func TestGenerationsAreMonotonicAcrossRestarts(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workdir, "cursor.json")); err != nil {
 		t.Errorf("no checkpoint in the workdir: %v", err)
+	}
+}
+
+func TestCheckpointFailureNeverPublishesReusableGenerationIdentity(t *testing.T) {
+	record := func(title string) string {
+		return `{"type":"memory","schema_version":2,"id":"m1","kind":"fact","subject":"checkpoint","title":"` +
+			title + `","body":"checkpoint evidence","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}` + "\n"
+	}
+	dir := corpus(t, map[string]string{"memory.jsonl": record("Initial")})
+	workdir := t.TempDir()
+	a := claracorpus.New(claracorpus.Options{Clock: func() time.Time { return probeTime }})
+	if _, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1,
+		Workdir: workdir, SourceID: "clara-memory", Location: dir,
+		Settings: memorySettings(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	h1, err := a.Health(t.Context())
+	if err != nil || h1.IndexGeneration != "gen-1" {
+		t.Fatalf("first health = %+v, %v", h1, err)
+	}
+
+	checkpointPath := filepath.Join(workdir, "cursor.json")
+	if err := os.Remove(checkpointPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(checkpointPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory.jsonl"), []byte(record("Failed")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := a.Refresh(t.Context(), protocol.RefreshParams{Full: true})
+	if err == nil {
+		t.Fatal("checkpoint failure published changed content")
+	}
+	if failed.IndexGeneration != "gen-1" {
+		t.Fatalf("failed refresh reported %q, want the prior durable generation", failed.IndexGeneration)
+	}
+
+	if err := os.RemoveAll(checkpointPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory.jsonl"), []byte(record("Recovered")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := a.Refresh(t.Context(), protocol.RefreshParams{Full: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.IndexGeneration != "gen-2" {
+		t.Fatalf("recovered generation = %q, want gen-2; failed content must not consume or reuse a published identity",
+			recovered.IndexGeneration)
+	}
+	res := search(t, a, recall.SearchRequest{})
+	if len(res.Candidates) != 1 || res.Candidates[0].Title != "Recovered" {
+		t.Fatalf("published candidates = %+v", res.Candidates)
 	}
 }
 
@@ -843,6 +1164,25 @@ func TestExpandTruncatesAtTheBudgetAndNamesTheBoundary(t *testing.T) {
 	}
 	if len(res.Content) > 40 {
 		t.Errorf("content is %d bytes over a 40 byte budget", len(res.Content))
+	}
+}
+
+func TestCandidatePreviewClippingNeverExceedsItsByteLimit(t *testing.T) {
+	body := strings.Repeat("é", 200)
+	record := `{"type":"memory","schema_version":2,"id":"wide","kind":"fact","subject":"wide","title":"Wide","body":"` +
+		body + `","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}` + "\n"
+	a, _ := start(t, corpus(t, map[string]string{"memory.jsonl": record}),
+		"clara-memory", memorySettings())
+	res := search(t, a, recall.SearchRequest{})
+	if len(res.Candidates) != 1 {
+		t.Fatalf("candidates = %d", len(res.Candidates))
+	}
+	excerpt := res.Candidates[0].Excerpt
+	if len(excerpt) > 240 {
+		t.Errorf("excerpt is %d bytes, limit 240", len(excerpt))
+	}
+	if !utf8.ValidString(excerpt) {
+		t.Error("excerpt split a UTF-8 sequence")
 	}
 }
 

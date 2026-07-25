@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -146,12 +148,14 @@ type snapshot struct {
 	files   []fileStamp
 	builtAt time.Time
 	bytes   int64
+	digest  string
 
 	live       int
 	archived   int
 	withAction int
 	failed     int
 	obsFailed  int
+	duplicates int
 	absent     []string
 	schemas    map[string]int
 	latest     civilDate
@@ -165,22 +169,21 @@ func (s *snapshot) generation() string { return fmt.Sprintf("gen-%d", s.gen) }
 
 // watermark is freshness evidence a caller can compare between two searches.
 //
-// Clara publishes no revision of its own, so the record counts, the bytes read,
-// and the newest date any record carries are the strongest honest statement
-// available. Deliberately no modification time: a checkout does not preserve
-// one, and a watermark that changed with the filesystem rather than with the
-// data would make a recorded transcript unreplayable and say nothing true.
+// Clara publishes no revision of its own, so the deterministic digest is the
+// content identity and the counts/date make it inspectable. Deliberately no
+// modification time: a checkout does not preserve one, and a watermark that
+// changed with the filesystem rather than with the data would say nothing true.
 func (s *snapshot) watermark() string {
 	latest := "-"
 	if !s.latest.zero() {
 		latest = s.latest.String()
 	}
 	if s.store == StoreSignals {
-		return fmt.Sprintf("live=%d archived=%d observations=%d bytes=%d latest=%s",
-			s.live, s.archived, len(s.obs), s.bytes, latest)
+		return fmt.Sprintf("live=%d archived=%d observations=%d bytes=%d latest=%s digest=%s",
+			s.live, s.archived, len(s.obs), s.bytes, latest, s.digest)
 	}
-	return fmt.Sprintf("live=%d archived=%d bytes=%d latest=%s",
-		s.live, s.archived, s.bytes, latest)
+	return fmt.Sprintf("live=%d archived=%d bytes=%d latest=%s digest=%s",
+		s.live, s.archived, s.bytes, latest, s.digest)
 }
 
 // coverage reports whether this generation represents the whole store.
@@ -256,8 +259,11 @@ func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, er
 		mem []memRecord
 		sig []sigRecord
 	)
+	content := sha256.New()
 	for _, f := range files {
-		stamp, err := scan(f, next, s, &mem, &sig)
+		_, _ = io.WriteString(content, filepath.Base(f.path))
+		_, _ = content.Write([]byte{0, byte(f.role), 0})
+		stamp, err := scan(f, next, s, &mem, &sig, content)
 		if err != nil {
 			return nil, err
 		}
@@ -267,6 +273,7 @@ func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, er
 			next.absent = append(next.absent, filepath.Base(f.path))
 		}
 	}
+	next.digest = hex.EncodeToString(content.Sum(nil)[:16])
 
 	sortObservations(next.obs)
 	for _, o := range next.obs {
@@ -275,27 +282,34 @@ func build(files []storeFile, s session, gen int64, at time.Time) (*snapshot, er
 
 	switch s.store {
 	case StoreMemory:
+		mem, next.duplicates = dedupeMemory(mem)
 		buildMemoryItems(next, mem, s, at)
 	case StoreSignals:
+		sig, next.duplicates = dedupeSignals(sig)
 		buildSignalItems(next, sig, s)
 	}
 	for i, it := range next.items {
-		// Last write wins within one identity. Clara's stores hold one line per
-		// id, but a corpus mid-repair can hold two, and the later line is the
-		// later statement.
 		next.byLocal[it.local] = i
 	}
 	return next, nil
 }
 
 // scan reads one file into the snapshot, returning the stamp that describes it.
-func scan(f storeFile, snap *snapshot, s session, mem *[]memRecord, sig *[]sigRecord) (fileStamp, error) {
+func scan(
+	f storeFile,
+	snap *snapshot,
+	s session,
+	mem *[]memRecord,
+	sig *[]sigRecord,
+	digest hash.Hash,
+) (fileStamp, error) {
 	stamp := fileStamp{Path: f.path}
 	file, err := os.Open(f.path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// Clara creates each store on first write. Absence inside a directory
 		// that has already been proved to be a corpus means nothing has been
 		// written there yet — a complete empty store, not a failure.
+		_, _ = digest.Write([]byte("absent\x00"))
 		return stamp, nil
 	}
 	if err != nil {
@@ -303,6 +317,7 @@ func scan(f storeFile, snap *snapshot, s session, mem *[]memRecord, sig *[]sigRe
 			"clara-corpus: %s is not readable", filepath.Base(f.path))
 	}
 	defer file.Close() //nolint:errcheck // read-only handle
+	_, _ = digest.Write([]byte("present\x00"))
 
 	if info, err := file.Stat(); err == nil {
 		stamp.Size, stamp.ModTime = info.Size(), info.ModTime()
@@ -311,17 +326,24 @@ func scan(f storeFile, snap *snapshot, s session, mem *[]memRecord, sig *[]sigRe
 
 	name := filepath.Base(f.path)
 	br := bufio.NewReader(file)
-	line := 0
 	for {
-		raw, err := br.ReadBytes('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
+		raw, tooLong, atEOF, err := readBoundedLine(br, digest)
+		if err != nil {
 			return stamp, protocol.Errorf(protocol.CodeSourceUnavailable,
 				"clara-corpus: %s became unreadable", name)
 		}
-		atEOF := errors.Is(err, io.EOF)
-		line++
+		if atEOF && len(raw) == 0 && !tooLong {
+			return stamp, nil
+		}
 		trimmed := bytes.TrimSpace(raw)
-		if len(trimmed) > 0 {
+		if tooLong {
+			stamp.Failed++
+			if f.role == roleObservations {
+				snap.obsFailed++
+			} else {
+				snap.failed++
+			}
+		} else if len(trimmed) > 0 {
 			if err := absorb(trimmed, f, snap, s, mem, sig); err != nil {
 				// One unreadable line degrades coverage; it never fails the
 				// scan. A single bad append would otherwise take a whole
@@ -338,6 +360,39 @@ func scan(f storeFile, snap *snapshot, s session, mem *[]memRecord, sig *[]sigRe
 		}
 		if atEOF {
 			return stamp, nil
+		}
+	}
+}
+
+// readBoundedLine reads one JSONL record without ever allocating in proportion
+// to an attacker-controlled line. ReadSlice exposes fixed-size reader
+// fragments; once the record crosses the limit, the fragments are hashed and
+// discarded until the newline. The digest still identifies the bad content,
+// while coverage records the line as unknown.
+func readBoundedLine(br *bufio.Reader, digest hash.Hash) (raw []byte, tooLong, atEOF bool, err error) {
+	const bufferedLimit = maxLineBytes + 1 // one optional trailing newline
+	for {
+		fragment, readErr := br.ReadSlice('\n')
+		if len(fragment) > 0 {
+			_, _ = digest.Write(fragment)
+			if !tooLong {
+				if len(raw)+len(fragment) > bufferedLimit {
+					raw = nil
+					tooLong = true
+				} else {
+					raw = append(raw, fragment...)
+				}
+			}
+		}
+		switch {
+		case readErr == nil:
+			return raw, tooLong, false, nil
+		case errors.Is(readErr, bufio.ErrBufferFull):
+			continue
+		case errors.Is(readErr, io.EOF):
+			return raw, tooLong, true, nil
+		default:
+			return nil, tooLong, false, readErr
 		}
 	}
 }
@@ -428,19 +483,45 @@ func loadCheckpoint(workdir string) checkpoint {
 	return cp
 }
 
-// saveCheckpoint records a published generation, atomically. It runs after the
-// generation is published, never before: a checkpoint ahead of the data it
-// describes would let a later pass believe a build happened that did not.
+// saveCheckpoint makes a candidate generation durable before it is published.
+// The temp file and directory are synced around the atomic rename, so success
+// means a restart will advance past this identity even if the process exits
+// before the in-memory pointer swap.
 func saveCheckpoint(workdir string, cp checkpoint) error {
 	raw, err := json.Marshal(cp)
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(workdir, checkpointFile+".tmp")
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	tmp, err := os.CreateTemp(workdir, checkpointFile+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(workdir, checkpointFile))
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup after any failure
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, filepath.Join(workdir, checkpointFile)); err != nil {
+		return err
+	}
+	dir, err := os.Open(workdir)
+	if err != nil {
+		return err
+	}
+	defer dir.Close() //nolint:errcheck // Sync below is the durability boundary
+	return dir.Sync()
 }
 
 // fingerprint hashes a record's identity together with the fields that change
@@ -455,6 +536,55 @@ func saveCheckpoint(workdir string, cp checkpoint) error {
 func fingerprint(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:8])
+}
+
+func fingerprintValue(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		// Every value supplied by this package is composed of JSON-native
+		// scalars, slices, maps, and timestamps. A future unsupported value is a
+		// programmer defect; silently weakening identity would be worse.
+		panic(fmt.Sprintf("clara-corpus fingerprint: %v", err))
+	}
+	return fingerprint(string(raw))
+}
+
+// dedupeMemory and dedupeSignals implement the corpus's repair-time
+// last-write-wins rule before either search or expansion sees a record. Keeping
+// both candidates while only byLocal kept the last made the two operations
+// disagree about what one locator meant.
+func dedupeMemory(in []memRecord) ([]memRecord, int) {
+	seen := make(map[string]bool, len(in))
+	out := make([]memRecord, 0, len(in))
+	duplicates := 0
+	for i := len(in) - 1; i >= 0; i-- {
+		local := in[i].local()
+		if seen[local] {
+			duplicates++
+			continue
+		}
+		seen[local] = true
+		out = append(out, in[i])
+	}
+	slices.Reverse(out)
+	return out, duplicates
+}
+
+func dedupeSignals(in []sigRecord) ([]sigRecord, int) {
+	seen := make(map[string]bool, len(in))
+	out := make([]sigRecord, 0, len(in))
+	duplicates := 0
+	for i := len(in) - 1; i >= 0; i-- {
+		local := in[i].local()
+		if seen[local] {
+			duplicates++
+			continue
+		}
+		seen[local] = true
+		out = append(out, in[i])
+	}
+	slices.Reverse(out)
+	return out, duplicates
 }
 
 // sortObservations orders the behavioral log the way Clara does: by occurrence

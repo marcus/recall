@@ -205,6 +205,10 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		return recall.Manifest{}, protocol.Errorf(protocol.CodeInvalidParams,
 			"clara-corpus: handshake supplied no workdir, and this adapter has nowhere else it may write")
 	}
+	if err := os.MkdirAll(cfg.Workdir, 0o700); err != nil {
+		return recall.Manifest{}, protocol.Errorf(protocol.CodeSourceUnavailable,
+			"clara-corpus: workdir is not writable: %v", err)
+	}
 
 	store := storeKind(set.Store)
 	prior := loadCheckpoint(cfg.Workdir)
@@ -371,38 +375,51 @@ func (a *Adapter) current(full bool) (*snapshot, error) {
 	a.mu.RUnlock()
 
 	files := s.store.files(dir)
+	now := a.now()
 	if prev != nil && !full && !changed(files, prev.files) {
-		return prev, nil
+		switch {
+		case s.store != StoreMemory:
+			return prev, nil
+		case s.set.Today != "":
+			// A pinned date is intentionally stable for conformance and eval.
+			return prev, nil
+		case prev.today == civilOf(now.In(s.loc)):
+			return prev, nil
+		}
+		// Memory effective weight is a function of Clara's civil today. Crossing
+		// midnight in the corpus timezone changes scores, ordering, metadata,
+		// and fingerprints even when no JSONL byte changed.
 	}
 
-	next, err := build(files, s, gen+1, a.now())
+	next, err := build(files, s, gen+1, now)
 	if err != nil {
 		// The generation already published stays published: it is the one still
 		// answering. Callers see the failure and the older generation.
 		return nil, err
 	}
 
-	a.mu.Lock()
-	a.snap, a.gen = next, next.gen
-	a.mu.Unlock()
-
-	// Durable first, checkpoint second. Here "durable" is the published
-	// generation; an adapter with an on-disk index would write its records
-	// before reaching this line.
-	//
-	// The outcome is recorded on the adapter rather than on the snapshot, which
-	// is already published and therefore already being read: a generation is
-	// immutable once it is answering.
-	err = saveCheckpoint(workdir, checkpoint{
+	// The generation identity becomes durable before the generation becomes
+	// visible. If checkpointing fails, the previous immutable snapshot keeps
+	// answering and the changed content is never exposed under an id a
+	// restarted process could reuse.
+	cp := checkpoint{
 		Generation: next.gen,
 		UpdatedAt:  next.builtAt,
 		Watermark:  next.watermark(),
 		Files:      next.files,
-	})
+	}
+	err = saveCheckpoint(workdir, cp)
+	if err != nil {
+		a.mu.Lock()
+		a.cpFailed = true
+		a.mu.Unlock()
+		return nil, protocol.Errorf(protocol.CodeSourceUnavailable,
+			"clara-corpus: checkpoint generation %d: %v", next.gen, err)
+	}
+
 	a.mu.Lock()
-	// A generation that cannot be checkpointed still answers correctly; it only
-	// loses the ability to tell the next process what it read.
-	a.cpFailed = err != nil
+	a.snap, a.gen, a.prior = next, next.gen, cp
+	a.cpFailed = false
 	a.mu.Unlock()
 	return next, nil
 }
@@ -484,6 +501,9 @@ func (a *Adapter) healthOf(snap *snapshot) recall.Health {
 	if snap.obsFailed > 0 {
 		h.Diagnostics["failed_observation_lines"] = snap.obsFailed
 	}
+	if snap.duplicates > 0 {
+		h.Diagnostics["duplicate_records_resolved"] = snap.duplicates
+	}
 	if len(snap.schemas) > 0 {
 		h.Diagnostics["schema_versions"] = snap.schemas
 	}
@@ -507,7 +527,7 @@ func (a *Adapter) healthOf(snap *snapshot) recall.Health {
 func (a *Adapter) degraded(err error) recall.Health {
 	h := adapter.Unhealthy(err)
 	a.mu.RLock()
-	snap, prior, identity := a.snap, a.prior, a.identity
+	snap, prior, identity, cpFailed := a.snap, a.prior, a.identity, a.cpFailed
 	a.mu.RUnlock()
 	if identity != "" {
 		if h.Diagnostics == nil {
@@ -517,6 +537,12 @@ func (a *Adapter) degraded(err error) recall.Health {
 		// instance still names which store it was configured to own, and
 		// doctor's isolation check has to see both halves of a collision.
 		h.Diagnostics[protocol.DiagStoreIdentity] = identity
+	}
+	if cpFailed {
+		if h.Diagnostics == nil {
+			h.Diagnostics = map[string]any{}
+		}
+		h.Diagnostics["checkpoint_unwritable"] = true
 	}
 	switch {
 	case snap != nil:

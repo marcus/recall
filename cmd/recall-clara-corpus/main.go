@@ -5,8 +5,8 @@
 // One instance serves one store — `store = "signals"` or `store = "memory"` —
 // because a signal and a memory record have different authority, different
 // freshness meaning, and want different priors. Read
-// cmd/recall-clara-corpus/claracorpus for what the adapter declares and why,
-// and cmd/recall-clara-corpus/conformance for what the wire looks like.
+// internal/adapters/claracorpus for what the adapter declares and why,
+// and its conformance directory for what the wire looks like.
 //
 // Usage:
 //
@@ -27,8 +27,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/marcus/recall/cmd/recall-clara-corpus/claracorpus"
 	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/buildinfo"
 )
 

@@ -1,27 +1,28 @@
-package main_test
+package claracorpus_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"flag"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/conformance"
 )
 
-// The conformance suite drives the real binary in a real process.
+// The conformance suite drives the built-in adapter over its real wire
+// transport. The compatibility command serves this same implementation.
 //
 // docs/adapter-protocol.md#conformance calls for recorded transcripts, and a
-// transcript recorded against an in-process fixture would prove the fixture.
-// Every case here starts cmd/recall-clara-corpus, writes request.jsonl to its
-// stdin, and compares what comes back on its stdout with response.jsonl.
+// transcript recorded against a second implementation would prove the fixture.
+// Every case here serves the actual built-in adapter, writes request.jsonl to
+// its stdin, and compares what comes back on its stdout with response.jsonl.
 // Rerecord with:
 //
-//	go test ./cmd/recall-clara-corpus -run TestConformance -record
+//	go test ./internal/adapters/claracorpus -run TestConformance -record
 //
 // The replaying is internal/conformance, which is the same engine behind
 // `recall doctor --conformance`. That is deliberate: a suite verified by a
@@ -49,29 +50,6 @@ const (
 	requiredCases = 11
 )
 
-// binPath is the adapter binary under test, built once in TestMain.
-var binPath string
-
-func TestMain(m *testing.M) {
-	flag.Parse()
-	dir, err := os.MkdirTemp("", "recall-clara-corpus-bin")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "conformance: temp dir:", err)
-		os.Exit(1)
-	}
-	binPath = filepath.Join(dir, "recall-clara-corpus")
-	build := exec.Command("go", "build", "-o", binPath, ".")
-	build.Stderr = os.Stderr
-	if err := build.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "conformance: build:", err)
-		_ = os.RemoveAll(dir)
-		os.Exit(1)
-	}
-	code := m.Run()
-	_ = os.RemoveAll(dir)
-	os.Exit(code)
-}
-
 func TestConformance(t *testing.T) {
 	suite, err := conformance.LoadSuite(suiteRoot)
 	if err != nil {
@@ -81,15 +59,14 @@ func TestConformance(t *testing.T) {
 		t.Fatalf("expected %d conformance cases, found %d", requiredCases, len(suite))
 	}
 
-	target := conformance.Command(binPath)
 	for _, tr := range suite {
 		t.Run(tr.Manifest.Case, func(t *testing.T) {
-			res, err := conformance.Replay(t.Context(), tr, target, conformance.Options{})
+			res, err := conformance.Replay(t.Context(), tr, servedAdapter, conformance.Options{})
 			if err != nil {
 				t.Fatalf("replay: %v", err)
 			}
 			if *rerecord {
-				record(t, tr.Dir, res.Responses)
+				record(t, tr.Dir, res.Responses, res.Volatile)
 				return
 			}
 			if !res.OK() {
@@ -132,16 +109,69 @@ func TestEveryCaseIsExercisedByTheSuite(t *testing.T) {
 // agree again. Writing the frames here and letting the next load enforce the
 // count is what keeps that check strict rather than working around it: a
 // recording with the wrong number of frames fails the very next run.
-func record(t *testing.T, dir string, frames [][]byte) {
+func record(t *testing.T, dir string, frames [][]byte, volatile []string) {
 	t.Helper()
 	path := filepath.Join(dir, "response.jsonl")
-	if err := os.WriteFile(path, bytes.Join(append(frames, nil), []byte("\n")), 0o600); err != nil {
+	body := bytes.Join(append(conformance.Redact(frames, volatile), nil), []byte("\n"))
+	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
-	for i, frame := range frames {
-		if !json.Valid(frame) {
-			t.Fatalf("frame %d is not JSON: %s", i+1, frame)
-		}
-	}
 	t.Logf("recorded %d responses into %s", len(frames), path)
+}
+
+func TestRecorderRedactsMachinePathsBeforeWritingTranscripts(t *testing.T) {
+	dir := t.TempDir()
+	frames := [][]byte{[]byte(
+		`{"jsonrpc":"2.0","id":1,"result":{"diagnostics":{"store_identity":"/Users/example/private/corpus#signals"}}}`,
+	)}
+	record(t, dir, frames, []string{"/result/diagnostics/store_identity"})
+	body, err := os.ReadFile(filepath.Join(dir, "response.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(body, []byte("/Users/")) {
+		t.Fatalf("recorded transcript leaked a machine path: %s", body)
+	}
+	if !bytes.Contains(body, []byte("volatile")) {
+		t.Fatalf("recorded transcript did not use the canonical redactor: %s", body)
+	}
+}
+
+// servedAdapter exposes the built-in over the same framed stream external
+// adapters use. The conformance harness therefore exercises protocol serving,
+// cancellation, and shutdown as well as the implementation compiled into
+// Recall.
+func servedAdapter(ctx context.Context) (*conformance.Process, error) {
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		_ = inR.Close()
+		_ = inW.Close()
+		return nil, err
+	}
+
+	served, cancel := context.WithCancel(ctx)
+	a := claracorpus.New(claracorpus.Options{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = adapter.Serve(served, inR, outW, a)
+		_ = outW.Close()
+		_ = inR.Close()
+	}()
+
+	return &conformance.Process{
+		Stdin:  inW,
+		Stdout: outR,
+		Stop: func() {
+			_ = inW.Close()
+			cancel()
+			<-done
+			_ = a.Close()
+			_ = outR.Close()
+		},
+	}, nil
 }

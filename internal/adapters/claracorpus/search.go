@@ -131,6 +131,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		// what is unknown is what the owner did about some of them.
 		diag["failed_observation_records"] = snap.obsFailed
 	}
+	if snap.duplicates > 0 {
+		diag["duplicate_records_resolved"] = snap.duplicates
+	}
 	if len(snap.absent) > 0 {
 		diag["absent_files"] = snap.absent
 	}
@@ -183,15 +186,18 @@ func candidateOf(h hit, rank int, snap *snapshot, s session, terms int) recall.C
 		LocalRank:      rank,
 		LocalScore:     &local,
 		MatchSignals:   signals,
-		// Recall read this record when the generation was built; the generation
-		// was built over a complete pass of every store file, which is what
-		// confirms it. Both are the same instant here and mean different things.
+		// Recall observed this record when the generation was built.
 		ObservedAt:         &snap.builtAt,
-		ConfirmedAt:        &snap.builtAt,
 		SourceRevision:     snap.generation(),
 		Sensitivity:        it.sensitivity,
 		Metadata:           meta,
 		ContentFingerprint: it.fingerprint,
+	}
+	if snap.coverage() == recall.IndexComplete {
+		// Confirmation means a complete scan established the record against the
+		// whole declared store. A partial generation observed this candidate but
+		// cannot honestly confirm it.
+		c.ConfirmedAt = &snap.builtAt
 	}
 	if !it.eventTime.IsZero() {
 		event := it.eventTime

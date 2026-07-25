@@ -50,11 +50,18 @@ func clip(s string, limit int) string {
 	if len(s) <= limit {
 		return s
 	}
-	cut := limit
+	if limit <= 0 {
+		return ""
+	}
+	const ellipsis = "…"
+	if limit < len(ellipsis) {
+		return clipBytes(s, limit)
+	}
+	cut := limit - len(ellipsis)
 	for cut > 0 && !utf8Start(s[cut]) {
 		cut--
 	}
-	return strings.TrimSpace(s[:cut]) + "…"
+	return strings.TrimSpace(s[:cut]) + ellipsis
 }
 
 // clipBytes cuts at a rune boundary without adding an ellipsis, for an

@@ -1,6 +1,7 @@
-// Package claracorpus is Recall's external adapter for a Clara corpus: the
-// JSONL stores under a corpus `data/` directory, spoken as newline-delimited
-// JSON-RPC 2.0 on stdio.
+// Package claracorpus is Recall's built-in adapter for a Clara corpus: the
+// JSONL stores under a corpus `data/` directory. The compatibility
+// recall-clara-corpus command serves the same implementation over
+// newline-delimited JSON-RPC 2.0 on stdio.
 //
 // Clara (https://github.com/marcus/clara, system code at ~/code/clara, corpus
 // at ~/code/clara-home) keeps three things this adapter can answer questions
@@ -125,8 +126,8 @@
 // docs/spec.md#index-obligations forbids outright.
 //
 // So the projection is rebuilt whole whenever a store file's size or
-// modification time changes, checked before every search, published atomically
-// as a new generation and checkpointed in the handshake's workdir afterwards.
+// modification time changes, checked before every search, checkpointed
+// durably, and only then published atomically as a new in-memory generation.
 // A rebuild honors deletion for free. The files are small — a mature personal
 // corpus is measured in thousands of lines — so "whole" costs less than the
 // bookkeeping a cursor would need to be correct.

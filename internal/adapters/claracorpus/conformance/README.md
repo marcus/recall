@@ -4,7 +4,7 @@ Recorded transcripts in the layout
 [docs/adapter-protocol.md](../../../docs/adapter-protocol.md#conformance)
 requires. The format itself — manifests, placeholders, the lockstep flow,
 volatile fields — is specified once in
-[cmd/recall-stream/conformance/FORMAT.md](../../recall-stream/conformance/FORMAT.md)
+[cmd/recall-stream/conformance/FORMAT.md](../../../cmd/recall-stream/conformance/FORMAT.md)
 and is not adapter-specific. Four things here are.
 
 ## Every record in every fixture is invented
@@ -40,10 +40,15 @@ key, declared in the settings schema, refused on a signals instance where
 nothing ages anything, and it is what makes an evaluation pack over a memory
 corpus reproducible as well.
 
-Nothing else in a recording depends on a clock. Watermarks count records and
-bytes and name the newest date the records themselves carry, deliberately not a
-modification time: a checkout does not preserve one, and a watermark that moved
-with the filesystem rather than with the data would say nothing true.
+Nothing else in a recording depends on a clock. Watermarks carry a deterministic
+content digest alongside record/byte counts and the newest record date,
+deliberately not a modification time: a checkout does not preserve one, and a
+watermark that moved with the filesystem rather than with the data would say
+nothing true.
+
+The memory search fixture deliberately repeats one id. Its later line is the
+candidate the search returns and the locator expands, holding the adapter's
+deterministic repair-time last-write rule on the real protocol transport.
 
 ## `search-unavailable` has a directory where a file should be
 
@@ -62,7 +67,7 @@ frame missing it differs from a recorded frame that has it.
 ## Re-recording
 
 ```sh
-go test ./cmd/recall-clara-corpus -run TestConformance -record
+go test ./internal/adapters/claracorpus -run TestConformance -record
 ```
 
 `response.jsonl` is recorded, never written by hand: a transcript written by

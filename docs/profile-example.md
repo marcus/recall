@@ -154,21 +154,20 @@ on a subject-key convention the corpus does not enforce.
 
 ### Worked wiring
 
-Both stores are served by `recall-clara-corpus`, one instance each. They are
-never one blended source: a signal is evidence about an external system and a
-memory record is a durable local conclusion with its own decay, and
+Both stores are served by the built-in `clara-corpus` adapter, one instance
+each. The compatibility `recall-clara-corpus` command exposes the same adapter
+over stdio for older integrations and protocol testing. They are never one
+blended source: a signal is evidence about an external system and a memory
+record is a durable local conclusion with its own decay, and
 [what counts as a source](spec.md#what-counts-as-a-source) follows retrieval
 semantics rather than filesystem boundaries.
 
-This goes in the **user** layer, beside the other adapter declarations. It is
-an example, not the live file.
+This goes in the **user** layer. `clara-corpus` is compiled into Recall, so no
+`[adapters.clara-corpus]` command declaration is needed or allowed. The source
+instances keep the same adapter name and settings as the earlier external
+command configuration. This is an example, not the live file.
 
 ```toml
-[adapters.clara-corpus]
-command = "recall-clara-corpus"
-freshness_modes = ["indexed"]
-conformance = "/Users/example/code/recall/cmd/recall-clara-corpus/conformance"
-
 # --- Clara signals ----------------------------------------------------------
 # What upstream systems have been asking of Marcus, as Clara normalized it,
 # with the observation log projected on top. Below `tasks`: a signal is a

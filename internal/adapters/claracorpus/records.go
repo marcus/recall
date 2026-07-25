@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -347,8 +346,6 @@ func buildMemoryItems(snap *snapshot, records []memRecord, s session, at time.Ti
 			mem:         &r,
 			dec:         effectiveDecay(r.weight, r.halfLife, r.lastSeen, r.created, today),
 			decays:      true,
-			fingerprint: fingerprint("mem", r.id, r.lastSeen.String(),
-				strconv.FormatFloat(r.weight, 'f', -1, 64), strconv.Itoa(r.hits)),
 		}
 		switch {
 		case r.archived:
@@ -406,6 +403,7 @@ func buildMemoryItems(snap *snapshot, records []memRecord, s session, at time.Ti
 			meta["disabled"] = true
 		}
 		it.metadata = meta
+		it.fingerprint = memoryFingerprint(r, it)
 
 		snap.items = append(snap.items, it)
 		snap.count(it.standing)
@@ -461,9 +459,7 @@ func buildSignalItems(snap *snapshot, records []sigRecord, s session) {
 			identifiers: []string{r.id, r.ref, r.sourceID, r.occurrenceID, r.local()},
 			sensitivity: s.floor,
 			sig:         &r,
-			fingerprint: fingerprint("sig", r.id, r.lastSeen.String(),
-				strconv.Itoa(r.runCount), r.lifecycleState, r.status),
-			derived: signalEdges(r, s),
+			derived:     signalEdges(r, s),
 		}
 		if correspondence(r.source) {
 			it.sensitivity = it.sensitivity.Raise(recall.SensitivityConfidential)
@@ -544,11 +540,56 @@ func buildSignalItems(snap *snapshot, records []sigRecord, s session) {
 			meta["action_count"] = r.actionCount
 		}
 		it.metadata = meta
+		it.fingerprint = signalFingerprint(r, it)
 
 		snap.items = append(snap.items, it)
 		snap.count(it.standing)
 		snap.observe(r.lastSeen, r.firstSeen)
 	}
+}
+
+// memoryFingerprint and signalFingerprint cover the complete semantic record
+// plus every adapter-owned interpretation that can change a candidate. This is
+// intentionally broader than revision metadata: body/title changes, lineage
+// remapping, sensitivity raises, and decay changes must all stop two unlike
+// candidates from collapsing as corroboration.
+func memoryFingerprint(r memRecord, it item) string {
+	return fingerprintValue(map[string]any{
+		"schema": r.schema, "id": r.id, "kind": r.kind, "subject": r.subject,
+		"title": r.title, "body": r.body, "weight": r.weight,
+		"half_life_days": r.halfLife, "created": r.created.String(),
+		"last_seen": r.lastSeen.String(), "hits": r.hits, "tags": r.tags,
+		"links": r.links, "source": r.source, "disabled": r.disabled,
+		"archived": r.archived, "effect_source": r.effectSource,
+		"effect_kind": r.effectKind, "effect_direction": r.effectDirection,
+		"provenance_type": r.provenanceType, "provenance_refs": r.provenanceRefs,
+		"provenance_threshold": r.threshold, "derived_from": it.derived,
+		"sensitivity": it.sensitivity, "standing": it.standing.String(),
+		"effective_weight": it.dec.Effective, "age_days": it.dec.AgeDays,
+		"decay_basis": it.dec.Basis,
+	})
+}
+
+func signalFingerprint(r sigRecord, it item) string {
+	return fingerprintValue(map[string]any{
+		"schema": r.schema, "id": r.id, "source": r.source, "kind": r.kind,
+		"ref": r.ref, "source_id": r.sourceID, "occurrence_id": r.occurrenceID,
+		"content_trust": r.contentTrust, "title": r.title, "url": r.url,
+		"status": r.status, "priority": r.priority, "assignee": r.assignee,
+		"reporter": r.reporter, "requester": r.requester, "people": r.people,
+		"is_direct": r.isDirect, "direct_kind": r.directKind,
+		"occurred_at": r.occurredAt, "created_at": r.createdAt,
+		"updated_at": r.updatedAt, "starts_at": r.startsAt, "ends_at": r.endsAt,
+		"due": r.due.String(), "first_seen": r.firstSeen.String(),
+		"last_seen": r.lastSeen.String(), "last_confirmed": r.lastConfirmed.String(),
+		"run_count": r.runCount, "lifecycle_state": r.lifecycleState,
+		"inactive_reason": r.inactiveReason, "inactive_at": r.inactiveAt.String(),
+		"archived_at": r.archivedAt.String(), "summary": r.summary,
+		"raw_excerpt": r.rawExcerpt, "archived": r.archived,
+		"last_action": r.lastAction, "last_action_at": r.lastActionAt,
+		"action_count": r.actionCount, "derived_from": it.derived,
+		"sensitivity": it.sensitivity, "standing": it.standing.String(),
+	})
 }
 
 // signalEdges names the upstream record this signal projects.
