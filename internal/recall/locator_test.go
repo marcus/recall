@@ -120,3 +120,13 @@ func TestLocatorJSONIsDisplayForm(t *testing.T) {
 		t.Errorf("unmarshal invented a source_uid: %q", got.SourceUID)
 	}
 }
+
+// A locator naming no source would serialize to a bare local part that
+// ParseLocator cannot read back. Emitting it would produce something that
+// looks like a locator and is not one, so marshaling refuses.
+func TestSourcelessLocatorRefusesToSerialize(t *testing.T) {
+	_, err := json.Marshal(recall.Locator{Local: "td-f62256"})
+	if !errors.Is(err, recall.ErrUnresolvedLocator) {
+		t.Fatalf("err = %v, want ErrUnresolvedLocator", err)
+	}
+}

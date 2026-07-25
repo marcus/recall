@@ -67,10 +67,6 @@ func (c Code) String() string {
 	return fmt.Sprintf("code(%d)", int(c))
 }
 
-// Recall reports whether the code is one of Recall's, as opposed to a
-// transport-level JSON-RPC failure.
-func (c Code) Recall() bool { return c >= CodeBudgetExceeded && c <= CodeSourceUnavailable }
-
 // Error is a JSON-RPC error object and a Go error.
 //
 // Matching is by code: every sentinel below is an *Error carrying only a code,

@@ -34,8 +34,6 @@ type Explanation struct {
 
 	// RankConstant is the fusion constant in force for this request.
 	RankConstant float64 `json:"rank_constant"`
-
-	Suppressions []string `json:"suppressions,omitempty"`
 }
 
 // PriorExplanation shows the query-dependent source prior that was applied and

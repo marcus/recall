@@ -4,13 +4,29 @@
   "title": "recall/initialize params",
   "description": "Version range plus a writable workdir. Negotiation happens once, here.",
   "type": "object",
-  "required": ["protocol_version_min", "protocol_version_max", "workdir"],
+  "required": [
+    "protocol_version_min",
+    "protocol_version_max",
+    "workdir",
+    "source_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "protocol_version_min": { "type": "integer", "minimum": 1 },
-    "protocol_version_max": { "type": "integer", "minimum": 1 },
+    "protocol_version_min": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "protocol_version_max": {
+      "type": "integer",
+      "minimum": 1
+    },
     "workdir": {
       "description": "Writable directory under Recall's state directory. An adapter writes indexes and checkpoints only here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source_id": {
+      "description": "Display name this instance is configured under. Locator text is <source_id>:<local>. Not identity; the core overwrites the source part of every returned locator.",
       "type": "string",
       "minLength": 1
     },
@@ -20,7 +36,10 @@
     },
     "settings": {
       "description": "Adapter-owned settings, shaped by the manifest's settings_schema.",
-      "type": ["object", "null"]
+      "type": [
+        "object",
+        "null"
+      ]
     }
   }
 }

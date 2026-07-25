@@ -144,6 +144,7 @@ func TestRoundTrip(t *testing.T) {
 		ProtocolVersionMin: protocol.MinVersion,
 		ProtocolVersionMax: protocol.MaxVersion,
 		Workdir:            t.TempDir(),
+		SourceID:           "tasks",
 	}, &manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -474,6 +475,7 @@ func TestHandshakeRefusesAnUnsatisfiableRange(t *testing.T) {
 		ProtocolVersionMin: 99,
 		ProtocolVersionMax: 100,
 		Workdir:            t.TempDir(),
+		SourceID:           "tasks",
 	}, &manifest)
 	if err == nil {
 		t.Fatal("an unsatisfiable range must fail the handshake, not degrade")

@@ -33,9 +33,12 @@ var (
 // uses SourceUID so stored references survive a rename. Only the owning adapter
 // interprets Local.
 //
-// A locator arriving from an adapter carries Local only; the core attaches
-// identity. A locator naming another source, as a derived_from edge does,
-// carries SourceID and is resolved against the profile.
+// Locators are always written in display form, including by adapters, which
+// receive their configured SourceID at handshake for exactly this reason. The
+// core overwrites the source part of a candidate's own locator with the
+// identity configuration assigned, so a forged prefix cannot make one source
+// answer as another. Only a derived_from edge's prefix is taken at face value,
+// and that edge is resolved against the profile and dropped when unknown.
 type Locator struct {
 	SourceID  string    `json:"source_id,omitempty"`
 	SourceUID SourceUID `json:"source_uid,omitempty"`
@@ -119,9 +122,17 @@ func (l Locator) LineageRoot() (LineageRoot, error) {
 // MarshalJSON emits display form. Locators appear in results, and a result is
 // something a person reads and pastes back; the structured identity travels in
 // [Candidate.SourceUID] alongside it.
+//
+// A locator naming no source is refused rather than emitted. Its text would be
+// a bare local part, which [ParseLocator] cannot read back, so serializing it
+// would produce a value that looks like a locator and is not one.
 func (l Locator) MarshalJSON() ([]byte, error) {
 	if l.Zero() {
 		return []byte(`""`), nil
+	}
+	if l.SourceID == "" && l.SourceUID == "" {
+		return nil, fmt.Errorf("%w %q: names no source, so it could not be read back",
+			ErrUnresolvedLocator, l.Local)
 	}
 	return json.Marshal(l.String())
 }

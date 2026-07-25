@@ -29,7 +29,8 @@ socket or HTTP.
 ## Methods
 
 ```text
-recall/initialize   handshake: version range + workdir -> manifest, capabilities
+recall/initialize   handshake: version range, workdir, source_id, location,
+                    settings -> manifest, capabilities
 recall/search       search request -> candidates envelope
 recall/expand       locator + budget -> evidence
 recall/health       probe -> health report
@@ -50,6 +51,14 @@ Rules:
   manifest.
 - `recall/initialize` supplies a writable `workdir` under Recall's state
   directory. An adapter writes indexes and checkpoints only there.
+- `recall/initialize` also supplies the instance's configured `source_id`,
+  because locator text is `<source_id>:<local>` and adapters write their own
+  locators. This is a name, not identity: the core attaches `source_uid` and
+  overwrites the source part of every locator an adapter returns, so a forged
+  prefix cannot make one source answer as another. Only a `derived_from`
+  prefix is read at face value, and an unknown one is dropped.
+- `recall/cancel` takes `{"id": <request id>}`. `recall/shutdown` takes `{}`
+  and returns `{}`.
 
 ## Errors
 
@@ -80,13 +89,22 @@ record_types         person | task | document | message | event | ...
 query_modes          exact | lexical | semantic | structured | temporal
 freshness_modes      live | indexed | hybrid  (supported set)
 as_of_support        none | filter | snapshot
-derives_from         optional source_uid this source projects wholesale
+derives_from         optional source_id this source projects wholesale. A
+                     name, not an identity: an adapter cannot know another
+                     instance's generated source_uid. The core resolves it and
+                     drops the edge when the named source is not configured.
 capabilities         search | expand | enumerate | checkpoint | context_expansion
 max_concurrency      optional, default unbounded
 freshness_policy     expected refresh or verification behavior
 sensitivity          default classification floor
 settings_schema      JSON Schema for the instance's settings block
 ```
+
+`settings_schema` arrives in the initialize *result*, after the core has
+already sent `settings`. On a first handshake the adapter therefore validates
+its own settings and fails the handshake with a readable error. The core
+validates against the schema it already holds on every later handshake, and
+`recall doctor` uses it to check configuration without starting a query.
 
 The manifest describes the adapter's capabilities. Identity, priors, and
 policy come from configuration; an adapter never names its own `source_uid`.

@@ -188,6 +188,14 @@ type InitializeParams struct {
 
 	Workdir string `json:"workdir"`
 
+	// SourceID is the display name this instance was configured under. An
+	// adapter needs it because locator text is "<source_id>:<local>" and it
+	// writes its own locators. It is NOT identity: the core attaches the
+	// immutable source_uid and overwrites the source part of every locator an
+	// adapter returns, so a forged prefix cannot make one source answer as
+	// another.
+	SourceID string `json:"source_id"`
+
 	// Location is the configured path, endpoint, or connection reference for
 	// this source instance.
 	Location string `json:"location,omitempty"`

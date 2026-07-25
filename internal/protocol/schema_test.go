@@ -38,6 +38,7 @@ func TestGoTypesSatisfyTheirSchemas(t *testing.T) {
 			value: protocol.InitializeParams{
 				ProtocolVersionMin: 1, ProtocolVersionMax: 1,
 				Workdir:  "/state/recall/work/tasks",
+				SourceID: "tasks",
 				Location: "/home/u/tasks.db",
 				Settings: map[string]any{"read_only": true},
 			},
