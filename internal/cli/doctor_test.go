@@ -129,14 +129,15 @@ source_id = "mail"
 adapter = "fakedocs"
 freshness_mode = "indexed"
 location = %q
+%s
 
 [profiles.work]
 sources = ["mail"]
 `
-	run := func(t *testing.T, location string) cli.Diagnosis {
+	run := func(t *testing.T, location, kindDeclaration string) cli.Diagnosis {
 		t.Helper()
 		h := newHarness(t, harnessOptions{
-			userTOML: fmt.Sprintf(withLocation, location),
+			userTOML: fmt.Sprintf(withLocation, location, kindDeclaration),
 			adapters: fakeAdapters(map[string]*fake{"fakedocs": {manifest: manifest()}}),
 		})
 		_, stdout, _ := h.run("doctor", "--json")
@@ -147,7 +148,7 @@ sources = ["mail"]
 		return d
 	}
 
-	opaque := run(t, "marcus@vorwaller.net")
+	opaque := run(t, "marcus@vorwaller.net", "")
 	if got := checkStatus(t, opaque, "access"); got != cli.CheckPass {
 		t.Errorf("opaque identifier access = %q, want pass", got)
 	}
@@ -157,7 +158,17 @@ sources = ["mail"]
 		}
 	}
 
-	path := run(t, "./definitely-missing")
+	slashOpaque := run(t, "mailboxes/team/inbox", `location_kind = "opaque"`)
+	if got := checkStatus(t, slashOpaque, "access"); got != cli.CheckPass {
+		t.Errorf("slash-bearing opaque identifier access = %q, want pass", got)
+	}
+
+	oneLetterURI := run(t, "x:opaque", "")
+	if got := checkStatus(t, oneLetterURI, "access"); got != cli.CheckPass {
+		t.Errorf("one-letter URI access = %q, want pass", got)
+	}
+
+	path := run(t, "./definitely-missing", "")
 	if got := checkStatus(t, path, "access"); got != cli.CheckFail {
 		t.Errorf("missing filesystem path access = %q, want fail", got)
 	}

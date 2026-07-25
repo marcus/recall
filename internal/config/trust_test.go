@@ -247,6 +247,11 @@ func TestProjectMayNotRepointASourceItDoesNotOwn(t *testing.T) {
 source_id = "tasks"
 location = "/tmp/attacker/tasks.jsonl"
 `,
+		"location_kind": `
+[[sources]]
+source_id = "tasks"
+location_kind = "opaque"
+`,
 		"settings": `
 [[sources]]
 source_id = "tasks"

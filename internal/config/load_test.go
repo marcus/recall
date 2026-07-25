@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -328,6 +329,87 @@ location = "` + account + `"
 	}
 	if got.DeclaredLocation != account || got.LocationKind != config.LocationOpaque || got.LocationRewritten {
 		t.Errorf("location decision = declared %q, kind %q, rewritten %v", got.DeclaredLocation, got.LocationKind, got.LocationRewritten)
+	}
+	if got.LocationKindExplicit {
+		t.Error("legacy opaque location must report inferred kind")
+	}
+}
+
+func TestExplicitLocationKindPreservesAmbiguousIdentifiers(t *testing.T) {
+	const mailbox = "mailboxes/team/inbox"
+	body := `
+[[sources]]
+source_id = "mail"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "` + mailbox + `"
+location_kind = "opaque"
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	got := source(t, cfg, "mail")
+	if got.Location != mailbox || got.LocationKind != config.LocationOpaque ||
+		!got.LocationKindExplicit || got.LocationRewritten {
+		t.Fatalf("explicit opaque location = %+v", got)
+	}
+}
+
+func TestOneLetterURISchemeRemainsURI(t *testing.T) {
+	const location = "x:opaque"
+	body := `
+[[sources]]
+source_id = "device"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "` + location + `"
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	got := source(t, cfg, "device")
+	if got.Location != location || got.LocationKind != config.LocationScheme ||
+		got.LocationKindExplicit || got.LocationRewritten {
+		t.Fatalf("one-letter URI = %+v", got)
+	}
+}
+
+func TestExplicitPathPreservesForeignWindowsSyntax(t *testing.T) {
+	const location = `C:\Users\Marcus\Mail`
+	body := `
+[[sources]]
+source_id = "mail"
+adapter = "documents"
+freshness_mode = "indexed"
+location = 'C:\Users\Marcus\Mail'
+location_kind = "path"
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	got := source(t, cfg, "mail")
+	if got.LocationKind != config.LocationPath || !got.LocationKindExplicit {
+		t.Fatalf("explicit Windows path = %+v", got)
+	}
+	if runtime.GOOS != "windows" && got.Location != location {
+		t.Fatalf("foreign Windows path = %q, want preserved %q", got.Location, location)
+	}
+}
+
+func TestLocationKindValidationFailsLoudly(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields, want string
+	}{
+		{"without location", `location_kind = "opaque"`, "must be declared alongside location"},
+		{"unknown", "location = \"mail\"\nlocation_kind = \"identifier\"", "want path, opaque, or uri"},
+		{"uri without scheme", "location = \"mail\"\nlocation_kind = \"uri\"", "requires a URI scheme"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `
+[[sources]]
+source_id = "mail"
+adapter = "documents"
+freshness_mode = "indexed"
+` + tc.fields
+			_, err := load(t, "testdata/home", writeProject(t, body))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

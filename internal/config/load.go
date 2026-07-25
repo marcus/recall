@@ -334,9 +334,10 @@ func (c *Config) overlaySource(f sourceFile, key string, inst *SourceInstance, r
 		// unvalidated at load, so a key like `cli` can name a program without
 		// ever looking like an executable key to the trust scan.
 		for field, declared := range map[string]bool{
-			"location": raw.Location != nil,
-			"settings": raw.Settings != nil,
-			"enabled":  raw.Enabled != nil,
+			"location":      raw.Location != nil,
+			"location_kind": raw.LocationKind != nil,
+			"settings":      raw.Settings != nil,
+			"enabled":       raw.Enabled != nil,
 		} {
 			if !declared {
 				continue
@@ -380,16 +381,27 @@ func (c *Config) applyRaw(f sourceFile, key string, inst *SourceInstance, raw ra
 		inst.Adapter = *raw.Adapter
 		set("adapter")
 	}
+	if raw.LocationKind != nil && raw.Location == nil {
+		probs.add(invalidErrorf(f.Path, key+".location_kind",
+			"location_kind must be declared alongside location in the same source entry"))
+	}
 	if raw.Location != nil {
-		location, err := resolveLocation(*raw.Location, f.Dir)
+		location, err := resolveLocation(*raw.Location, f.Dir, raw.LocationKind)
 		if err != nil {
 			probs.add(invalidErrorf(f.Path, key+".location", "%s", err))
 		} else {
 			inst.DeclaredLocation = location.declared
 			inst.Location = location.resolved
 			inst.LocationKind = location.kind
+			inst.LocationKindExplicit = location.kindExplicit
 			inst.LocationRewritten = location.rewritten
 			set("location")
+			inst.origins["location_kind"] = f.Origin
+			if location.kindExplicit {
+				inst.keys["location_kind"] = key + ".location_kind"
+			} else {
+				inst.keys["location_kind"] = key + ".location"
+			}
 		}
 	}
 	if raw.Enabled != nil {

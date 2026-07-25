@@ -87,6 +87,13 @@ source_id = "notes"
 adapter = "documents"
 freshness_mode = "indexed"
 location = "./notes"
+
+[[sources]]
+source_id = "team-mailbox"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "mailboxes/team/inbox"
+location_kind = "opaque"
 `)
 	e := mustLoad(t, "testdata/home", projectFile).Explain()
 
@@ -100,6 +107,9 @@ location = "./notes"
 	if got := mail.Fields["location_kind"].Value; got != "opaque" {
 		t.Errorf("opaque kind = %q", got)
 	}
+	if got := mail.Fields["location_kind_explicit"].Value; got != false {
+		t.Errorf("opaque kind explicit = %v", got)
+	}
 	if got := mail.Fields["location_rewritten"].Value; got != false {
 		t.Errorf("opaque rewritten = %v", got)
 	}
@@ -111,11 +121,28 @@ location = "./notes"
 	if got := notes.Fields["location_kind"].Value; got != "path" {
 		t.Errorf("path kind = %q", got)
 	}
+	if got := notes.Fields["location_kind_explicit"].Value; got != false {
+		t.Errorf("path kind explicit = %v", got)
+	}
 	if got := notes.Fields["location_rewritten"].Value; got != true {
 		t.Errorf("path rewritten = %v", got)
 	}
 	if got, _ := notes.Fields["location"].Value.(string); !strings.HasSuffix(got, "/notes") {
 		t.Errorf("path resolved = %q, want absolute notes path", got)
+	}
+
+	mailbox := explainedSource(t, e, "team-mailbox")
+	if got := mailbox.Fields["location"].Value; got != "mailboxes/team/inbox" {
+		t.Errorf("mailbox resolved = %q", got)
+	}
+	if got := mailbox.Fields["location_kind"].Value; got != "opaque" {
+		t.Errorf("mailbox kind = %q", got)
+	}
+	if got := mailbox.Fields["location_kind_explicit"].Value; got != true {
+		t.Errorf("mailbox kind explicit = %v", got)
+	}
+	if got := mailbox.Fields["location_rewritten"].Value; got != false {
+		t.Errorf("mailbox rewritten = %v", got)
 	}
 }
 

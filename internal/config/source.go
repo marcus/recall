@@ -159,17 +159,18 @@ type Builtin struct {
 	FreshnessModes []recall.FreshnessMode
 }
 
-// LocationKind is the syntactic contract Recall applied to a source location.
-// It is recorded on the resolved source so every consumer makes the same
-// decision; in particular, doctor must not rediscover "path or identifier"
-// from the resolved string.
+// LocationKind is the effective semantic contract for a source location. It is
+// explicit when configuration declares location_kind and otherwise inferred by
+// the documented compatibility rule. Recording it on the resolved source keeps
+// every consumer on the same decision; in particular, doctor must not
+// rediscover "path or identifier" from the resolved string.
 type LocationKind string
 
 const (
 	LocationEmpty  LocationKind = "empty"
 	LocationPath   LocationKind = "path"
 	LocationOpaque LocationKind = "opaque"
-	LocationScheme LocationKind = "scheme"
+	LocationScheme LocationKind = "uri"
 )
 
 // SourceInstance is one configured use of an adapter: its own identity,
@@ -190,9 +191,10 @@ type SourceInstance struct {
 	// DeclaredLocation is the exact configured value. Location is what the
 	// adapter receives after path resolution; for opaque identifiers and
 	// schemes the two are identical.
-	DeclaredLocation  string       `json:"declared_location,omitempty"`
-	LocationKind      LocationKind `json:"location_kind"`
-	LocationRewritten bool         `json:"location_rewritten"`
+	DeclaredLocation     string       `json:"declared_location,omitempty"`
+	LocationKind         LocationKind `json:"location_kind"`
+	LocationKindExplicit bool         `json:"location_kind_explicit"`
+	LocationRewritten    bool         `json:"location_rewritten"`
 
 	// RecordTypes optionally narrows the source below the adapter's default
 	// scope. Empty means the adapter's default.

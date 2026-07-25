@@ -117,28 +117,33 @@ func DiscoverProject(dir string) (string, error) {
 }
 
 type locationResolution struct {
-	declared  string
-	resolved  string
-	kind      LocationKind
-	rewritten bool
+	declared     string
+	resolved     string
+	kind         LocationKind
+	kindExplicit bool
+	rewritten    bool
 }
 
 // resolveLocation turns a declared location into the form an adapter receives.
 //
-// Location is deliberately a sum type encoded as a string. Bare values are
-// opaque adapter identifiers. A value is a path only when it uses filesystem
-// syntax: an absolute or explicitly relative prefix, a home prefix, a path
-// separator, or a Windows drive/UNC form. URI schemes are opaque connection
-// references. This rule is syntactic: it never changes because a similarly
-// named file happens to exist.
+// Location is deliberately a sum type. location_kind is the authoritative
+// discriminator when declared. Legacy entries without it retain syntax-based
+// inference: URI syntax first, then explicit filesystem syntax, then opaque.
+// Ambiguous values (slash-bearing identifiers and Windows drive syntax in
+// particular) should declare their kind instead of relying on inference.
 //
 // Relative paths resolve against the directory of the file that declared them,
 // never the working directory.
-func resolveLocation(location, dir string) (locationResolution, error) {
+func resolveLocation(location, dir string, declaredKind *string) (locationResolution, error) {
+	kind, explicit, err := resolveLocationKind(location, declaredKind)
+	if err != nil {
+		return locationResolution{}, err
+	}
 	result := locationResolution{
-		declared: location,
-		resolved: location,
-		kind:     classifyLocation(location),
+		declared:     location,
+		resolved:     location,
+		kind:         kind,
+		kindExplicit: explicit,
 	}
 
 	switch result.kind {
@@ -178,12 +183,32 @@ func resolveLocation(location, dir string) (locationResolution, error) {
 	}
 }
 
+func resolveLocationKind(location string, declared *string) (LocationKind, bool, error) {
+	if declared == nil {
+		return classifyLocation(location), false, nil
+	}
+	if location == "" {
+		return "", true, fmt.Errorf("location_kind %q requires a non-empty location", *declared)
+	}
+	switch *declared {
+	case string(LocationPath):
+		return LocationPath, true, nil
+	case string(LocationOpaque):
+		return LocationOpaque, true, nil
+	case string(LocationScheme):
+		if !hasURIScheme(location) {
+			return "", true, fmt.Errorf("location_kind %q requires a URI scheme in %q", *declared, location)
+		}
+		return LocationScheme, true, nil
+	default:
+		return "", true, fmt.Errorf("location_kind %q is invalid; want path, opaque, or uri", *declared)
+	}
+}
+
 func classifyLocation(location string) LocationKind {
 	switch {
 	case location == "":
 		return LocationEmpty
-	case isWindowsDrivePath(location):
-		return LocationPath
 	case hasURIScheme(location):
 		return LocationScheme
 	case location == ".", location == "..", location == "~":

@@ -50,6 +50,7 @@ type rawSource struct {
 	SourceID        *string              `toml:"source_id"`
 	Adapter         *string              `toml:"adapter"`
 	Location        *string              `toml:"location"`
+	LocationKind    *string              `toml:"location_kind"`
 	Enabled         *bool                `toml:"enabled"`
 	RecordTypes     []string             `toml:"record_types"`
 	FreshnessMode   *string              `toml:"freshness_mode"`

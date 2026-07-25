@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +24,7 @@ func TestClassifyLocationUsesDeclaredSyntax(t *testing.T) {
 		{"adapter scheme", "google://marcus@vorwaller.net", LocationScheme},
 		{"scheme without slashes", "mailto:marcus@example.net", LocationScheme},
 		{"opaque urn", "urn:uuid:1234", LocationScheme},
+		{"one-letter URI", "x:opaque", LocationScheme},
 		{"explicit relative", "./notes", LocationPath},
 		{"parent relative", "../notes", LocationPath},
 		{"nested POSIX", "archive/notes", LocationPath},
@@ -31,8 +33,9 @@ func TestClassifyLocationUsesDeclaredSyntax(t *testing.T) {
 		{"POSIX absolute", "/srv/notes", LocationPath},
 		{"home", "~", LocationPath},
 		{"home child", "~/notes", LocationPath},
-		{"Windows drive absolute", `C:\Users\Marcus\Mail`, LocationPath},
-		{"Windows drive relative", `C:Mail`, LocationPath},
+		{"ambiguous Windows drive absolute defaults URI", `C:\Users\Marcus\Mail`, LocationScheme},
+		{"ambiguous Windows drive slash absolute defaults URI", `C:/Users/Marcus/Mail`, LocationScheme},
+		{"ambiguous Windows drive relative defaults URI", `C:Mail`, LocationScheme},
 		{"Windows UNC", `\\server\share\mail`, LocationPath},
 		{"traversal is still a path", "../../../../etc/passwd", LocationPath},
 		{"scheme traversal is opaque", "https://example.test/../../admin", LocationScheme},
@@ -72,7 +75,7 @@ func TestResolveLocationRewritesOnlyPaths(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := resolveLocation(tc.location, base)
+			got, err := resolveLocation(tc.location, base, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -89,16 +92,88 @@ func TestResolveLocationRewritesOnlyPaths(t *testing.T) {
 	}
 }
 
-func TestForeignWindowsPathsAreNotCorrupted(t *testing.T) {
+func TestExplicitLocationKindDisambiguates(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "config")
+	tests := []struct {
+		name, location, declared string
+		wantKind                 LocationKind
+		want                     string
+		rewritten                bool
+	}{
+		{
+			name:     "slash-bearing mailbox",
+			location: "mailboxes/team/inbox",
+			declared: "opaque",
+			wantKind: LocationOpaque,
+			want:     "mailboxes/team/inbox",
+		},
+		{
+			name:     "slash-bearing device identifier",
+			location: "devices/camera/01",
+			declared: "opaque",
+			wantKind: LocationOpaque,
+			want:     "devices/camera/01",
+		},
+		{
+			name:     "one-letter URI",
+			location: "x:opaque",
+			declared: "uri",
+			wantKind: LocationScheme,
+			want:     "x:opaque",
+		},
+		{
+			name:      "bare relative path",
+			location:  "notes",
+			declared:  "path",
+			wantKind:  LocationPath,
+			want:      filepath.Join(base, "notes"),
+			rewritten: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveLocation(tc.location, base, &tc.declared)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.kind != tc.wantKind || got.resolved != tc.want ||
+				got.rewritten != tc.rewritten || !got.kindExplicit {
+				t.Fatalf("resolveLocation(%q, kind %q) = %+v", tc.location, tc.declared, got)
+			}
+		})
+	}
+}
+
+func TestExplicitLocationKindRejectsInvalidDeclarations(t *testing.T) {
+	for _, tc := range []struct {
+		name, location, declared, want string
+	}{
+		{"unknown kind", "mail", "identifier", "want path, opaque, or uri"},
+		{"uri without scheme", "mailbox", "uri", "requires a URI scheme"},
+		{"kind on empty location", "", "opaque", "requires a non-empty location"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := resolveLocation(tc.location, t.TempDir(), &tc.declared)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestForeignWindowsPathsAreNotCorruptedWhenDeclared(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this property is about preserving foreign path syntax")
 	}
-	for _, location := range []string{`C:\Users\Marcus\Mail`, `C:Mail`, `\\server\share\mail`} {
-		got, err := resolveLocation(location, t.TempDir())
+	kind := "path"
+	for _, location := range []string{
+		`C:\Users\Marcus\Mail`, `C:/Users/Marcus/Mail`, `C:Mail`, `\\server\share\mail`,
+	} {
+		got, err := resolveLocation(location, t.TempDir(), &kind)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.kind != LocationPath || got.resolved != location || got.rewritten {
+		if got.kind != LocationPath || got.resolved != location || got.rewritten || !got.kindExplicit {
 			t.Errorf("resolveLocation(%q) = %+v; foreign path must be classified but preserved", location, got)
 		}
 	}
@@ -109,7 +184,7 @@ func TestLocationClassificationDoesNotDependOnExistence(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(base, "notes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolveLocation("notes", base)
+	got, err := resolveLocation("notes", base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +209,35 @@ func FuzzResolveNonPathIsIdentity(f *testing.F) {
 		if kind != LocationEmpty && kind != LocationOpaque && kind != LocationScheme {
 			t.Skip()
 		}
-		got, err := resolveLocation(location, filepath.Join(t.TempDir(), "base"))
+		got, err := resolveLocation(location, filepath.Join(t.TempDir(), "base"), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got.resolved != location || got.rewritten {
 			t.Fatalf("non-path %q (%s) resolved as %+v", location, kind, got)
+		}
+	})
+}
+
+func FuzzResolveExplicitOpaqueIsIdentity(f *testing.F) {
+	for _, seed := range []string{
+		"mailboxes/team/inbox", "devices/camera/01", `device\camera\01`,
+		"x:opaque", `C:\Users\Marcus\Mail`,
+	} {
+		f.Add(seed)
+	}
+	kind := "opaque"
+	f.Fuzz(func(t *testing.T, location string) {
+		if location == "" {
+			t.Skip()
+		}
+		got, err := resolveLocation(location, filepath.Join(t.TempDir(), "base"), &kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.kind != LocationOpaque || got.resolved != location ||
+			got.rewritten || !got.kindExplicit {
+			t.Fatalf("explicit opaque %q resolved as %+v", location, got)
 		}
 	})
 }

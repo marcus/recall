@@ -52,12 +52,14 @@ Rules:
   manifest.
 - `recall/initialize` supplies a writable `workdir` under Recall's state
   directory. An adapter writes indexes and checkpoints only there.
-- `recall/initialize` supplies `location` according to the configuration
-  syntax contract: bare adapter identifiers and URI schemes are byte-for-byte
-  unchanged, while values with explicit filesystem syntax (`/`, `./`, `../`,
-  `~`, path separators, or Windows drive/UNC forms) are path-resolved. Adapters
-  must treat opaque locations as identifiers, not paths. `base_dir` remains the
-  anchor for paths inside adapter-owned settings.
+- `recall/initialize` supplies the already-resolved `location`. A source may
+  declare `location_kind = "path" | "opaque" | "uri"`; that discriminator is
+  authoritative, so slash-bearing mailbox/device identifiers reach the adapter
+  unchanged and foreign Windows paths remain expressible without pretending
+  either is a URI. Legacy entries without a kind use the documented URI-first
+  compatibility inference. Adapters must treat opaque locations as identifiers,
+  not paths. `base_dir` remains the anchor for paths inside adapter-owned
+  settings.
 - `recall/initialize` also supplies the instance's configured `source_id`,
   because locator text is `<source_id>:<local>` and adapters write their own
   locators. This is a name, not identity: the core attaches `source_uid` and

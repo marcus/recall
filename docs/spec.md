@@ -404,6 +404,7 @@ source_uid          immutable identity, generated once
 source_id           display and CLI name, unique within the profile
 adapter             registered adapter name
 location            path, endpoint, or connection reference
+location_kind       optional path | opaque | uri discriminator
 enabled             explicit on/off
 record_types        optional scope narrower than the adapter default
 freshness_mode      live | indexed | hybrid, must be supported by the adapter
@@ -418,16 +419,27 @@ settings            adapter-owned, schema-validated
 Relative paths in a project file resolve from that file. Secrets are references
 to environment variables or an OS keychain and never appear in resolved output.
 
-`location` has a syntax-only interpretation. A bare value such as an email
-account, mailbox, device name, or database identifier is opaque and reaches the
-adapter byte-for-byte. URI schemes (`https://...`, `google://...`, `urn:...`)
-are also opaque. A value is a filesystem path only when it declares filesystem
-syntax: `/`, `./`, `../`, `~`, a `/` or `\` separator, or a Windows drive/UNC
-form. Explicit relative paths resolve from the file that declared them and `~`
-expands to the current user's home. Recall never guesses from whether a file
-happens to exist. Consequently, a bare project directory must be written
-`./notes`, not `notes`. `recall config explain` reports the original value, the
-resolved value, the classified kind, and whether rewriting occurred.
+`location_kind` is authoritative when declared:
+
+- `path` resolves relative paths from the file that declared them, expands `~`,
+  and preserves foreign Windows drive or UNC syntax on a non-Windows host.
+- `opaque` passes the value byte-for-byte, including mailbox or device
+  identifiers containing `/` or `\`.
+- `uri` passes a syntactically valid URI byte-for-byte. One-letter schemes such
+  as `x:opaque` are valid and remain URIs.
+
+Existing configuration without `location_kind` remains accepted. Its
+compatibility rule is syntax-only and URI-first: a URI scheme is `uri`; explicit
+filesystem syntax (`/`, `./`, `../`, `~`, a path separator, or UNC form) is
+`path`; everything else is `opaque`. Recall never guesses from whether a file
+happens to exist. Values that are inherently ambiguous must opt in: use
+`location_kind = "opaque"` for a slash-bearing identifier and
+`location_kind = "path"` for Windows drive syntax such as `C:\Mail`.
+Consequently, a bare project directory may either be written `./notes` or
+declared as `path`. `recall config explain` reports the original and resolved
+values, effective kind, whether the kind was explicit, and whether path
+resolution rewrote the value. Invalid kinds and `uri` values without a scheme
+fail configuration loading rather than silently changing meaning.
 
 An `intent_priors` entry is the prior **in force** for its query class, not a
 delta applied to `base_prior`. Both are validated against the same `[0.5, 2.0]`
