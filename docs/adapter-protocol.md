@@ -210,8 +210,49 @@ Response:
 candidates           ranked source-local candidates
 diagnostics          timing, query mode used, fallback, truncation
 source_watermark     freshness evidence for this search
-outcome              success | partial | unavailable | denied | failed | timeout
+outcome              success | partial | unavailable | denied | failed |
+                     timeout | skipped
+reason               why, when the outcome is skipped; closed vocabulary
 ```
+
+### Saying "this does not apply to me"
+
+`skipped` is how an adapter reports that the request named something it does
+not serve. It exists because the alternative was worse: without it the only way
+to say so was `success` with no candidates, and **success asserts a boundary
+that was crossed and found empty**. A `project` filter naming a workspace no
+source has therefore came back as `coverage: complete` over a search that never
+ran — a false absence wearing the one outcome guaranteed not to degrade.
+
+An adapter that skips states a `reason`, and the core decides what it costs:
+
+```text
+not_applicable        the request named a project, entity, or scope this
+                      source does not serve. Only the source knows what it
+                      answers to, so the core cannot derive this.
+filter_unsupported    the adapter could not EVALUATE a filter it was given,
+                      as opposed to evaluating it and matching nothing.
+record_type_mismatch  the request asked for types this source does not hold.
+as_of_unsupported     the historical boundary cannot be honored.
+```
+
+`not_applicable` and `record_type_mismatch` do not degrade a response on their
+own: one source not being the one asked for is routing working as intended.
+`filter_unsupported` does, because what the adapter would have returned is a
+superset or a subset of the request and it cannot say which.
+
+Two rules keep this from becoming a cheaper way to look healthy:
+
+- **A reason outside the vocabulary is treated as unstated, and unstated
+  degrades.** An adapter cannot invent a spelling that lands in the
+  non-degrading branch.
+- **When NO source was applicable, the response degrades anyway.** Per source,
+  non-applicability is routing; over a whole response it means the request
+  named a boundary this machine does not have, and `complete` would claim the
+  system searched everywhere for it.
+
+`skipped` is never a way to report a failure. A source that could not be
+reached, ran out of time, or refused says so with its own outcome.
 
 The adapter owns local retrieval and ordering, by SQL, FTS, vector search,
 exact lookup, an API, or any combination.

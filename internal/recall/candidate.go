@@ -205,6 +205,20 @@ type SearchResponse struct {
 	Diagnostics     map[string]any `json:"diagnostics,omitempty"`
 	SourceWatermark string         `json:"source_watermark,omitempty"`
 	Outcome         SearchOutcome  `json:"outcome"`
+
+	// Reason names why, in the closed vocabulary of internal/source, when the
+	// outcome is [SearchSkipped]. It is what lets the core decide whether the
+	// skip narrowed the request: a source that holds nothing of what was asked
+	// for did not degrade anything, and a source that could not evaluate the
+	// filter it was given did.
+	//
+	// Without it an adapter had exactly one way to say "this request does not
+	// apply to me" — return success with no candidates — and success asserts a
+	// boundary that was crossed and found empty. A project filter naming
+	// something no source serves then read as `coverage: complete`, which is
+	// the false absence this system exists to prevent, arriving through the one
+	// outcome guaranteed not to degrade.
+	Reason string `json:"reason,omitempty"`
 }
 
 // ExpandRequest retrieves evidence behind a locator.

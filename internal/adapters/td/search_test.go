@@ -489,14 +489,19 @@ func TestProjectFilterRoutesToTheNamedWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if other.Outcome != recall.SearchSuccess {
-		t.Errorf("outcome = %q, want success: not being asked is not a failure", other.Outcome)
+	// Skipped, not success. Success asserts a boundary that was crossed and
+	// found empty, and this workspace crossed nothing — reported as success, a
+	// project filter naming a workspace nobody has read as complete coverage
+	// over a search that never ran.
+	if other.Outcome != recall.SearchSkipped {
+		t.Errorf("outcome = %q, want skipped: this source did not look", other.Outcome)
+	}
+	if other.Reason != recall.SkipNotApplicable {
+		t.Errorf("reason = %q, want %q; the core decides what a skip costs from this",
+			other.Reason, recall.SkipNotApplicable)
 	}
 	if len(other.Candidates) != 0 {
 		t.Errorf("candidates = %v for another workspace's project filter", ids(other))
-	}
-	if got := other.Diagnostics["skipped"]; got != "project" {
-		t.Errorf("diagnostics[skipped] = %v, want project", got)
 	}
 	if n := cli.countCalls("search"); n != 1 {
 		t.Errorf("%d search invocations; a source that was not asked should spawn nothing", n)
@@ -514,8 +519,11 @@ func TestRequestFiltersNarrowTheAnswer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("search: %v", err)
 		}
-		if resp.Outcome != recall.SearchSuccess || len(resp.Candidates) != 0 {
-			t.Errorf("outcome = %q with %d candidates, want an empty success", resp.Outcome, len(resp.Candidates))
+		if resp.Outcome != recall.SearchSkipped || len(resp.Candidates) != 0 {
+			t.Errorf("outcome = %q with %d candidates, want an empty skip", resp.Outcome, len(resp.Candidates))
+		}
+		if resp.Reason != recall.SkipRecordTypeMismatch {
+			t.Errorf("reason = %q, want %q", resp.Reason, recall.SkipRecordTypeMismatch)
 		}
 		if cli.countCalls("list")+cli.countCalls("search") != 0 {
 			t.Error("a source holding none of the requested record types still spawned td")

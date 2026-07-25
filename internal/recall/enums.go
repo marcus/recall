@@ -37,9 +37,51 @@ const (
 	SearchDenied      SearchOutcome = "denied"
 	SearchFailed      SearchOutcome = "failed"
 	SearchTimeout     SearchOutcome = "timeout"
-	// SearchSkipped means the source was never asked: it was ineligible, or
-	// its deadline had already elapsed.
+	// SearchSkipped means the source did not search: the core found it
+	// ineligible, its deadline had already elapsed, or the ADAPTER said the
+	// request named something it does not serve.
+	//
+	// The last of those is why an adapter may return it. Before, the only way
+	// to say "this does not apply to me" was success with no candidates, and
+	// success asserts a boundary that was crossed and found empty. A project
+	// filter naming a workspace nobody has therefore read as complete coverage
+	// over a search that never ran. See [SearchResponse.Reason].
 	SearchSkipped SearchOutcome = "skipped"
+)
+
+// Skip reasons an adapter may state alongside [SearchSkipped].
+//
+// They live here, beside the outcome they qualify, because they are part of the
+// search contract: an adapter must be able to name one without importing the
+// core's planner, and an external adapter names one over the wire. The core
+// decides what each costs; the adapter only reports which is true.
+const (
+	// SkipNotApplicable is the request naming something this source does not
+	// serve — a project it is not, an entity class it does not hold. Only the
+	// source knows what it answers to, so the core cannot derive it.
+	//
+	// It does not degrade on its own: one source not being the one asked for
+	// is routing working as intended. What must not follow from it is complete
+	// coverage when NO source was applicable, which is judged over the whole
+	// response rather than per source.
+	SkipNotApplicable = "not_applicable"
+
+	// SkipFilterUnsupported is the adapter saying it could not EVALUATE a
+	// filter, as opposed to evaluating it and matching nothing. What it would
+	// return is a superset or a subset of what was asked for and it cannot say
+	// which, so this degrades.
+	SkipFilterUnsupported = "filter_unsupported"
+
+	// SkipRecordTypeMismatch is the request asking for record types this source
+	// does not hold. The core already excludes on record type before a search,
+	// so an adapter reaching for this is refusing again rather than first — but
+	// it is the honest name when it does, and it does not degrade.
+	SkipRecordTypeMismatch = "record_type_mismatch"
+
+	// SkipUnstated is what a skip without a reason is treated as. It degrades:
+	// an unexplained absence is precisely what must not be reported as a
+	// boundary that was crossed.
+	SkipUnstated = "skip_unstated"
 )
 
 // Searched reports whether the outcome represents a source that actually ran.

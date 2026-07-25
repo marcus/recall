@@ -182,6 +182,12 @@ func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.T
 			RecordTypes: req.Scope.RecordTypes,
 			Since:       req.Scope.Since,
 			Until:       req.Scope.Until,
+			// Passed to every eligible source rather than evaluated here: the
+			// core does not know which source is which project, so each one
+			// answers for itself. A source that is not the one named skips as
+			// not applicable, and a name no source serves is what makes the
+			// whole response degrade.
+			Project: req.Scope.Project,
 		}
 	}
 	if t.Manifest.Can(recall.CapContextExpansion) {
@@ -286,6 +292,7 @@ func reports(plan source.Plan, results []searchResult) []recall.SourceReport {
 			IndexGeneration: r.health.IndexGeneration,
 			ConfirmedAt:     r.health.LastSuccess,
 			Diagnostics:     r.response.Diagnostics,
+			Reason:          skipReason(r.response),
 		}
 		if r.err != nil && rep.Reason == "" {
 			rep.Reason = classify(r.err)
@@ -295,20 +302,49 @@ func reports(plan source.Plan, results []searchResult) []recall.SourceReport {
 	return append(out, plan.Excluded...)
 }
 
+// skipReason reads an adapter's stated reason for skipping, in the closed
+// vocabulary [source.Degrades] judges.
+//
+// It is only read for [recall.SearchSkipped], and an adapter that skips without
+// naming a reason gets one that degrades. That default is the safe direction:
+// the alternative reads a silent skip as a boundary the request was free to
+// miss, which is the assumption this whole change exists to remove.
+func skipReason(resp recall.SearchResponse) string {
+	if resp.Outcome != recall.SearchSkipped {
+		return ""
+	}
+	if reason := source.CanonicalReason(resp.Reason); reason != "" {
+		return reason
+	}
+	return source.ReasonUnstatedSkip
+}
+
 // coverage is complete when every source that could have answered did.
 //
 // A source excluded by the user's own policy — scope, ceiling, disabled — does
 // not degrade anything: that is the system doing what it was configured to do.
 // A source that was eligible and could not answer does.
 func coverage(reports []recall.SourceReport) recall.Coverage {
+	reasons := make([]string, 0, len(reports))
+	searched := 0
 	for _, r := range reports {
 		degraded := r.Outcome.Degrades()
 		if r.Outcome == recall.SearchSkipped {
 			degraded = source.Degrades(r.Reason)
+			reasons = append(reasons, r.Reason)
+		} else {
+			searched++
 		}
 		if degraded {
 			return recall.CoverageDegraded
 		}
+	}
+	// Every source said the request did not apply to it, so nothing looked.
+	// Per source that is routing and does not degrade; over the whole response
+	// it means the request named a boundary this machine does not have, and
+	// `complete` would claim the system searched everywhere for it.
+	if !source.Applicable(reasons, searched) {
+		return recall.CoverageDegraded
 	}
 	return recall.CoverageComplete
 }

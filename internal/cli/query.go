@@ -46,7 +46,7 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		asOfText  = fs.String("as-of", "", "historical boundary, RFC 3339")
 	)
 	var scopes multiFlag
-	fs.Var(&scopes, "scope", "narrow the request: source=, type=, since=, until=")
+	fs.Var(&scopes, "scope", "narrow the request: source=, type=, project=, since=, until=")
 
 	if ok, code := parse(env, fs, queryHelp, args); !ok {
 		return code
@@ -337,7 +337,7 @@ func parseScope(in []string) (*recall.Scope, error) {
 			}
 			key, value, ok := strings.Cut(part, "=")
 			if !ok || value == "" {
-				return nil, fmt.Errorf("scope %q: want key=value, one of source, type, since, until", part)
+				return nil, fmt.Errorf("scope %q: want key=value, one of source, type, project, since, until", part)
 			}
 			switch key {
 			case "source":
@@ -356,8 +356,17 @@ func parseScope(in []string) (*recall.Scope, error) {
 					return nil, err
 				}
 				scope.Until = t
+			case "project":
+				if scope.Project != "" && !strings.EqualFold(scope.Project, value) {
+					// Two projects is not a narrower request, it is a
+					// different one, and the sources evaluate this field
+					// singly. Refusing beats silently keeping the last.
+					return nil, fmt.Errorf("scope project: %q and %q; a request names one project",
+						scope.Project, value)
+				}
+				scope.Project = value
 			default:
-				return nil, fmt.Errorf("scope key %q: want one of source, type, since, until", key)
+				return nil, fmt.Errorf("scope key %q: want one of source, type, project, since, until", key)
 			}
 			set = true
 		}

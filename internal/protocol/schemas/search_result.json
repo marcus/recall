@@ -13,7 +13,12 @@
     },
     "diagnostics": { "$ref": "common.json#/$defs/diagnostics" },
     "source_watermark": { "type": "string" },
-    "outcome": { "$ref": "common.json#/$defs/search_outcome" }
+    "outcome": { "$ref": "common.json#/$defs/search_outcome" },
+    "reason": {
+      "description": "Why the source skipped, when outcome is 'skipped'. Closed vocabulary: the core decides what each costs, so a value outside it is treated as unstated and degrades. Ignored for every other outcome.",
+      "type": "string",
+      "enum": ["not_applicable", "filter_unsupported", "record_type_mismatch", "as_of_unsupported"]
+    }
   },
   "$defs": {
     "candidate": {

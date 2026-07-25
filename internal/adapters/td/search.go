@@ -59,7 +59,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	if len(req.Filters.RecordTypes) > 0 && !slices.Contains(req.Filters.RecordTypes, recall.RecordTask) {
 		// Nothing failed: this source holds only issues and none were asked
 		// for.
-		return skipped("record_type"), nil
+		return skipped(recall.SkipRecordTypeMismatch, "this source holds only td issues"), nil
 	}
 	if req.Filters.Project != "" && !ws.answersTo(req.Filters.Project) {
 		// A td workspace is a project, so a project filter is how a request
@@ -67,7 +67,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		// one asked for has nothing to say — which is not the same as having
 		// looked and found nothing, and is why this is a skip rather than a
 		// search that returns empty.
-		return skipped("project"), nil
+		return skipped(recall.SkipNotApplicable, "project "+req.Filters.Project), nil
 	}
 
 	started := a.now()
@@ -162,13 +162,23 @@ func (w workspace) answersTo(project string) bool {
 	return strings.EqualFold(w.Name, project)
 }
 
-// skipped renders the one honest empty success: the source was not asked
-// because it holds nothing of what was requested. It carries no error, which
-// is what distinguishes it from every other empty result in this file.
-func skipped(reason string) recall.SearchResponse {
+// skipped says the request named something this source does not serve.
+//
+// The outcome is SearchSkipped and not SearchSuccess, and that distinction is
+// the whole point. Success asserts a boundary that was crossed and found empty;
+// this source crossed nothing. Reported as success, a project filter naming a
+// workspace nobody has came back as `coverage: complete` over a search that
+// never happened — a false absence wearing the one outcome guaranteed not to
+// degrade.
+//
+// The reason travels in the closed vocabulary the core judges rather than as
+// prose, because it decides whether the response degraded. The detail beside it
+// is for a person reading diagnostics and is never parsed.
+func skipped(reason, detail string) recall.SearchResponse {
 	return recall.SearchResponse{
-		Outcome:     recall.SearchSuccess,
-		Diagnostics: map[string]any{"skipped": reason},
+		Outcome:     recall.SearchSkipped,
+		Reason:      reason,
+		Diagnostics: map[string]any{"skipped": reason, "skipped_detail": detail},
 	}
 }
 

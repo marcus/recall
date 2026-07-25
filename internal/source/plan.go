@@ -19,10 +19,59 @@ const (
 	ReasonUnhealthy          = "unhealthy"
 	ReasonDenied             = "denied"
 	ReasonAsOfUnsupported    = "as_of_unsupported"
-	ReasonRecordTypeMismatch = "record_type_mismatch"
+	ReasonRecordTypeMismatch = recall.SkipRecordTypeMismatch
 	ReasonBudgetExhausted    = "budget_exhausted"
 	ReasonAdapterUnavailable = "adapter_unavailable"
+
+	// The reasons an ADAPTER may state live in internal/recall, beside the
+	// outcome they qualify, because they are part of the search contract and
+	// not of this planner — an adapter must not have to import the thing that
+	// decides its eligibility in order to say what it does not serve. They are
+	// re-exported here so [Degrades] reads as one vocabulary.
+	ReasonNotApplicable   = recall.SkipNotApplicable
+	ReasonUnappliedFilter = recall.SkipFilterUnsupported
+	ReasonUnstatedSkip    = recall.SkipUnstated
 )
+
+// CanonicalReason accepts an adapter-stated reason, or returns "" for anything
+// outside the closed set.
+//
+// Nothing outside it is passed through. The vocabulary is reported to callers
+// and asserted on by evaluation gates, so an adapter that could invent a value
+// would be one that could land itself in the non-degrading branch of [Degrades]
+// by spelling something new.
+func CanonicalReason(reason string) string {
+	switch reason {
+	case ReasonNotApplicable, ReasonUnappliedFilter,
+		ReasonRecordTypeMismatch, ReasonAsOfUnsupported:
+		return reason
+	default:
+		return ""
+	}
+}
+
+// Applicable reports whether any source was in a position to answer at all.
+//
+// A source that skipped as not-applicable did not degrade coverage: it is not
+// the one that was asked for, and saying otherwise would make every routed
+// request look impaired. But when NO source was applicable, the request named a
+// boundary nothing crossed, and reporting that as complete coverage claims the
+// system looked everywhere and found nothing. It did not look anywhere.
+//
+// This is why non-applicability is judged over the response and not per source.
+// Per source it is routing; over the response it is a filter naming something
+// this machine does not have.
+func Applicable(reasons []string, searched int) bool {
+	if searched > 0 {
+		return true
+	}
+	for _, r := range reasons {
+		if r == ReasonNotApplicable {
+			return false
+		}
+	}
+	return true
+}
 
 // Degrades reports whether an exclusion narrowed what the request could reach.
 //
@@ -36,9 +85,15 @@ const (
 // budget, or unable to honor the request's as_of boundary is different: the
 // caller asked for something the system could not fully serve, and that is
 // exactly what degraded coverage is for.
+// A source that told the core it does not serve what was asked for is in the
+// same position as one the user scoped out: it is not the source for this
+// request, and calling that degradation would make every routed query look
+// impaired. Whether the request reached ANY source is a separate question,
+// answered by [Applicable].
 func Degrades(reason string) bool {
 	switch reason {
-	case ReasonOutOfScope, ReasonDisabled, ReasonSensitivity, ReasonRecordTypeMismatch:
+	case ReasonOutOfScope, ReasonDisabled, ReasonSensitivity,
+		ReasonRecordTypeMismatch, ReasonNotApplicable:
 		return false
 	default:
 		return true

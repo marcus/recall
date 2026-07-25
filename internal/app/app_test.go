@@ -38,6 +38,13 @@ type fake struct {
 	expandErr   error
 	searchCalls int
 	healthCalls int
+
+	// project is the project this fake serves, and sawProject is what the last
+	// search was actually asked for. Together they are how an end-to-end test
+	// reaches Filters.Project, which no host surface populated until scope
+	// gained it.
+	project    string
+	sawProject string
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
@@ -45,8 +52,17 @@ func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, err
 	return f.manifest, nil
 }
 
-func (f *fake) Search(ctx context.Context, _ recall.SearchRequest) (recall.SearchResponse, error) {
+func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	f.searchCalls++
+	f.sawProject = req.Filters.Project
+	if f.project != "" && req.Filters.Project != "" && !strings.EqualFold(f.project, req.Filters.Project) {
+		// What a real routed source does: it is not the one that was named, so
+		// it did not look. Success here would assert a boundary it never
+		// crossed.
+		return recall.SearchResponse{
+			Outcome: recall.SearchSkipped, Reason: recall.SkipNotApplicable,
+		}, nil
+	}
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
@@ -664,5 +680,85 @@ func TestPerRequestLimitIsHonored(t *testing.T) {
 	}
 	if len(resp.Results) != 3 {
 		t.Errorf("results = %d, want the requested 3", len(resp.Results))
+	}
+}
+
+// A project filter reaches the adapters, and a project no source serves does
+// not come back as complete coverage.
+//
+// Filters.Project was populated by no host surface at all: `recall query
+// --scope` accepted source, type, since and until, the eval case schema had no
+// project field, and internal/api was doc-only. The td adapter's routing on it
+// was tested only inside that package. A contract field nothing could reach
+// end to end is a field nobody could tell was broken — and it was.
+func TestProjectScopeRoutesAndDoesNotFakeCompleteCoverage(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].project = "recall"
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "d1", 1)}
+		f["faketasks"].project = "clara-home"
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "t1", 1)}
+	})
+
+	t.Run("routes to the source that serves it", func(t *testing.T) {
+		resp, err := h.app.Query(context.Background(), recall.QueryRequest{
+			Query: "ranking", Scope: &recall.Scope{Project: "recall"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.fakes["fakedocs"].sawProject != "recall" {
+			t.Errorf("adapter saw project %q; the filter never reached it",
+				h.fakes["fakedocs"].sawProject)
+		}
+		if len(resp.Results) != 1 {
+			t.Fatalf("results = %d, want only the source serving the named project", len(resp.Results))
+		}
+		// The source that is not the one named skipped, and that alone does not
+		// degrade: routing working as configured is not impairment.
+		if resp.Coverage != recall.CoverageComplete {
+			t.Errorf("coverage = %q, want complete: a routed request is not a degraded one", resp.Coverage)
+		}
+	})
+
+	t.Run("a project no source serves is not complete coverage", func(t *testing.T) {
+		resp, err := h.app.Query(context.Background(), recall.QueryRequest{
+			Query: "ranking", Scope: &recall.Scope{Project: "nonexistent"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.Results) != 0 {
+			t.Fatalf("results = %d for a project nothing serves", len(resp.Results))
+		}
+		// The defect this ticket is about. Every source skipped, so nothing
+		// looked anywhere — and the response used to say it had looked
+		// everywhere and found nothing.
+		if resp.Coverage == recall.CoverageComplete {
+			t.Error("coverage complete over a project no source serves: nothing searched, " +
+				"so there is no boundary for `complete` to describe")
+		}
+		for _, r := range resp.SourceOutcomes {
+			if r.Outcome == recall.SearchSuccess {
+				t.Errorf("source %s reported success without searching", r.SourceID)
+			}
+		}
+	})
+}
+
+// An adapter that skips without saying why degrades, rather than being taken
+// at its word. A silent skip is indistinguishable from a boundary the request
+// was free to miss, and the safe reading is the one that does not claim
+// coverage nobody established.
+func TestUnexplainedSkipDegrades(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].outcome = recall.SearchSkipped
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "t1", 1)}
+	})
+	resp, err := h.app.Query(context.Background(), recall.QueryRequest{Query: "ranking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %q, want degraded for a skip with no stated reason", resp.Coverage)
 	}
 }
