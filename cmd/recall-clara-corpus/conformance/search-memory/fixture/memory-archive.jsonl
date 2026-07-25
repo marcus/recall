@@ -1,0 +1,1 @@
+{"type":"memory","schema_version":2,"id":"me000004","kind":"preference","subject":"insurance-quotes","title":"Compare quotes before renewing insurance","body":"Asks for three insurance quotes before renewing anything.","weight":0.5,"half_life_days":45,"created":"2024-06-01","last_seen":"2024-08-01","hits":2,"tags":["admin"],"source":"observed"}

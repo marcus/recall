@@ -1,0 +1,11 @@
+{
+  "case": "cancel-inflight",
+  "description": "A search cancelled while in flight. The adapter answers the cancel with an error rather than a late result. The code is -32007 deadline_exceeded: an abandoned request ran out of time, which is a different condition from an adapter declining a budget up front.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

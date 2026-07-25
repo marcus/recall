@@ -1,0 +1,18 @@
+{
+  "case": "search-memory",
+  "description": "Memory, and Clara's decay carried through rather than reinvented. Every candidate states the whole calculation \u2014 weight, half_life_days, age_days, the field the age was measured from, and the formula \u2014 so a reader can check the arithmetic instead of trusting it. me000001 is a fact with half_life_days null and does not decay at all: Clara's read-time rule, and deliberately NOT a cue to apply Record::DEFAULT_HALF_LIFE, which is a write-time default. me000002 has faded from 0.7 to 0.384 in 39 days and is demoted, not removed. me000004 is archived and sorts below every live record while remaining retrievable, which is what spec.md#decay requires of faded material. The second search reaches me000003, the generated preference: four derived_from edges, one per ref in its provenance, which makes it a composite \u2014 it keeps its own lineage root and records its ancestors, so corroboration offers it last and never counts a learned generalization as evidence independent of the signals it generalizes. The third search runs the SAME query as the first inside a time window, which suspends the decay multiplier entirely, and the order flips: me000002 rises above me000001 because both matched the title equally and only decay was separating them. A historical question retrieves old evidence without a recency penalty. debug_today pins the civil date so the arithmetic replays identically; health reports it and flags that it was pinned.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/store_identity",
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 5
+}

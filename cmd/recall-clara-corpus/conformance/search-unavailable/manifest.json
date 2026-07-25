@@ -1,0 +1,15 @@
+{
+  "case": "search-unavailable",
+  "description": "A store that exists and cannot be read. signals.jsonl is present under the right name and the wrong type, so it opens and then fails \u2014 see the README inside it for why the fixture is shaped that way. The handshake still succeeds, because the configuration is valid and nothing has been asked of the source yet. The search then fails with source_unavailable (-32000) rather than returning zero candidates, which is the invariant this case exists to hold: a store that cannot be read must never be indistinguishable from one Clara has not written yet. Health reports unavailable with unknown coverage, and still names the store this instance was configured to own, because doctor's isolation check has to see both halves of a collision.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/store_identity"
+  ],
+  "responses": 3
+}

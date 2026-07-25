@@ -1,0 +1,15 @@
+{
+  "case": "search-ranked",
+  "description": "Signals, and the lineage this ticket exists to exercise. Every candidate from Clara source `tasks` declares derived_from 'tasks:<native id>', which is character-for-character the locator the Tasks adapter writes for the same task, so the projection and the original collapse into ONE lineage root and never corroborate each other. The Slack signal declares 'slack-dms:<message ts>' from its own mapping and raises itself to confidential: its excerpt is a verbatim slice of somebody's message, which is a stronger claim than the source floor makes. Standing partitions before text score, so the archived quote comparison sorts below live signals while staying retrievable. The second search names a ref exactly and is promoted on exact_identifier; its candidate carries last_action 'acted' with action_count 2, projected from observations.jsonl \u2014 the earlier 'dismissed' reaction lost to the later one, ordered by (occurred_at, id) exactly as Clara orders it. No observation is ever a candidate.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}

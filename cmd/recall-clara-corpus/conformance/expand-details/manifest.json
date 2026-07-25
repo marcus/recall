@@ -1,0 +1,11 @@
+{
+  "case": "expand-details",
+  "description": "One signal locator at every detail level, then the same locator under a budget it cannot fit. The levels widen rather than reshape: each one's content starts with the previous one's, so a caller comparing summary against full sees added lines and not rewritten ones. last_action appears at every level, including summary, because what the owner did about a signal changes what the signal means and a summary omitting it would read as an open item. context adds the full reaction history with each reaction's own instant \u2014 the one place observations appear as evidence in their own right, without ever becoming candidates. The last response truncates at the budget and names the boundary that applied, so a budget cut stays distinguishable from a source-side limit.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 6
+}
