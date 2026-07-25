@@ -1,0 +1,25 @@
+[
+ {
+  "id": "aaaa0002",
+  "state": "TODO",
+  "priority": "B",
+  "title": "Rotate the backup restore drill schedule",
+  "tags": [],
+  "contexts": [
+   "@ops"
+  ],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": null,
+  "deadline_time": null,
+  "recur": null,
+  "line": 4,
+  "source": "live",
+  "headline": "TODO Rotate the backup restore drill schedule",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ }
+]

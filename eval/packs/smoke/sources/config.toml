@@ -1,0 +1,218 @@
+# Smoke pack configuration: the user layer, which is the trusted one.
+#
+# ${PACK} is substituted with this pack's absolute directory before the file is
+# read. A committed pack cannot hold machine paths, and `location` is resolved
+# against the process working directory rather than against this file, so a
+# relative path here would point at whatever directory the runner started in.
+#
+# Every source_uid below is immutable. Judgments key on these values, so a
+# source may be renamed but never re-identified.
+
+[defaults]
+profile = "smoke"
+timeout_ms = 1000
+fusion_reserve_ms = 25
+
+# The reference external adapter. It is the only source class that emits
+# derived_from edges, which is why the pack's lineage cases live behind it.
+[adapters.stream]
+command = "recall-stream"
+freshness_modes = ["indexed", "hybrid"]
+
+# A stand-in for a source that refuses access. Nothing in the built-in adapter
+# set can produce a denial from committed fixture data — a permission bit is
+# not something git stores — so the outcome is replayed from the transcript in
+# transcripts/denied-source/ instead. The runner must serve this source from
+# that transcript and must not spawn the command.
+[adapters.replay]
+command = "recall-eval-replay"
+freshness_modes = ["indexed"]
+
+[[sources]]
+source_uid = "01SMOKENOTES"
+source_id = "notes"
+adapter = "documents"
+location = "${PACK}/sources/notes"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 400
+freshness_policy = "indexed: rebuilt from the corpus at handshake"
+
+[sources.settings]
+extensions = [".md"]
+
+# Declared names are the only single-token identifiers that may carry an
+# exact_identifier signal in a document corpus.
+[sources.settings.aliases]
+"projects/recall/decisions.md" = ["ADR log"]
+"runbooks/backup-restore.md" = ["restore drill"]
+
+[[sources]]
+source_uid = "01SMOKEHANDBOOK"
+source_id = "handbook"
+adapter = "documents"
+location = "${PACK}/sources/handbook"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 0.9
+timeout_ms = 400
+
+[sources.settings]
+extensions = [".md"]
+
+[[sources]]
+source_uid = "01SMOKETASKS"
+source_id = "tasks"
+adapter = "tasks"
+location = "${PACK}/sources/tasks"
+freshness_mode = "live"
+sensitivity = "internal"
+base_prior = 1.4
+intent_priors = { identifier_query = 1.8 }
+timeout_ms = 400
+record_types = ["task"]
+freshness_policy = "live: every search reads the recorded CLI transcript"
+
+[[sources]]
+source_uid = "01SMOKESIGNALS"
+source_id = "signals"
+adapter = "stream"
+location = "${PACK}/sources/signals"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.1
+timeout_ms = 400
+
+[sources.settings]
+files = ["signals.jsonl", "signals-archive.jsonl"]
+# Only `tasks` is mapped. A system with no mapping yields no edge at all: an
+# invented source_id would resolve somewhere, and a wrong lineage root is worse
+# than a missing one.
+upstream = { tasks = "tasks" }
+
+[[sources]]
+source_uid = "01SMOKEROTATED"
+source_id = "rotated"
+adapter = "stream"
+location = "${PACK}/sources/rotated"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 400
+
+[sources.settings]
+files = ["signals.jsonl"]
+
+[[sources]]
+source_uid = "01SMOKEFLAKY"
+source_id = "flaky"
+adapter = "stream"
+location = "${PACK}/sources/flaky"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 400
+
+[sources.settings]
+# signals-archive.jsonl is deliberately absent: a configured file that is not
+# there is missing coverage, not an empty archive.
+files = ["signals.jsonl", "signals-archive.jsonl"]
+
+[[sources]]
+source_uid = "01SMOKESLOW"
+source_id = "slow"
+adapter = "stream"
+location = "${PACK}/sources/slow"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+# Shorter than the stall below, so the source's own budget is what ends the
+# search and the outcome is a timeout rather than a slow success.
+timeout_ms = 60
+
+[sources.settings]
+files = ["signals.jsonl"]
+debug_stall_ms = 400
+
+[[sources]]
+source_uid = "01SMOKEVAULT"
+source_id = "vault"
+adapter = "documents"
+location = "${PACK}/sources/vault"
+freshness_mode = "indexed"
+# Above every profile ceiling in this pack. The corpus is written to rank well
+# on the queries that must never reach it.
+sensitivity = "restricted"
+base_prior = 1.0
+timeout_ms = 400
+
+[sources.settings]
+extensions = [".md"]
+
+[[sources]]
+source_uid = "01SMOKELEDGER"
+source_id = "ledger"
+adapter = "documents"
+location = "${PACK}/sources/ledger"
+freshness_mode = "indexed"
+# The source floor is public, so the source is eligible under a public ceiling.
+# Its adapter classifies every candidate `internal`, which a candidate may do —
+# raising is allowed, lowering is not — so the candidates, not the source, are
+# what crosses the ceiling.
+sensitivity = "public"
+base_prior = 1.0
+timeout_ms = 400
+
+[sources.settings]
+extensions = [".md"]
+
+[[sources]]
+source_uid = "01SMOKEDENIED"
+source_id = "denied"
+adapter = "replay"
+location = "${PACK}/transcripts/denied-source"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 400
+
+[sources.settings]
+transcript = "denied-source"
+
+# Profiles keep the failure fixtures out of the healthy cases. Every source is
+# asked on every query, so one always-failing source in the default profile
+# would make every case report degraded coverage and the signal would stop
+# meaning anything.
+
+[profiles.smoke]
+sources = ["notes", "handbook", "tasks", "signals"]
+max_sensitivity = "internal"
+
+[profiles.smoke-docs]
+sources = ["notes", "handbook"]
+max_sensitivity = "internal"
+
+[profiles.smoke-tasks]
+sources = ["tasks"]
+max_sensitivity = "internal"
+
+[profiles.smoke-signals]
+sources = ["signals"]
+max_sensitivity = "internal"
+
+[profiles.smoke-degraded]
+sources = ["notes", "rotated", "flaky", "slow"]
+max_sensitivity = "internal"
+
+[profiles.smoke-denied]
+sources = ["notes", "denied"]
+max_sensitivity = "internal"
+
+[profiles.smoke-restricted]
+sources = ["notes", "vault"]
+max_sensitivity = "internal"
+
+[profiles.smoke-public]
+sources = ["ledger"]
+max_sensitivity = "public"

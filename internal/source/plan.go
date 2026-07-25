@@ -129,8 +129,24 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 			continue
 		}
 
-		// Health is the last static check because it is the only one that can
-		// cost a process spawn.
+		// The handshake comes before the probe, and the order is load-bearing.
+		//
+		// A built-in adapter is constructed unconfigured — it learns its
+		// corpus, workdir, and settings at the handshake — so probing first
+		// asks a source that has not been told where to read, and it answers
+		// unavailable because that is the truth. Every built-in source was
+		// excluded as unhealthy on that basis, which made `recall query`
+		// return nothing while `recall doctor`, which initializes before
+		// probing, called the same source healthy.
+		//
+		// It is safe to handshake here because every permission check has
+		// already run above: initializing a source the ceiling denies would be
+		// the disclosure the ceiling exists to prevent.
+		manifest, err := r.Initialize(ctx, inst)
+		if err != nil {
+			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAdapterUnavailable))
+			continue
+		}
 		a, err := r.Adapter(inst)
 		if err != nil {
 			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAdapterUnavailable))
@@ -143,12 +159,6 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 			continue
 		case err != nil || !health.Usable():
 			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonUnhealthy))
-			continue
-		}
-
-		manifest, err := r.Initialize(ctx, inst)
-		if err != nil {
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAdapterUnavailable))
 			continue
 		}
 		// A source that cannot honor a historical boundary is excluded and said

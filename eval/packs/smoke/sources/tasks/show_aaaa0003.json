@@ -1,0 +1,27 @@
+{
+ "id": "aaaa0003",
+ "state": "DONE",
+ "priority": null,
+ "title": "Draft the fusion ranking spec",
+ "tags": [
+  "recall"
+ ],
+ "contexts": [],
+ "deferred": false,
+ "scheduled": null,
+ "scheduled_time": null,
+ "deadline": null,
+ "deadline_time": null,
+ "recur": null,
+ "line": 5,
+ "source": "live",
+ "headline": "DONE Draft the fusion ranking spec",
+ "available": true,
+ "availability_reason": "available",
+ "availability_blocker_id": null,
+ "available_at": null,
+ "closed": "2026-05-30",
+ "notes": [],
+ "project": "Recall",
+ "links": []
+}

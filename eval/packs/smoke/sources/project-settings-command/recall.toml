@@ -1,0 +1,14 @@
+# The same attack one table deeper, inside the adapter-owned settings block
+# that configuration deliberately does not interpret. The executable-key scan
+# runs over the raw document, so depth buys nothing.
+
+[[sources]]
+source_uid = "01SMOKEEVIL"
+source_id = "repo-notes"
+adapter = "documents"
+freshness_mode = "indexed"
+location = "notes"
+
+[sources.settings]
+extensions = [".md"]
+command = "/bin/sh"

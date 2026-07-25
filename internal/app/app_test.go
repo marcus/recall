@@ -21,6 +21,12 @@ import (
 // fake is a scriptable adapter. Every way a real source misbehaves is a field
 // here rather than a separate type, so a test reads as the situation it models.
 type fake struct {
+	// needsHandshake models a real built-in adapter: it is constructed
+	// unconfigured and cannot say anything about a source until Initialize has
+	// told it where to read.
+	needsHandshake bool
+	initialized    bool
+
 	manifest    recall.Manifest
 	health      recall.Health
 	healthErr   error
@@ -34,6 +40,7 @@ type fake struct {
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
+	f.initialized = true
 	return f.manifest, nil
 }
 
@@ -61,6 +68,9 @@ func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandRespo
 }
 
 func (f *fake) Health(context.Context) (recall.Health, error) {
+	if f.needsHandshake && !f.initialized {
+		return recall.Health{Status: recall.HealthUnavailable}, protocol.ErrSourceUnavailable
+	}
 	if f.healthErr != nil {
 		return f.health, f.healthErr
 	}
@@ -555,5 +565,79 @@ func TestExpandSanitizesEvidence(t *testing.T) {
 	}
 	if strings.ContainsRune(got.Content, 0x1b) {
 		t.Errorf("evidence still carries an escape: %q", got.Content)
+	}
+}
+
+// A built-in adapter is constructed unconfigured: it is told where to read at
+// the handshake, so it cannot answer a health probe before one. Probing first
+// excluded every built-in source as unhealthy, which made `recall query` return
+// nothing while `recall doctor` — which initializes before probing — called the
+// same source healthy.
+func TestBuiltInSourcesAreHandshakenBeforeTheyAreProbed(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		for _, adp := range f {
+			adp.needsHandshake = true
+		}
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := reportFor(t, resp, "docs"); rep.Outcome != recall.SearchSuccess {
+		t.Errorf("docs outcome = %s (%s), want success: a built-in was excluded before it was configured",
+			rep.Outcome, rep.Reason)
+	}
+	if len(resp.Results) == 0 {
+		t.Error("no results: an unconfigured built-in cannot answer, and it was never configured")
+	}
+}
+
+// An expansion is often the first thing a fresh process does with a locator
+// somebody saved yesterday, so it cannot assume a handshake already happened.
+func TestExpandHandshakesBeforeReachingTheAdapter(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		for _, adp := range f {
+			adp.needsHandshake = true
+		}
+		f["fakedocs"].evidence = recall.ExpandResponse{Content: "the section"}
+	})
+
+	got, err := h.app.Expand(context.Background(), recall.ExpandRequest{
+		Locator: recall.Locator{SourceID: "docs", Local: "a.md"},
+		Detail:  recall.DetailFull,
+	}, "work")
+	if err != nil {
+		t.Fatalf("expand against an unconfigured built-in: %v", err)
+	}
+	if got.Content == "" {
+		t.Error("no evidence returned")
+	}
+	if !h.fakes["fakedocs"].initialized {
+		t.Error("the adapter was asked to expand before it was told where to read")
+	}
+}
+
+// The limit belongs to the request, not to the Ranker. A long-lived service
+// serves many callers from one Ranker and has to honor each caller's ask.
+func TestPerRequestLimitIsHonored(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		var many []recall.Candidate
+		for i := range 8 {
+			many = append(many, cand("docs", string(rune('a'+i))+".md", i+1))
+		}
+		f["fakedocs"].candidates = many
+	})
+
+	req := query("anything")
+	req.Limit = 3
+
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != 3 {
+		t.Errorf("results = %d, want the requested 3", len(resp.Results))
 	}
 }

@@ -1,0 +1,12 @@
+profile work  max sensitivity internal  sources 2
+
+docs (01UIDDOCS)  adapter fakedocs  enabled  in profile
+  location <root>/config/recall/docs  sensitivity internal  freshness indexed  prior 1.2  intent priors reference=1.5  record types document  timeout_ms 1500
+  adapter id fake/1  name Fake  capabilities search, expand  query modes lexical  as_of filter
+  policy rebuilt on demand
+  health healthy  coverage complete  watermark w-000123  generation gen-000042  index config bm25-k1.2  records 12  indexed 12
+
+tasks (01UIDTASKS)  adapter faketasks  enabled  in profile
+  location <root>/config/recall/tasks  sensitivity internal  freshness indexed  prior 1  timeout_ms 2000
+  adapter id fake/1  name Fake  capabilities search, expand  query modes lexical  as_of filter
+  health healthy  coverage complete

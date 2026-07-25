@@ -308,7 +308,13 @@ Lineage identity is declared, never inferred:
 
 The lineage root is the locator of the original record after following declared
 edges, expressed with `source_uid`. Edges are followed to a fixed depth
-(default 4); a cycle is a configuration defect reported by `recall doctor`.
+(default 4).
+
+A cycle among **source-level** `derives_from` edges is configuration, and
+`recall doctor` reports it. A cycle among **record-level** `derived_from` edges
+is not: those edges live in candidates, so nothing can enumerate them without
+running a query over every corpus. Record-level cycles are detected per request
+and reported in that response's diagnostics.
 
 ## Configuration And Trust
 

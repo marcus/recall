@@ -1,0 +1,130 @@
+{
+  "comment": [
+    "Recorded Tasks CLI output for the smoke pack. The runner binds this to",
+    "tasks.Options.Runner; no process is ever spawned. `args` matches the",
+    "adapter's argv exactly; `contains` matches any invocation holding all of",
+    "the listed arguments. First match wins, `default` answers the rest, and",
+    "answering an unrecorded `show` with exit 2 is what the real CLI does for",
+    "an id it does not hold."
+  ],
+  "invocations": [
+    {
+      "args": [
+        "check",
+        "--json",
+        "--all-files"
+      ],
+      "stdout": "check_ok.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--body",
+        "/lineage"
+      ],
+      "stdout": "list_body_lineage.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--body",
+        "/renewal"
+      ],
+      "stdout": "list_body_renewal.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--body",
+        "/drill"
+      ],
+      "stdout": "list_body_drill.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--body"
+      ],
+      "stdout": "list_empty.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--open"
+      ],
+      "stdout": "list_open.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--done"
+      ],
+      "stdout": "list_done.json"
+    },
+    {
+      "contains": [
+        "list",
+        "--archived"
+      ],
+      "stdout": "list_empty.json"
+    },
+    {
+      "contains": [
+        "list"
+      ],
+      "stdout": "list_all.json"
+    },
+    {
+      "contains": [
+        "projects"
+      ],
+      "stdout": "projects.json"
+    },
+    {
+      "contains": [
+        "show",
+        "aaaa0001"
+      ],
+      "stdout": "show_aaaa0001.json"
+    },
+    {
+      "contains": [
+        "show",
+        "aaaa0002"
+      ],
+      "stdout": "show_aaaa0002.json"
+    },
+    {
+      "contains": [
+        "show",
+        "aaaa0003"
+      ],
+      "stdout": "show_aaaa0003.json"
+    },
+    {
+      "contains": [
+        "show",
+        "aaaa0004"
+      ],
+      "stdout": "show_aaaa0004.json"
+    },
+    {
+      "contains": [
+        "show",
+        "aaaa0005"
+      ],
+      "stdout": "show_aaaa0005.json"
+    },
+    {
+      "contains": [
+        "show"
+      ],
+      "stdout": "show_not_found.txt",
+      "exit_code": 2
+    }
+  ],
+  "default": {
+    "stdout": "list_empty.json",
+    "exit_code": 0
+  }
+}

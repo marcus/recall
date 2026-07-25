@@ -1,0 +1,55 @@
+paths
+  config file  <root>/config/recall/config.toml
+  adapters dir <root>/config/recall/adapters.d
+  state dir    <root>/state/recall/work
+  cache dir    <root>/cache/recall/work
+
+files
+  user     <root>/config/recall/config.toml
+
+defaults
+  fusion_reserve_ms  25                           [user <root>/config/recall/config.toml]
+  profile            work                         [user <root>/config/recall/config.toml]
+  timeout_ms         2000                         [user <root>/config/recall/config.toml]
+
+adapters
+  fakedocs  builtin  freshness modes indexed  [builtin]
+  faketasks  builtin  freshness modes indexed  [builtin]
+
+sources
+  docs (01UIDDOCS)  declared in <root>/config/recall/config.toml
+    adapter            fakedocs                     [user <root>/config/recall/config.toml]
+    base_dir           <root>/config/recall [user <root>/config/recall/config.toml]
+    base_prior         1.2                          [user <root>/config/recall/config.toml]
+    enabled            true                         [default]
+    freshness_mode     indexed                      [user <root>/config/recall/config.toml]
+    freshness_policy   rebuilt on demand            [user <root>/config/recall/config.toml]
+    location           <root>/config/recall/docs [user <root>/config/recall/config.toml]
+    record_types       [document]                   [user <root>/config/recall/config.toml]
+    sensitivity        internal                     [user <root>/config/recall/config.toml]
+    source_id          docs                         [user <root>/config/recall/config.toml]
+    source_uid         01UIDDOCS                    [user <root>/config/recall/config.toml]
+    timeout_ms         1500                         [user <root>/config/recall/config.toml]
+    intent_priors
+      reference          1.5                          [user <root>/config/recall/config.toml]
+  tasks (01UIDTASKS)  declared in <root>/config/recall/config.toml
+    adapter            faketasks                    [user <root>/config/recall/config.toml]
+    base_dir           <root>/config/recall [user <root>/config/recall/config.toml]
+    base_prior         1                            [user <root>/config/recall/config.toml]
+    enabled            true                         [default]
+    freshness_mode     indexed                      [user <root>/config/recall/config.toml]
+    freshness_policy                                [default]
+    location           <root>/config/recall/tasks [user <root>/config/recall/config.toml]
+    sensitivity        internal                     [user <root>/config/recall/config.toml]
+    source_id          tasks                        [user <root>/config/recall/config.toml]
+    source_uid         01UIDTASKS                   [user <root>/config/recall/config.toml]
+    timeout_ms         2000                         [default]
+
+profiles
+  work  max_sensitivity internal  sources [docs tasks]
+    max_sensitivity    internal                     [user <root>/config/recall/config.toml]
+    sources            [docs tasks]                 [user <root>/config/recall/config.toml]
+
+identity
+  docs                 01UIDDOCS
+  tasks                01UIDTASKS

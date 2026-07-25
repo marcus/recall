@@ -44,6 +44,12 @@ func (a *App) Expand(ctx context.Context, req recall.ExpandRequest, profileName 
 			protocol.ErrSourceDenied, inst.ID, profile.MaxSensitivity, profile.Name)
 	}
 
+	// Handshake first, for the same reason the plan does: a built-in adapter is
+	// constructed unconfigured, and an expansion is often the first thing a
+	// fresh process does with a locator somebody saved yesterday.
+	if _, err := a.registry.Initialize(ctx, inst); err != nil {
+		return recall.ExpandResponse{}, err
+	}
 	adp, err := a.registry.Adapter(inst)
 	if err != nil {
 		return recall.ExpandResponse{}, err

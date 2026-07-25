@@ -1,0 +1,22 @@
+status ok  profile work
+
+configuration  pass
+  <root>/config/recall/config.toml (user)
+
+trust_boundary pass
+  no project configuration; every adapter command came from user configuration
+
+identity       pass
+  2 sources, 2 distinct identities
+
+access         pass
+  2 of 2 eligible sources name a local path
+
+health         pass
+  2 of 2 eligible sources answered a health probe
+
+freshness      pass
+  2 probed sources serve the freshness mode they were configured with
+
+lineage        pass
+  0 declared source-level derivation edges

@@ -1,0 +1,119 @@
+[
+ {
+  "id": "aaaa0001",
+  "state": "NEXT",
+  "priority": "A",
+  "title": "Publish the Recall lineage design note",
+  "tags": [
+   "recall"
+  ],
+  "contexts": [
+   "@computer"
+  ],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": null,
+  "deadline_time": null,
+  "recur": null,
+  "line": 3,
+  "source": "live",
+  "headline": "NEXT Publish the Recall lineage design note",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ },
+ {
+  "id": "aaaa0002",
+  "state": "TODO",
+  "priority": "B",
+  "title": "Rotate the backup restore drill schedule",
+  "tags": [],
+  "contexts": [
+   "@ops"
+  ],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": null,
+  "deadline_time": null,
+  "recur": null,
+  "line": 4,
+  "source": "live",
+  "headline": "TODO Rotate the backup restore drill schedule",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ },
+ {
+  "id": "aaaa0003",
+  "state": "DONE",
+  "priority": null,
+  "title": "Draft the fusion ranking spec",
+  "tags": [
+   "recall"
+  ],
+  "contexts": [],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": null,
+  "deadline_time": null,
+  "recur": null,
+  "line": 5,
+  "source": "live",
+  "headline": "DONE Draft the fusion ranking spec",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ },
+ {
+  "id": "aaaa0004",
+  "state": "TODO",
+  "priority": "A",
+  "title": "Renew the Atlas vendor contract",
+  "tags": [],
+  "contexts": [
+   "@email"
+  ],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": "2026-08-01",
+  "deadline_time": null,
+  "recur": null,
+  "line": 6,
+  "source": "live",
+  "headline": "TODO Renew the Atlas vendor contract",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ },
+ {
+  "id": "aaaa0005",
+  "state": "NEXT",
+  "priority": null,
+  "title": "Review the retrieval onboarding handbook",
+  "tags": [],
+  "contexts": [
+   "@computer"
+  ],
+  "deferred": false,
+  "scheduled": null,
+  "scheduled_time": null,
+  "deadline": null,
+  "deadline_time": null,
+  "recur": null,
+  "line": 7,
+  "source": "live",
+  "headline": "NEXT Review the retrieval onboarding handbook",
+  "available": true,
+  "availability_reason": "available",
+  "availability_blocker_id": null,
+  "available_at": null
+ }
+]

@@ -40,6 +40,7 @@ type App struct {
 type Registry interface {
 	BuildPlan(ctx context.Context, req recall.QueryRequest, opt source.PlanOptions) (source.Plan, error)
 	Adapter(inst *config.SourceInstance) (adapter.Adapter, error)
+	Initialize(ctx context.Context, inst *config.SourceInstance) (recall.Manifest, error)
 }
 
 // Options configure an App.
@@ -96,6 +97,7 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 		Candidates:        pool,
 		Resolver:          resolver,
 		SourceDerivations: a.derivations(plan),
+		Limit:             req.Limit,
 		Mode:              req.Mode,
 		SuppressLineages:  req.SuppressLineages,
 	})

@@ -62,7 +62,14 @@ func (r *Ranker) selectResults(ordered []*cluster, req Request) Fusion {
 
 	final, demoted := r.diversify(kept)
 
+	// A per-request limit overrides the configured one. The configured value is
+	// a policy default; the request's is what this caller asked for, and a
+	// long-lived service serving many callers from one Ranker cannot vary it
+	// otherwise.
 	limit := r.cfg.Limit
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
 	if limit > 0 && len(final) > limit {
 		for _, c := range final[limit:] {
 			// A cluster that would have fitted on relevance alone and lost its

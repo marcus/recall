@@ -30,6 +30,10 @@ type Request struct {
 	// lineage root: a source-level edge cannot say which record it projects.
 	SourceDerivations map[recall.SourceUID]recall.SourceUID
 
+	// Limit caps the results emitted, overriding [Config.Limit]. Zero means the
+	// configured default applies.
+	Limit int
+
 	// QueryClass names the request's query class, selecting at most one intent
 	// prior per source. Empty means no intent rule fires and base priors apply.
 	QueryClass string

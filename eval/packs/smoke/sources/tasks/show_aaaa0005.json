@@ -1,0 +1,27 @@
+{
+ "id": "aaaa0005",
+ "state": "NEXT",
+ "priority": null,
+ "title": "Review the retrieval onboarding handbook",
+ "tags": [],
+ "contexts": [
+  "@computer"
+ ],
+ "deferred": false,
+ "scheduled": null,
+ "scheduled_time": null,
+ "deadline": null,
+ "deadline_time": null,
+ "recur": null,
+ "line": 7,
+ "source": "live",
+ "headline": "NEXT Review the retrieval onboarding handbook",
+ "available": true,
+ "availability_reason": "available",
+ "availability_blocker_id": null,
+ "available_at": null,
+ "closed": null,
+ "notes": [],
+ "project": null,
+ "links": []
+}

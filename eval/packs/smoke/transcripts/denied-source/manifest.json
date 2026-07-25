@@ -1,0 +1,15 @@
+{
+  "case": "denied-source",
+  "description": "A source that refuses access. The handshake succeeds, because the configuration is valid and nothing has been asked of the source yet; health and search then answer source_denied (-32001). The diagnostic names no record and no path: a denied source must not leak the existence of what it is holding back. This transcript exists because no built-in adapter can be made to deny access from committed fixture data \u2014 a permission bit is not something a repository stores \u2014 and a pack that skipped the denial category would leave the honest-failure gate untested.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}

@@ -1,0 +1,29 @@
+[
+ {
+  "id": "aaaa0009",
+  "title": "Recall",
+  "kind": "project",
+  "open_count": 1,
+  "next_count": 1,
+  "stuck": false,
+  "held_count": 0,
+  "body": "Goal: a portable retrieval layer with a trustworthy baseline.",
+  "task_ids": [
+   "aaaa0001",
+   "aaaa0003"
+  ]
+ },
+ {
+  "id": "aaaa000a",
+  "title": "Platform",
+  "kind": "area",
+  "open_count": 2,
+  "next_count": 0,
+  "stuck": false,
+  "held_count": 0,
+  "task_ids": [
+   "aaaa0002",
+   "aaaa0004"
+  ]
+ }
+]

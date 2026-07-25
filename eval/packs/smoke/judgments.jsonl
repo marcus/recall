@@ -1,0 +1,83 @@
+{"schema_version":1,"case_id":"exact-doc-path-001","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L1-L4","relevance":3,"required":true,"supports":["document identity"]}
+{"schema_version":1,"case_id":"exact-doc-path-001","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L6-L10","relevance":2,"supports":["section of the named document"]}
+{"schema_version":1,"case_id":"exact-doc-path-001","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":2,"supports":["section of the named document"]}
+{"schema_version":1,"case_id":"exact-doc-path-001","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L18-L21","relevance":2,"supports":["section of the named document"]}
+{"schema_version":1,"case_id":"exact-doc-basename-002","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"exact-doc-basename-002","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":2,"supports":["section of the named document"]}
+{"schema_version":1,"case_id":"exact-doc-basename-002","lineage_root":"01SMOKENOTES:projects/atlas/overview.md#L8-L11","relevance":1,"supports":["mentions the drill, is not the runbook"]}
+{"schema_version":1,"case_id":"exact-doc-near-miss-003","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"exact-doc-near-miss-003","lineage_root":"01SMOKENOTES:projects/atlas/overview.md#L8-L11","relevance":2,"supports":["atlas storage context"]}
+{"schema_version":1,"case_id":"exact-doc-near-miss-003","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":1,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"alias-doc-004","lineage_root":"01SMOKENOTES:projects/recall/decisions.md#L3-L6","relevance":3,"required":true,"supports":["decision log"]}
+{"schema_version":1,"case_id":"alias-doc-004","lineage_root":"01SMOKENOTES:projects/recall/decisions.md#L8-L11","relevance":2,"supports":["second entry in the same log"]}
+{"schema_version":1,"case_id":"alias-near-miss-005","lineage_root":"01SMOKENOTES:projects/recall/decisions.md#L3-L6","relevance":2,"required":true,"supports":["decision log"]}
+{"schema_version":1,"case_id":"alias-near-miss-005","lineage_root":"01SMOKENOTES:projects/recall/decisions.md#L8-L11","relevance":2,"supports":["second entry in the same log"]}
+{"schema_version":1,"case_id":"exact-task-id-006","lineage_root":"01SMOKETASKS:aaaa0001","relevance":3,"required":true,"supports":["state","title"]}
+{"schema_version":1,"case_id":"exact-task-near-miss-007","lineage_root":"01SMOKETASKS:aaaa0001","relevance":0,"forbidden":true,"supports":["a false exact match"]}
+{"schema_version":1,"case_id":"paraphrase-fusion-008","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L6-L10","relevance":3,"required":true,"supports":["fusion by rank"]}
+{"schema_version":1,"case_id":"paraphrase-fusion-008","lineage_root":"01SMOKEHANDBOOK:onboarding/retrieval.md#L3-L6","relevance":3,"required":true,"supports":["fusion by rank, restated"]}
+{"schema_version":1,"case_id":"paraphrase-fusion-008","lineage_root":"01SMOKEHANDBOOK:onboarding/retrieval.md#L8-L11","relevance":1,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"paraphrase-recovery-009","lineage_root":"01SMOKEHANDBOOK:onboarding/incident-response.md#L3-L7","relevance":3,"required":true,"supports":["recovery procedure"]}
+{"schema_version":1,"case_id":"paraphrase-recovery-009","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":2,"supports":["rehearsed restore steps"]}
+{"schema_version":1,"case_id":"paraphrase-lineage-010","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":3,"required":true,"supports":["lineage grouping"]}
+{"schema_version":1,"case_id":"paraphrase-lineage-010","lineage_root":"01SMOKENOTES:glossary.md#L3-L7","relevance":3,"required":true,"supports":["definition of a lineage root"]}
+{"schema_version":1,"case_id":"paraphrase-lineage-010","lineage_root":"01SMOKENOTES:projects/recall/decisions.md#L8-L11","relevance":2,"supports":["edges are declared, never inferred"]}
+{"schema_version":1,"case_id":"fusion-vendor-renewal-012","lineage_root":"01SMOKETASKS:aaaa0004","relevance":3,"required":true,"supports":["live state of the renewal"]}
+{"schema_version":1,"case_id":"fusion-vendor-renewal-012","lineage_root":"01SMOKEHANDBOOK:onboarding/vendor-renewals.md#L3-L6","relevance":3,"required":true,"supports":["renewal process"]}
+{"schema_version":1,"case_id":"fusion-vendor-renewal-012","lineage_root":"01SMOKENOTES:projects/atlas/overview.md#L3-L6","relevance":2,"supports":["what Atlas is"]}
+{"schema_version":1,"case_id":"fusion-lineage-note-013","lineage_root":"01SMOKETASKS:aaaa0001","relevance":3,"required":true,"supports":["who is doing it, and its state"]}
+{"schema_version":1,"case_id":"fusion-lineage-note-013","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":2,"supports":["what the note is about"]}
+{"schema_version":1,"case_id":"fusion-lineage-note-013","lineage_root":"01SMOKESIGNALS:v1/sig-1002","relevance":1,"supports":["someone said it was drafted"]}
+{"schema_version":1,"case_id":"fusion-diversity-014","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["the drill itself"]}
+{"schema_version":1,"case_id":"fusion-diversity-014","lineage_root":"01SMOKETASKS:aaaa0002","relevance":3,"required":true,"supports":["who owns the rotation"]}
+{"schema_version":1,"case_id":"fusion-diversity-014","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":1,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"fusion-diversity-014","lineage_root":"01SMOKESIGNALS:v2/sig-1005","relevance":2,"supports":["the most recent drill actually ran"]}
+{"schema_version":1,"case_id":"corroborate-distinct-roots-015","lineage_root":"01SMOKENOTES:glossary.md#L9-L12","relevance":3,"required":true,"supports":["definition"]}
+{"schema_version":1,"case_id":"corroborate-distinct-roots-015","lineage_root":"01SMOKEHANDBOOK:onboarding/retrieval.md#L8-L11","relevance":3,"required":true,"supports":["independent corroboration, restated"]}
+{"schema_version":1,"case_id":"lineage-duplicate-projection-016","lineage_root":"01SMOKETASKS:aaaa0001","relevance":3,"required":true,"supports":["the original record"]}
+{"schema_version":1,"case_id":"lineage-duplicate-projection-016","lineage_root":"01SMOKESIGNALS:v1/sig-1001","relevance":0,"forbidden":true,"supports":["the projection must not appear as its own root"]}
+{"schema_version":1,"case_id":"lineage-fingerprint-collapse-017","lineage_root":"01SMOKENOTES:glossary.md#L3-L7","relevance":3,"required":true,"supports":["definition"]}
+{"schema_version":1,"case_id":"lineage-fingerprint-collapse-017","lineage_root":"01SMOKEHANDBOOK:reference/glossary-extract.md#L3-L7","relevance":2,"supports":["a copy, not a second witness"]}
+{"schema_version":1,"case_id":"lineage-unmapped-system-018","lineage_root":"01SMOKESIGNALS:v1/sig-1002","relevance":3,"required":true,"supports":["who said it, and when"]}
+{"schema_version":1,"case_id":"temporal-current-019","lineage_root":"01SMOKESIGNALS:v2/sig-1006","relevance":3,"required":true,"supports":["current state"]}
+{"schema_version":1,"case_id":"temporal-current-019","lineage_root":"01SMOKESIGNALS:v1/sig-1003","relevance":0,"forbidden":true,"supports":["superseded transition"]}
+{"schema_version":1,"case_id":"temporal-historical-020","lineage_root":"01SMOKESIGNALS:v1/sig-1003","relevance":3,"required":true,"supports":["the earlier transition"]}
+{"schema_version":1,"case_id":"temporal-historical-020","lineage_root":"01SMOKESIGNALS:v2/sig-1006","relevance":3,"required":true,"supports":["how it ended"]}
+{"schema_version":1,"case_id":"temporal-as-of-021","lineage_root":"01SMOKESIGNALS:v1/sig-1003","relevance":3,"required":true,"supports":["state at the boundary"]}
+{"schema_version":1,"case_id":"temporal-as-of-021","lineage_root":"01SMOKESIGNALS:v2/sig-1006","relevance":0,"forbidden":true,"supports":["an event after the boundary"]}
+{"schema_version":1,"case_id":"temporal-stale-022","lineage_root":"01SMOKESIGNALS:v2/sig-1005","relevance":3,"required":true,"supports":["the most recent drill"]}
+{"schema_version":1,"case_id":"temporal-stale-022","lineage_root":"01SMOKESIGNALS:v1/sig-1004","relevance":2,"required":true,"supports":["the mismatch nobody else recorded"]}
+{"schema_version":1,"case_id":"temporal-stale-022","lineage_root":"01SMOKESIGNALS:v1/sig-1005","relevance":1,"supports":["the same drill before it ran"]}
+{"schema_version":1,"case_id":"temporal-as-of-unsupported-023","lineage_root":"01SMOKESIGNALS:v1/sig-1003","relevance":3,"required":true,"supports":["state at the boundary"]}
+{"schema_version":1,"case_id":"temporal-as-of-unsupported-023","lineage_root":"01SMOKESIGNALS:v2/sig-1006","relevance":0,"forbidden":true,"supports":["an event after the boundary"]}
+{"schema_version":1,"case_id":"temporal-as-of-unsupported-023","lineage_root":"01SMOKETASKS:aaaa0001","relevance":0,"forbidden":true,"supports":["a source that cannot honor the boundary"]}
+{"schema_version":1,"case_id":"answer-degraded-coverage-024","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["the rotation"]}
+{"schema_version":1,"case_id":"answer-degraded-coverage-024","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":1,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"source-unavailable-026","lineage_root":"01SMOKENOTES:projects/recall/status.md#L3-L6","relevance":1,"supports":["weak lexical match, nothing better exists"]}
+{"schema_version":1,"case_id":"source-partial-027","lineage_root":"01SMOKEFLAKY:v1/sig-4001","relevance":3,"required":true,"supports":["the readable record"]}
+{"schema_version":1,"case_id":"source-partial-027","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":2,"supports":["the drill the record is about"]}
+{"schema_version":1,"case_id":"source-timeout-028","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":2,"supports":["what the dashboard tracks"]}
+{"schema_version":1,"case_id":"source-denied-029","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"source-denied-029","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":1,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"expand-summary-030","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"expand-excerpt-031","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"expand-full-032","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L9-L11","relevance":3,"required":true,"supports":["retention window"]}
+{"schema_version":1,"case_id":"expand-full-032","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":2,"supports":["adjacent section"]}
+{"schema_version":1,"case_id":"expand-context-033","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":3,"required":true,"supports":["lineage grouping"]}
+{"schema_version":1,"case_id":"expand-context-033","lineage_root":"01SMOKENOTES:glossary.md#L3-L7","relevance":2,"supports":["the same idea, defined"]}
+{"schema_version":1,"case_id":"locator-revision-034","lineage_root":"01SMOKESIGNALS:v2/sig-1005","relevance":3,"required":true,"supports":["the drill that ran"]}
+{"schema_version":1,"case_id":"locator-revision-034","lineage_root":"01SMOKESIGNALS:v1/sig-1005","relevance":0,"forbidden":true,"supports":["a locator minted against the superseded shape"]}
+{"schema_version":1,"case_id":"config-trust-command-035","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"config-trust-command-035","lineage_root":"01SMOKETASKS:aaaa0002","relevance":2,"supports":["who owns the rotation"]}
+{"schema_version":1,"case_id":"config-trust-settings-command-036","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"config-trust-settings-command-036","lineage_root":"01SMOKETASKS:aaaa0002","relevance":2,"supports":["who owns the rotation"]}
+{"schema_version":1,"case_id":"suppress-pre-reply-037","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":3,"required":true,"supports":["what the note is about"]}
+{"schema_version":1,"case_id":"suppress-pre-reply-037","lineage_root":"01SMOKESIGNALS:v1/sig-1002","relevance":2,"supports":["someone said it was drafted"]}
+{"schema_version":1,"case_id":"suppress-pre-reply-037","lineage_root":"01SMOKETASKS:aaaa0001","relevance":0,"forbidden":true,"supports":["already shown by the host"]}
+{"schema_version":1,"case_id":"suppress-explicit-038","lineage_root":"01SMOKETASKS:aaaa0001","relevance":3,"required":true,"supports":["state and title"]}
+{"schema_version":1,"case_id":"suppress-explicit-038","lineage_root":"01SMOKENOTES:projects/recall/architecture.md#L12-L16","relevance":2,"supports":["what the note is about"]}
+{"schema_version":1,"case_id":"sensitivity-source-ceiling-039","lineage_root":"01SMOKENOTES:runbooks/backup-restore.md#L3-L7","relevance":3,"required":true,"supports":["restore procedure"]}
+{"schema_version":1,"case_id":"sensitivity-source-ceiling-039","lineage_root":"01SMOKENOTES:projects/atlas/overview.md#L3-L6","relevance":1,"supports":["vendor context"]}
+{"schema_version":1,"case_id":"sensitivity-source-ceiling-039","lineage_root":"01SMOKEVAULT:incidents/2026-02-payroll.md#L3-L6","relevance":0,"forbidden":true,"supports":["above the ceiling"]}
+{"schema_version":1,"case_id":"sensitivity-candidate-ceiling-040","lineage_root":"01SMOKELEDGER:expenses-2026.md#L3-L6","relevance":0,"forbidden":true,"supports":["a candidate above the profile ceiling"]}
+{"schema_version":1,"case_id":"sensitivity-ceiling-explicit-041","lineage_root":"01SMOKEVAULT:incidents/2026-02-payroll.md#L3-L6","relevance":0,"forbidden":true,"supports":["above the ceiling"]}
