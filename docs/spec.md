@@ -499,10 +499,12 @@ The built-in documents adapter applies one versioned query analyzer before
 lexical scoring. It folds alphanumeric terms and removes a bounded list of
 English articles, copular/do auxiliaries, and interrogatives: the grammatical
 shell that turns keywords into a question. Those terms may not be the only
-evidence that opens a result set. When at least one content term matches, the
-full query remains the ranking input, preserving established positive-query
-ordering; when no content term matches, grammatical scaffolding cannot
-manufacture candidates. This is query normalization, not index censorship:
+evidence that opens a result set: every returned non-exact candidate must
+contain at least one retained content term itself. Once a candidate meets that
+eligibility rule, the full query remains its ranking input, preserving
+established positive-query ordering among content-bearing candidates.
+Grammatical scaffolding can influence their order but cannot manufacture an
+unrelated candidate elsewhere in the corpus. This is query normalization, not index censorship:
 exact path and alias matching still sees every raw token. Double-quoted terms
 are kept, all-function-word queries fall back to their raw terms, and pronouns,
 prepositions, conjunctions, modals, intent verbs, negation, demonstratives,

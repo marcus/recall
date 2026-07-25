@@ -112,8 +112,8 @@ func TestContentEvidenceControlsFunctionWordRanking(t *testing.T) {
 	if !slices.Equal(present.terms, question.raw) {
 		t.Fatalf("content match terms = %v, want full ranking query %v", present.terms, question.raw)
 	}
-	if present.normalized || present.removed != 0 {
-		t.Fatalf("content match still reports a rewrite: %+v", present)
+	if !present.normalized || present.removed != 3 || !present.scoringWithScaffolding {
+		t.Fatalf("content match lost its eligibility decision: %+v", present)
 	}
 }
 

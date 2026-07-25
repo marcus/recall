@@ -66,6 +66,9 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 		if !scored && !exact[c.Path] {
 			continue
 		}
+		if scored && !exact[c.Path] && !contentEligible(c, query) {
+			continue
+		}
 		if !allowed(c) {
 			continue
 		}
@@ -95,9 +98,9 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 // absent, they cannot manufacture candidates; if content is present, the full
 // query may still order those results exactly as it did before normalization.
 //
-// The returned analysis remains the single term path used by BM25 and candidate
-// selection. There is no second stopword-only score that can leak candidates
-// around the decision.
+// Candidate admission separately requires one of the retained terms on that
+// same chunk. Scaffolding can therefore influence order among content-bearing
+// candidates, but can never create one.
 func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryAnalysis {
 	if !query.normalized {
 		return query
@@ -107,11 +110,22 @@ func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryA
 			continue
 		}
 		query.terms = append(query.terms[:0], query.raw...)
-		query.removed = 0
-		query.normalized = false
+		query.scoringWithScaffolding = true
 		return query
 	}
 	return query
+}
+
+func contentEligible(chunk indexedChunk, query queryAnalysis) bool {
+	if !query.normalized {
+		return true
+	}
+	for _, term := range query.retained {
+		if chunk.Terms[term] > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // scoreBM25 accumulates Okapi BM25 over the postings.
@@ -340,7 +354,7 @@ func searchDiagnostics(
 	diag := map[string]any{
 		"query_mode":       string(recall.QueryLexical),
 		"query_analyzer":   queryAnalyzer,
-		"query_term_count": len(uniqueTerms(query.terms)),
+		"query_term_count": queryRetainedTermCount(query),
 		"generation":       g.id,
 		"pool_size":        pool,
 		"indexed_count":    len(g.docs),
@@ -349,6 +363,9 @@ func searchDiagnostics(
 	}
 	if query.normalized {
 		diag["query_terms_removed"] = query.removed
+	}
+	if query.scoringWithScaffolding {
+		diag["query_scoring"] = "full_query_over_content_candidates"
 	}
 	if len(g.failures) > 0 {
 		diag["failed_count"] = len(g.failures)
@@ -360,4 +377,11 @@ func searchDiagnostics(
 		diag["as_of"] = "filter_on_mtime"
 	}
 	return diag
+}
+
+func queryRetainedTermCount(query queryAnalysis) int {
+	if query.normalized {
+		return len(uniqueTerms(query.retained))
+	}
+	return len(uniqueTerms(query.terms))
 }

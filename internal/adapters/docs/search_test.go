@@ -3,6 +3,8 @@ package docs_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -212,11 +214,43 @@ func TestNaturalQuestionAndKeywordFormShareRetrieval(t *testing.T) {
 	}
 
 	question := search(t, a, "what is the wifi password")
-	if got := question.Diagnostics["query_analyzer"]; got != "alnum-fold+english-function-words-v1" {
+	if got := question.Diagnostics["query_analyzer"]; got != "alnum-fold+english-function-words-v2" {
 		t.Errorf("query analyzer diagnostic = %v", got)
 	}
 	if got := question.Diagnostics["query_terms_removed"]; got != 3 {
 		t.Errorf("removed terms diagnostic = %v, want 3", got)
+	}
+}
+
+func TestEveryCandidateCarriesContentEvidence(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	files := map[string]string{
+		"content.md":     "# Network\nThe wifi network is documented here.\n",
+		"scaffolding.md": "# What is the\nWhat is the what is the.\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, _ := newAdapter(t, root, nil)
+
+	resp := search(t, a, "what is the wifi password")
+	if len(resp.Candidates) == 0 {
+		t.Fatal("fixture content term did not produce a candidate")
+	}
+	for _, candidate := range resp.Candidates {
+		path := metaString(t, candidate, "path")
+		if path == "scaffolding.md" {
+			t.Fatalf("scaffolding-only chunk entered candidates: %+v", candidate)
+		}
+		if path != "content.md" {
+			t.Errorf("unexpected candidate path %q", path)
+		}
+	}
+	if got := resp.Diagnostics["query_scoring"]; got != "full_query_over_content_candidates" {
+		t.Errorf("query scoring diagnostic = %v", got)
 	}
 }
 

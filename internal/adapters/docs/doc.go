@@ -20,10 +20,11 @@
 // make the first document adapter unevaluatable against the plain baseline it
 // is supposed to beat. Query analysis keeps a bounded set of English
 // grammatical function words from serving as the only evidence for a match.
-// Once a content term matches, the full query remains the ranking input. Quoted
-// terms, exact identifiers, all-function-word short queries, negation, and
-// every non-English token are preserved. The analyzer version is reported in
-// diagnostics and index_config so a ranking change cannot be invisible.
+// Every non-exact candidate must itself contain a retained content term. Once
+// it does, the full query remains its ranking input. Quoted terms, exact
+// identifiers, all-function-word short queries, negation, and every non-English
+// token are preserved. The analyzer version is reported in diagnostics and
+// index_config so a ranking change cannot be invisible.
 //
 // Three rules here are invariants rather than tunable behavior:
 //

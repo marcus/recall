@@ -69,13 +69,15 @@ func scanTokens(s string, quoteAware bool) []scannedToken {
 }
 
 type queryAnalysis struct {
-	raw        []string
-	terms      []string
-	removed    int
-	normalized bool
+	raw                    []string
+	terms                  []string
+	retained               []string
+	removed                int
+	normalized             bool
+	scoringWithScaffolding bool
 }
 
-const queryAnalyzer = "alnum-fold+english-function-words-v1"
+const queryAnalyzer = "alnum-fold+english-function-words-v2"
 
 // analyzeQuery removes English grammatical scaffolding from lexical scoring
 // while preserving the exact text semantics that need it.
@@ -96,9 +98,9 @@ const queryAnalyzer = "alnum-fold+english-function-words-v1"
 // The search layer uses these terms to decide whether any content word matched.
 // When none did, function words cannot manufacture candidates; when content did
 // match, the full raw query remains the ranking input. These rules make "what
-// is the wifi password" abstain with "wifi password" without moving established
-// positive-query rankings, or making a meaningful short query or quoted phrase
-// disappear.
+// is the wifi password" abstain with "wifi password" without admitting
+// scaffolding-only chunks beside a real content hit, or making a meaningful
+// short query or quoted phrase disappear.
 func analyzeQuery(query string) queryAnalysis {
 	scanned := scanTokens(query, true)
 	analysis := queryAnalysis{
@@ -121,6 +123,9 @@ func analyzeQuery(query string) queryAnalysis {
 		analysis.removed = 0
 	}
 	analysis.normalized = analysis.removed > 0
+	if analysis.normalized {
+		analysis.retained = append([]string(nil), analysis.terms...)
+	}
 	return analysis
 }
 
