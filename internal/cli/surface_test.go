@@ -96,6 +96,33 @@ func TestCLIInProcessAndAgainstServeAreIdentical(t *testing.T) {
 	}
 }
 
+func TestQueryJSONWriteErrorTakesPrecedenceOverSemanticExit(t *testing.T) {
+	core := &transportCore{query: recall.QueryResponse{
+		Outcome:  recall.OutcomeFailed,
+		Coverage: recall.CoverageDegraded,
+	}}
+	var stderr bytes.Buffer
+	code := cli.Run(t.Context(), cli.Env{
+		Args:   []string{"query", "--json", "anything"},
+		Stdout: brokenWriter{},
+		Stderr: &stderr,
+		Core:   core,
+	})
+	if code != cli.ExitError {
+		t.Fatalf("exit=%d, want output error %d rather than semantic exit %d",
+			code, cli.ExitError, cli.ExitFailed)
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("JSON write error was not reported")
+	}
+}
+
+type brokenWriter struct{}
+
+func (brokenWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
 func TestMCPCommandUsesTheSameInjectedCore(t *testing.T) {
 	core := &transportCore{}
 	var stdout, stderr bytes.Buffer

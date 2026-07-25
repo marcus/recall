@@ -93,7 +93,10 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 	}
 
 	if *asJSON {
-		return report(env, emitJSON(env.Stdout, resp))
+		if code := report(env, emitJSON(env.Stdout, resp)); code != ExitOK {
+			return code
+		}
+		return queryExit(resp)
 	}
 	var o out
 	renderQuery(&o, resp, *explained)

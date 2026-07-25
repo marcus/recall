@@ -13,8 +13,9 @@ import (
 
 // A script has to be able to tell "nothing matched" from "the sources were
 // down". These four situations are the whole vocabulary, and each one has to
-// reach a different exit code without the caller parsing any output.
-func TestQueryExitCodes(t *testing.T) {
+// reach the same distinct exit code in human and JSON modes without the caller
+// parsing any output.
+func TestQueryExitCodesAreOutputModeIndependent(t *testing.T) {
 	tests := []struct {
 		name  string
 		tune  func(docs, tasks *fake)
@@ -57,16 +58,38 @@ func TestQueryExitCodes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			docs, tasks := &fake{manifest: manifest()}, &fake{manifest: manifest()}
-			tc.tune(docs, tasks)
-			h := newHarness(t, harnessOptions{
-				userTOML: twoSourceTOML,
-				adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": tasks}),
-			})
+			for _, mode := range []struct {
+				name string
+				args []string
+				json bool
+			}{
+				{name: "human"},
+				{name: "json", args: []string{"--json"}, json: true},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					docs, tasks := &fake{manifest: manifest()}, &fake{manifest: manifest()}
+					tc.tune(docs, tasks)
+					h := newHarness(t, harnessOptions{
+						userTOML: twoSourceTOML,
+						adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": tasks}),
+					})
 
-			code, stdout, stderr := h.run("query", "anything")
-			if code != tc.want {
-				t.Errorf("exit = %d, want %d (%s)\n%s%s", code, tc.want, tc.state, stdout, stderr)
+					args := append([]string{"query"}, mode.args...)
+					args = append(args, "anything")
+					code, stdout, stderr := h.run(args...)
+					if code != tc.want {
+						t.Errorf("exit = %d, want %d (%s)\n%s%s", code, tc.want, tc.state, stdout, stderr)
+					}
+					if stdout == "" {
+						t.Fatalf("response was not emitted before exit %d", code)
+					}
+					if mode.json {
+						var resp recall.QueryResponse
+						if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+							t.Fatalf("--json is not valid JSON on exit %d: %v\n%s", code, err, stdout)
+						}
+					}
+				})
 			}
 		})
 	}
