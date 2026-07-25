@@ -23,8 +23,14 @@ const (
 // Expansion is what one returned reference actually expanded to. The runner
 // performs the expansion against the fixture; this package only compares.
 type Expansion struct {
-	// Locator is the reference the run returned.
+	// Locator is the reference the run returned, in display form.
 	Locator recall.Locator `json:"locator"`
+
+	// SourceUID is the identity behind that reference. Display form drops it,
+	// and a run artifact that recorded only the display form would stop
+	// resolving the moment a source was renamed — the exact failure source_uid
+	// exists to prevent.
+	SourceUID recall.SourceUID `json:"source_uid,omitempty"`
 
 	// Root is the lineage root the expansion resolved to, empty when it did not
 	// resolve at all.
@@ -66,9 +72,18 @@ type CaseResult struct {
 	// cover every case it had a hand in.
 	SourceFamilies []string `json:"source_families,omitempty"`
 
-	// Behavior is what Recall actually did: answered, asked to clarify, or
-	// abstained.
+	// Behavior is what Recall actually did: answered, abstained, or failed.
 	Behavior Behavior `json:"behavior"`
+
+	// Error is the query error, when the request failed outright. A failed
+	// query is a result and not a broken run: a pack exists in part to check
+	// what happens when things break.
+	Error string `json:"error,omitempty"`
+
+	// SensitivityViolations counts returned candidates above the ceiling the
+	// case asserted. It counts what was returned and never what was
+	// suppressed, or the control would be punished for working.
+	SensitivityViolations int `json:"sensitivity_violations,omitempty"`
 
 	// Coverage is what the response reported. The truth it is checked against
 	// comes from the case's assertions, never from the response.
@@ -106,6 +121,10 @@ type CaseScore struct {
 	LocatorSuccess        Value `json:"locator_success"`
 	ProvenanceAccuracy    Value `json:"provenance_accuracy"`
 	SourceOutcomeAccuracy Value `json:"source_outcome_accuracy"`
+
+	// SensitivityViolations is carried onto the score because it is a gate
+	// input, and a gate must not have to re-read raw results to decide.
+	SensitivityViolations int `json:"sensitivity_violations,omitempty"`
 
 	Latency time.Duration `json:"latency_ns"`
 	Cold    bool          `json:"cold"`
@@ -250,11 +269,12 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 	}
 
 	s := CaseScore{
-		CaseID:         c.CaseID,
-		Tags:           c.Tags,
-		SourceFamilies: r.SourceFamilies,
-		Latency:        r.Latency,
-		Cold:           r.Cold,
+		CaseID:                c.CaseID,
+		Tags:                  c.Tags,
+		SourceFamilies:        r.SourceFamilies,
+		SensitivityViolations: r.SensitivityViolations,
+		Latency:               r.Latency,
+		Cold:                  r.Cold,
 	}
 
 	s.NDCG10 = value(NDCGAt(r.Ranked, grades, ndcgK))

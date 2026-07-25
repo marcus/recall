@@ -71,16 +71,20 @@ type Budgets struct {
 // separate from every ranking metric.
 type Behavior string
 
+// The vocabulary matches recall.Outcome one for one, deliberately. An earlier
+// draft had a "clarify" behavior with no outcome behind it, so a case expecting
+// it could never pass: Recall retrieves, and deciding to ask a follow-up
+// question is something a host does with what Recall returned.
 const (
 	BehaviorAnswer  Behavior = "answer"
-	BehaviorClarify Behavior = "clarify"
 	BehaviorAbstain Behavior = "abstain"
+	BehaviorFail    Behavior = "fail"
 )
 
 // Valid reports whether b is a defined behavior.
 func (b Behavior) Valid() bool {
 	switch b {
-	case BehaviorAnswer, BehaviorClarify, BehaviorAbstain:
+	case BehaviorAnswer, BehaviorAbstain, BehaviorFail:
 		return true
 	default:
 		return false
@@ -110,7 +114,25 @@ type Case struct {
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 
+	// Mode is the invocation mode. It defaults to explicit; a case testing
+	// suppression must say pre_reply, because suppression applies to a host's
+	// passive budget and never hides evidence somebody asked for.
+	Mode recall.InvocationMode `json:"mode,omitempty"`
+
+	// SuppressLineages is what the host has already shown. Suppression state
+	// belongs to the host, so a case that tests it supplies the state.
+	SuppressLineages []recall.LineageRoot `json:"suppress_lineages,omitempty"`
+
+	// Scope narrows the request the way a caller would.
+	Scope *CaseScope `json:"scope,omitempty"`
+
 	Assertions *Assertions `json:"assertions,omitempty"`
+}
+
+// CaseScope is the request scope a case sets.
+type CaseScope struct {
+	SourceIDs   []string            `json:"source_ids,omitempty"`
+	RecordTypes []recall.RecordType `json:"record_types,omitempty"`
 }
 
 // Assertions are the policy claims a case makes. They are not relevance

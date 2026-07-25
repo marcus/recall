@@ -1,0 +1,319 @@
+package eval
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/url"
+	"sort"
+	"time"
+
+	"github.com/marcus/recall/internal/recall"
+)
+
+// Engine is the application layer a run measures.
+//
+// It is an interface so a test can drive the runner without a configuration
+// tree, but there is only one production implementation: evaluation runs
+// through the same path as the CLI, or it would be measuring something nobody
+// ships.
+type Engine interface {
+	Query(ctx context.Context, req recall.QueryRequest) (recall.QueryResponse, error)
+	Expand(ctx context.Context, req recall.ExpandRequest, profile string) (recall.ExpandResponse, error)
+}
+
+// SourceLocation reports where a configured source reads from, so a run can
+// refuse to measure anything it cannot reproduce.
+type SourceLocation struct {
+	SourceID string
+	Location string
+}
+
+// RunOptions configure one evaluation run.
+type RunOptions struct {
+	// Clock is the run's notion of now when a case declares no as_of. A case
+	// that declares one has its clock pinned there instead.
+	Clock func() time.Time
+
+	// Locations are the configured sources, checked against the pack's network
+	// policy before anything runs.
+	Locations []SourceLocation
+
+	// ExpandDetail is the detail level used when checking that returned
+	// locators resolve. Excerpt is enough to prove a reference is live without
+	// pulling whole records into a run artifact.
+	ExpandDetail recall.DetailLevel
+
+	// Cold says whether this run started against cold caches. Cold and warm
+	// latency are never pooled: they answer different questions, and a run that
+	// did not say which it was cannot be compared with either.
+	Cold bool
+}
+
+// Runner executes a pack against an engine.
+type Runner struct {
+	engine Engine
+	pack   *Pack
+	opt    RunOptions
+}
+
+// NewRunner prepares a run.
+func NewRunner(engine Engine, pack *Pack, opt RunOptions) *Runner {
+	if opt.Clock == nil {
+		opt.Clock = time.Now
+	}
+	if opt.ExpandDetail == "" {
+		opt.ExpandDetail = recall.DetailExcerpt
+	}
+	return &Runner{engine: engine, pack: pack, opt: opt}
+}
+
+// ErrUndeclaredNetwork means a source would have reached off this machine.
+var ErrUndeclaredNetwork = errors.New("undeclared network access")
+
+// Run executes every case and returns the per-case results.
+//
+// Determinism is not claimed as a property of the process; it is a property of
+// what the process is pointed at. So rather than pretending to sandbox the
+// network, the run refuses to start when a configured source has a remote
+// location and the pack did not declare network access. A pack that measures a
+// live endpoint is measuring something that changes underneath it, and its
+// numbers would not be comparable between runs.
+func (r *Runner) Run(ctx context.Context, cases []Case) ([]CaseResult, error) {
+	if err := r.checkNetworkPolicy(); err != nil {
+		return nil, err
+	}
+
+	results := make([]CaseResult, 0, len(cases))
+	for _, c := range cases {
+		result, err := r.runCase(ctx, c)
+		if err != nil {
+			return nil, fmt.Errorf("case %s: %w", c.CaseID, err)
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (r *Runner) checkNetworkPolicy() error {
+	if r.pack.NetworkAccess {
+		return nil
+	}
+	for _, loc := range r.opt.Locations {
+		u, err := url.Parse(loc.Location)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			continue // a path, not an endpoint
+		}
+		return fmt.Errorf("%w: source %q reads from %s, and pack %q declares network_access false",
+			ErrUndeclaredNetwork, loc.SourceID, u.Scheme+"://"+u.Host, r.pack.PackID)
+	}
+	return nil
+}
+
+// runCase puts one case to the engine and reduces the response to what metrics
+// consume.
+func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
+	// A case with an as_of is asking a historical question, so the run's clock
+	// moves there too. Leaving the clock at now would let a source treat the
+	// boundary as future-dated and quietly answer from current state.
+	now := r.opt.Clock
+	if c.AsOf != nil {
+		at := *c.AsOf
+		now = func() time.Time { return at }
+	}
+
+	req := recall.QueryRequest{
+		Query:   c.Query,
+		Profile: c.Profile,
+		AsOf:    c.AsOf,
+		Mode:    recall.ModeExplicit,
+		Limit:   defaultCaseLimit,
+		Budget:  recall.Budget{LatencyMS: c.TimeoutMS},
+	}
+	if c.Mode == recall.ModePreReply {
+		req.Mode = recall.ModePreReply
+		req.SuppressLineages = c.SuppressLineages
+	}
+	if c.Scope != nil {
+		req.Scope = &recall.Scope{
+			SourceIDs:   c.Scope.SourceIDs,
+			RecordTypes: c.Scope.RecordTypes,
+		}
+	}
+
+	started := now()
+	resp, queryErr := r.engine.Query(ctx, req)
+	elapsed := now().Sub(started)
+	if elapsed <= 0 {
+		// A pinned clock does not advance. Measuring wall time is the runner's
+		// job, not the case's.
+		elapsed = time.Since(started)
+	}
+
+	result := CaseResult{
+		CaseID:   c.CaseID,
+		Behavior: behaviorOf(resp.Outcome),
+		Coverage: resp.Coverage,
+		Latency:  elapsed,
+		Cold:     r.opt.Cold,
+	}
+	if queryErr != nil {
+		// A failed query is a result, not an error in the run: a pack exists in
+		// part to check what happens when things break.
+		result.Behavior = BehaviorAbstain
+		result.Error = queryErr.Error()
+	}
+
+	for _, res := range resp.Results {
+		result.Ranked = append(result.Ranked, positions(res)...)
+		result.Provenance = append(result.Provenance, provenanceOf(res)...)
+	}
+	if len(resp.SourceOutcomes) > 0 {
+		result.SourceOutcomes = make(map[recall.SourceUID]recall.SearchOutcome, len(resp.SourceOutcomes))
+		for _, so := range resp.SourceOutcomes {
+			result.SourceOutcomes[so.SourceUID] = so.Outcome
+		}
+	}
+	result.SourceFamilies = familiesOf(resp)
+	result.SensitivityViolations = ceilingViolations(c, resp)
+	result.Expansions = r.checkExpansions(ctx, c, resp)
+	return result, nil
+}
+
+const defaultCaseLimit = 20
+
+// positions projects a cluster onto ranked positions.
+//
+// One position per independent record, not one per cluster: a cluster backed by
+// two distinct lineage roots contributed two pieces of evidence, and collapsing
+// them to one position would understate recall for exactly the fused results the
+// system exists to produce.
+func positions(res recall.Result) []recall.LineageRoot {
+	if len(res.Members) == 0 {
+		return []recall.LineageRoot{res.Explanation.LineageRoot}
+	}
+	out := make([]recall.LineageRoot, 0, len(res.Members))
+	for _, m := range res.Members {
+		out = append(out, m.LineageRoot)
+	}
+	return out
+}
+
+func provenanceOf(res recall.Result) []Provenance {
+	var out []Provenance
+	for _, m := range res.Members {
+		for _, c := range m.Candidates {
+			out = append(out, Provenance{
+				ClaimedSource: c.SourceUID,
+				ActualSource:  sourceOfRoot(m.LineageRoot, c.SourceUID),
+				ClaimedRoot:   res.Explanation.LineageRoot,
+				ActualRoot:    m.LineageRoot,
+			})
+		}
+	}
+	return out
+}
+
+// sourceOfRoot recovers the source a lineage root belongs to, falling back to
+// the claim when the root does not parse.
+func sourceOfRoot(root recall.LineageRoot, fallback recall.SourceUID) recall.SourceUID {
+	loc, err := root.Locator()
+	if err != nil {
+		return fallback
+	}
+	return loc.SourceUID
+}
+
+// ceilingViolations counts returned candidates above the ceiling the case
+// asserted.
+//
+// It counts what was RETURNED, never what was suppressed: a suppression is the
+// control working, and scoring it as a violation would punish it for existing.
+// A case that asserts no ceiling cannot be violated, so it reports zero rather
+// than guessing one.
+func ceilingViolations(c Case, resp recall.QueryResponse) int {
+	if c.Assertions == nil || c.Assertions.SensitivityCeiling == nil {
+		return 0
+	}
+	ceiling := *c.Assertions.SensitivityCeiling
+	violations := 0
+	for _, res := range resp.Results {
+		if !res.Primary.Sensitivity.AtMost(ceiling) {
+			violations++
+			continue
+		}
+		for _, m := range res.Members {
+			for _, cand := range m.Candidates {
+				if !cand.Sensitivity.AtMost(ceiling) {
+					violations++
+				}
+			}
+		}
+	}
+	return violations
+}
+
+// familiesOf names the sources that contributed, so a regression can be read
+// per source family rather than only in aggregate.
+func familiesOf(resp recall.QueryResponse) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, res := range resp.Results {
+		if id := res.Primary.SourceID; id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checkExpansions proves the references a run returned are live.
+//
+// A ranking that returns unusable locators has not retrieved anything, however
+// well ordered it is, so this is a first-class measurement rather than a
+// diagnostic.
+func (r *Runner) checkExpansions(ctx context.Context, c Case, resp recall.QueryResponse) []Expansion {
+	var out []Expansion
+	for _, res := range resp.Results {
+		loc := res.Primary.Locator
+		exp := Expansion{
+			Locator:   loc,
+			SourceUID: res.Primary.SourceUID,
+		}
+		got, err := r.engine.Expand(ctx, recall.ExpandRequest{
+			Locator: loc,
+			Detail:  r.opt.ExpandDetail,
+		}, c.Profile)
+		if err == nil {
+			exp.Root = res.Explanation.LineageRoot
+			exp.Revision = got.SourceRevision
+		}
+		out = append(out, exp)
+	}
+	return out
+}
+
+// behaviorOf maps a response outcome onto the behavior a pack judges.
+//
+// The two vocabularies are deliberately the same size. An earlier draft had a
+// "clarify" behavior with no outcome behind it, so a case expecting it could
+// never pass: Recall retrieves, and deciding to ask a follow-up question is
+// something a host does with what Recall returned.
+func behaviorOf(o recall.Outcome) Behavior {
+	switch o {
+	case recall.OutcomeAnswered:
+		return BehaviorAnswer
+	case recall.OutcomeAbstained:
+		return BehaviorAbstain
+	case recall.OutcomeFailed:
+		return BehaviorFail
+	default:
+		return BehaviorFail
+	}
+}
+
+// SortResults orders results by case id so a run artifact is diffable.
+func SortResults(in []CaseResult) {
+	sort.Slice(in, func(i, j int) bool { return in[i].CaseID < in[j].CaseID })
+}

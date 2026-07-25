@@ -55,6 +55,39 @@
     },
     "assertions": {
       "$ref": "#/$defs/assertions"
+    },
+    "mode": {
+      "description": "Invocation mode. Defaults to explicit; a case testing suppression must say pre_reply, because suppression applies to a host's passive budget and never hides evidence somebody asked for.",
+      "enum": [
+        "explicit",
+        "pre_reply"
+      ]
+    },
+    "suppress_lineages": {
+      "description": "Lineage roots the host has already shown. Suppression state belongs to the host, so a case that tests it supplies the state.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scope": {
+      "description": "Request scope, the way a caller would narrow it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "record_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -64,13 +97,26 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "behavior": {
-      "enum": ["answer", "clarify", "abstain"]
+      "enum": [
+        "answer",
+        "abstain",
+        "fail"
+      ],
+      "description": "What the case expects Recall to do. The vocabulary matches recall.Outcome one for one: an earlier draft had a 'clarify' behavior with no outcome behind it, so a case expecting it could never pass. Deciding to ask a follow-up question is something a host does with what Recall returned."
     },
     "coverage": {
-      "enum": ["complete", "degraded"]
+      "enum": [
+        "complete",
+        "degraded"
+      ]
     },
     "sensitivity": {
-      "enum": ["public", "internal", "confidential", "restricted"]
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ]
     },
     "search_outcome": {
       "enum": [

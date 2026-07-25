@@ -41,7 +41,7 @@ judgments, policy assertions, and budgets.
 **Smoke pack.** Small, synthetic, committed, network-free, runs on every
 change. Covers exact identifiers and aliases, lexical paraphrase, cross-source
 fusion, duplicate lineage, current/historical/stale/superseded evidence,
-answer/clarify/abstain, unavailable/denied/partial/timed-out sources, expansion
+answer/abstain/fail, unavailable/denied/partial/timed-out sources, expansion
 and locator revision checks, `as_of` against a source declaring `none`, the
 config trust boundary, and suppression.
 
@@ -114,7 +114,14 @@ pack.
 
 ```text
 relevance  0 irrelevant | 1 related context | 2 useful support | 3 authoritative
+behavior   answer | abstain | fail
 ```
+
+The behavior vocabulary matches `outcome` one for one. An earlier draft had a
+`clarify` behavior, which no outcome could produce — a case expecting it could
+never pass. Recall retrieves; deciding to ask a follow-up question is something
+a host does with what Recall returned, and it belongs to answer-utility
+evaluation.
 
 A case may also declare policy assertions in an `assertions` block. These are
 the ground truth for the policy metrics, which never read them back off the
@@ -125,7 +132,7 @@ itself:
 expected_coverage: complete | degraded
 expected source outcome per source
 required or forbidden source
-required abstention or clarification
+required abstention
 maximum latency
 maximum expansion size
 locator must resolve to the judged lineage and revision
@@ -167,7 +174,7 @@ A run produces `run.json` (environment, metrics, gates, status),
 | MRR@10 | Rank of the first authoritative result, especially exact queries |
 | Success@5 | Fraction of cases with useful evidence near the top |
 | Forbidden@5 | Rate of forbidden or superseded evidence near the top |
-| Abstention accuracy | Correct answer, clarify, or abstain behavior |
+| Abstention accuracy | Correct answer, abstain, or fail behavior |
 | Coverage accuracy | Degraded coverage reported when and only when true |
 | Locator success | Returned references that expand to the judged revision |
 | Provenance accuracy | Correct source and lineage root per candidate |
