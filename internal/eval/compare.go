@@ -18,9 +18,11 @@ type Delta struct {
 	Population string `json:"population"`
 	Group      string `json:"group,omitempty"`
 
-	Baseline  float64 `json:"baseline"`
-	Candidate float64 `json:"candidate"`
-	Change    float64 `json:"change"`
+	Baseline   float64 `json:"baseline"`
+	Candidate  float64 `json:"candidate"`
+	Change     float64 `json:"change"`
+	BaselineN  int     `json:"baseline_n"`
+	CandidateN int     `json:"candidate_n"`
 
 	// Defined is false when either side had nothing to average. A metric that
 	// went from undefined to defined has not improved; it has started being
@@ -116,11 +118,12 @@ func Compare(baseline, candidate Run, baseScores, candScores []CaseScore) Compar
 	c.Overall = ratesDelta(
 		"overall", "overall", "overall", "",
 		baseline.Metrics.Overall.Rates, candidate.Metrics.Overall.Rates)
-	c.ByTag = groupDeltas("tag", baseline.Metrics.ByTag, candidate.Metrics.ByTag)
+	c.ByTag = groupDeltas("tag", baseline.Metrics.ByTag, candidate.Metrics.ByTag, false)
 	c.BySourceFamily = groupDeltas(
 		"source_family",
 		baseline.Metrics.BySourceFamily,
 		candidate.Metrics.BySourceFamily,
+		true,
 	)
 
 	// A baseline frozen as a run record on its own carries no per-case detail:
@@ -134,7 +137,7 @@ func Compare(baseline, candidate Run, baseScores, candScores []CaseScore) Compar
 
 	for _, deltas := range [][]Delta{c.Overall, c.ByTag, c.BySourceFamily} {
 		for _, d := range deltas {
-			if d.Defined && d.Change < -floatNoise {
+			if isRegression(d) {
 				c.Regressions = append(c.Regressions, d)
 			}
 		}
@@ -154,6 +157,8 @@ func ratesDelta(key, dimension, population, group string, base, cand Rates) []De
 			Group:      group,
 			Baseline:   b.Value,
 			Candidate:  cv.Value,
+			BaselineN:  b.N,
+			CandidateN: cv.N,
 			Defined:    b.Defined() && cv.Defined(),
 		}
 		if d.Defined {
@@ -172,7 +177,19 @@ func ratesDelta(key, dimension, population, group string, base, cand Rates) []De
 	return out
 }
 
-func groupDeltas(dimension string, base, cand GroupReport) []Delta {
+func isRegression(d Delta) bool {
+	// Losing a previously measured source family is itself a regression. There
+	// is no candidate number to subtract, but treating the transition as
+	// unmeasured would let a source stop contributing altogether and improve
+	// the verdict by disappearing. The reverse transition remains
+	// informational: a newly measured population has no baseline to beat.
+	if d.Dimension == "source_family" && d.BaselineN > 0 && d.CandidateN == 0 {
+		return true
+	}
+	return d.Defined && d.Change < -floatNoise
+}
+
+func groupDeltas(dimension string, base, cand GroupReport, includeMacro bool) []Delta {
 	var out []Delta
 	names := map[string]bool{}
 	for k := range base.Groups {
@@ -197,14 +214,16 @@ func groupDeltas(dimension string, base, cand GroupReport) []Delta {
 			cand.Groups[name].Rates,
 		)...)
 	}
-	out = append(out, ratesDelta(
-		dimension+":macro",
-		dimension,
-		"macro",
-		"",
-		base.Macro.Rates,
-		cand.Macro.Rates,
-	)...)
+	if includeMacro {
+		out = append(out, ratesDelta(
+			dimension+":macro",
+			dimension,
+			"macro",
+			"",
+			base.Macro.Rates,
+			cand.Macro.Rates,
+		)...)
+	}
 	return out
 }
 
@@ -296,7 +315,16 @@ func SummarizeComparison(c Comparison) string {
 		b.WriteString("\n## Regressions\n\n")
 		b.WriteString("A gain in the aggregate does not excuse any of these.\n\n")
 		for _, d := range c.Regressions {
-			fmt.Fprintf(&b, "- %s: %+.4f\n", deltaLabel(d), d.Change)
+			if !d.Defined {
+				fmt.Fprintf(&b, "- %s: %.4f (n=%d) → n/a (n=%d); population disappeared\n",
+					deltaLabel(d), d.Baseline, d.BaselineN, d.CandidateN)
+				continue
+			}
+			fmt.Fprintf(&b, "- %s: %.4f (n=%d) → %.4f (n=%d) (%+.4f)\n",
+				deltaLabel(d),
+				d.Baseline, d.BaselineN,
+				d.Candidate, d.CandidateN,
+				d.Change)
 		}
 	}
 

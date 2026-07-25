@@ -239,14 +239,20 @@ average is around 1e-3. It exists so a difference in the last bit of a float
 between two architectures is not reported as a loss in retrieval quality.
 
 Comparison applies that rule to every defined overall rate, every case-tag
-group and its macro, and every source-family group and its macro. Any one loss
-makes the comparison unacceptable and `recall eval compare` exits 3; an overall
-gain cannot hide a family-specific loss. Machine-readable deltas carry explicit
-`dimension`, `population`, and `group` fields plus stable qualified keys such as
-`tag:group:documents`, `tag:macro`, `source_family:group:documents`, and
+group, and every source-family group and its macro. Any one loss makes the
+comparison unacceptable and `recall eval compare` exits 3; an overall gain
+cannot hide a family-specific loss. A source-family metric that had a positive
+baseline population and becomes undefined (`N=0`) is also a loss: allowing a
+source to improve its verdict by disappearing would be worse than ignoring a
+numeric decline. The reverse transition remains undefined rather than being
+claimed as an improvement, because it has no baseline.
+
+Machine-readable deltas carry both population counts, explicit `dimension`,
+`population`, and `group` fields, plus stable qualified keys such as
+`tag:group:documents`, `source_family:group:documents`, and
 `source_family:macro`. Thus a tag and a source family with the same display name
-remain different populations. Human regression labels spell out the dimension
-and whether the number is a group or macro for the same reason.
+remain different populations. Human regression labels spell out the dimension,
+group or macro, and both `N` values for the same reason.
 
 ## Metrics
 

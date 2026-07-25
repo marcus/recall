@@ -164,6 +164,57 @@ func TestCompareRejectsHiddenSourceFamilyLoss(t *testing.T) {
 	}
 }
 
+// This is the more dangerous source-family loss: the source stops
+// contributing, so its metric becomes undefined instead of numerically lower.
+// Overall and the same-named tag stay stable, and both the family group and
+// family macro must still make the command say no.
+func TestCompareRejectsMissingSourceFamilyInHumanAndJSON(t *testing.T) {
+	h := newHarness(t, harnessOptions{userTOML: twoSourceTOML})
+
+	baselineRun := sourceFamilyRegressionRun("baseline", 0.8)
+	currentRun := sourceFamilyRegressionRun("current", 0.8)
+	currentRun.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{},
+	}
+	baseline := writeBaselineFile(t, baselineRun)
+	current := writeRunDir(t, currentRun, []eval.CaseScore{{CaseID: "c1"}})
+
+	code, out, stderr := h.run("eval", "compare", baseline, current)
+	if code != cli.ExitInvalid {
+		t.Fatalf("exit = %d, want %d: missing family left CI green\n%s%s",
+			code, cli.ExitInvalid, out, stderr)
+	}
+	for _, want := range []string{
+		`source family group "shared"/ndcg_at_10`,
+		"source family macro/ndcg_at_10",
+		"0.8000 (n=1) → n/a (n=0); population disappeared",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("human comparison does not identify %q:\n%s", want, out)
+		}
+	}
+
+	code, out, stderr = h.run("eval", "compare", "--json", baseline, current)
+	if code != cli.ExitInvalid {
+		t.Fatalf("JSON exit = %d, want %d: %s%s", code, cli.ExitInvalid, out, stderr)
+	}
+	var got eval.Comparison
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("--json is not valid JSON: %v\n%s", err, out)
+	}
+	if got.Acceptable() || len(got.Regressions) != 2 {
+		t.Fatalf("JSON verdict/regressions = %v / %+v",
+			got.Acceptable(), got.Regressions)
+	}
+	for _, regression := range got.Regressions {
+		if regression.BaselineN != 1 ||
+			regression.CandidateN != 0 ||
+			regression.Defined {
+			t.Errorf("JSON hides population loss: %+v", regression)
+		}
+	}
+}
+
 // --json is what a script reads, so it must reach the same verdict as the
 // rendered report. It used to exit 0 whatever it found.
 func TestCompareJSONReachesTheSameVerdict(t *testing.T) {

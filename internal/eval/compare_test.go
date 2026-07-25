@@ -13,6 +13,10 @@ func ndcgRates(value float64) eval.Rates {
 	return eval.Rates{NDCG10: eval.Mean{Value: value, N: 1}}
 }
 
+func ndcgRatesN(value float64, n int) eval.Rates {
+	return eval.Rates{NDCG10: eval.Mean{Value: value, N: n}}
+}
+
 func comparisonRunWithFamilyNDCG(id string, familyNDCG float64) eval.Run {
 	const stable = 0.8
 	return eval.Run{
@@ -84,6 +88,119 @@ func TestSourceFamilyRegressionCannotHideBehindOverallAndTags(t *testing.T) {
 	}
 }
 
+func familyPopulationPair(keepUndefinedGroup bool) (eval.Run, eval.Run) {
+	baseline := comparisonRunWithFamilyNDCG("baseline", 0.8)
+	candidate := comparisonRunWithFamilyNDCG("candidate", 0.8)
+
+	baseline.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{
+			"lost":   {Rates: ndcgRatesN(0.8, 2), Cases: 2},
+			"stable": {Rates: ndcgRates(0.8), Cases: 1},
+		},
+		Macro: eval.Macro{Rates: ndcgRatesN(0.8, 2), Groups: 2},
+	}
+	candidateGroups := map[string]eval.Metrics{
+		"stable": {Rates: ndcgRates(0.8), Cases: 1},
+	}
+	if keepUndefinedGroup {
+		candidateGroups["lost"] = eval.Metrics{Cases: 2}
+	}
+	candidate.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: candidateGroups,
+		Macro:  eval.Macro{Rates: ndcgRates(0.8), Groups: len(candidateGroups)},
+	}
+	return baseline, candidate
+}
+
+func TestSourceFamilyPopulationLossIsARegression(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		keepUndefinedGroup bool
+	}{
+		{name: "group absent", keepUndefinedGroup: false},
+		{name: "group present with metric N zero", keepUndefinedGroup: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			baseline, candidate := familyPopulationPair(tc.keepUndefinedGroup)
+			got := eval.Compare(baseline, candidate, nil, nil)
+			if got.Acceptable() {
+				t.Fatal("a measured source family disappeared without failing comparison")
+			}
+			if len(got.Regressions) != 1 {
+				t.Fatalf("regressions = %+v, want only the lost family metric",
+					got.Regressions)
+			}
+			regression := got.Regressions[0]
+			if regression.Key != "source_family:group:lost" ||
+				regression.BaselineN != 2 ||
+				regression.CandidateN != 0 ||
+				regression.Defined {
+				t.Fatalf("population-loss regression = %+v", regression)
+			}
+			human := eval.SummarizeComparison(got)
+			if !strings.Contains(human, "0.8000 (n=2) → n/a (n=0); population disappeared") {
+				t.Errorf("human output hides the two populations:\n%s", human)
+			}
+		})
+	}
+}
+
+func TestAllSourceFamiliesAndMacroDisappearingIsARegression(t *testing.T) {
+	baseline := comparisonRunWithFamilyNDCG("baseline", 0.8)
+	candidate := comparisonRunWithFamilyNDCG("candidate", 0.8)
+	candidate.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{},
+	}
+
+	got := eval.Compare(baseline, candidate, nil, nil)
+	if got.Acceptable() {
+		t.Fatal("all source families disappeared without failing comparison")
+	}
+	if len(got.Regressions) != 2 {
+		t.Fatalf("regressions = %+v, want missing family group and macro",
+			got.Regressions)
+	}
+	want := []string{"source_family:group:shared", "source_family:macro"}
+	for i, regression := range got.Regressions {
+		if regression.Key != want[i] ||
+			regression.BaselineN != 1 ||
+			regression.CandidateN != 0 {
+			t.Errorf("regression %d = %+v, want key %s with n=1 to n=0",
+				i, regression, want[i])
+		}
+	}
+}
+
+func TestNewlyDefinedSourceFamilyIsNotClaimedAsImprovement(t *testing.T) {
+	baseline := comparisonRunWithFamilyNDCG("baseline", 0.8)
+	candidate := comparisonRunWithFamilyNDCG("candidate", 0.8)
+	baseline.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{"new": {}},
+	}
+	candidate.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{
+			"new": {Rates: ndcgRates(0.8), Cases: 1},
+		},
+		Macro: eval.Macro{Rates: ndcgRates(0.8), Groups: 1},
+	}
+
+	got := eval.Compare(baseline, candidate, nil, nil)
+	if !got.Acceptable() {
+		t.Fatalf("undefined-to-defined was treated as a loss: %+v", got.Regressions)
+	}
+	for _, delta := range got.BySourceFamily {
+		if delta.Metric != "ndcg_at_10" || delta.Population != "group" {
+			continue
+		}
+		if delta.BaselineN != 0 || delta.CandidateN != 1 ||
+			delta.Defined || delta.Change != 0 {
+			t.Fatalf("new population was claimed as a numeric improvement: %+v", delta)
+		}
+		return
+	}
+	t.Fatal("new source-family delta was not emitted")
+}
+
 func comparisonRunWithGroupOrder(id string, names []string) eval.Run {
 	tagGroups := make(map[string]eval.Metrics, len(names))
 	familyGroups := make(map[string]eval.Metrics, len(names))
@@ -132,7 +249,7 @@ func TestComparisonGroupAndMacroOrderingIsDeterministic(t *testing.T) {
 		nil,
 	)
 
-	wantTags := []string{"tag:group:alpha", "tag:group:zeta", "tag:macro"}
+	wantTags := []string{"tag:group:alpha", "tag:group:zeta"}
 	wantFamilies := []string{
 		"source_family:group:alpha",
 		"source_family:group:zeta",
