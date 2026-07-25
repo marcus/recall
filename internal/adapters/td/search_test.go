@@ -2,11 +2,14 @@ package td_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/marcus/recall/internal/adapters/td"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -76,6 +79,134 @@ func TestTermCoverageOutranksASingleStrongerScore(t *testing.T) {
 	if q := cli.queries(); !slices.Contains(q, "adapter corroboration lineage") {
 		t.Errorf("probes = %v, want the whole phrase among them", q)
 	}
+}
+
+// Coverage is only a count of query terms if each probe saw its whole match
+// set. max_candidates caps the OUTPUT list, and wiring it to the probes as well
+// made a source configured to return one candidate also read one match per
+// term, so coverage silently meant "how many probes held this issue in their
+// own top max_candidates".
+func TestProbeLimitIsIndependentOfMaxCandidates(t *testing.T) {
+	cli := recordedWorkspace(t)
+	a := newAdapter(t, cli, map[string]any{"max_candidates": 1})
+
+	resp, err := search(t, a, "adapter corroboration lineage")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Candidates) != 1 {
+		t.Errorf("candidates = %d, want max_candidates to still cap the output list at 1", len(resp.Candidates))
+	}
+
+	listing := limits(cli, "list")
+	if len(listing) != 1 {
+		t.Fatalf("listing invocations = %d, want 1", len(listing))
+	}
+	for _, probe := range limits(cli, "search") {
+		if probe == 1 {
+			t.Fatalf("a probe read --limit=1: max_candidates is setting the probe limit, "+
+				"so coverage counts top-1 placements rather than matching terms (probes %v)",
+				limits(cli, "search"))
+		}
+		if probe != listing[0] {
+			t.Errorf("probe --limit=%d, listing --limit=%d; both are this adapter's own bound "+
+				"on how much of one workspace a search may read", probe, listing[0])
+		}
+	}
+}
+
+// A probe that came back holding exactly its limit did not see its whole match
+// set, so every coverage count it contributed to is a floor. Reporting success
+// would present an order computed on partial input as a complete one, which is
+// the failure the limit change above exists to make impossible in practice and
+// this report exists to catch when it happens anyway.
+func TestATruncatedProbeIsReportedRatherThanRankedSilently(t *testing.T) {
+	info := fixture(t, "info.json")
+	listAll := fixture(t, "list_all.json")
+	cli := &fakeCLI{reply: func(args []string) (td.Result, error) {
+		switch args[0] {
+		case "info":
+			return ok(info), nil
+		case "list":
+			return ok(listAll), nil
+		case "search":
+			// Exactly what td returns when it has more to give: a full page.
+			return ok(saturatedSearch(limitArg(t, args))), nil
+		}
+		t.Errorf("unexpected invocation: td %s", strings.Join(args, " "))
+		return td.Result{}, nil
+	}}
+	a := newAdapter(t, cli, nil)
+
+	resp, err := search(t, a, "adapter")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if resp.Outcome != recall.SearchPartial {
+		t.Errorf("outcome = %q, want partial: the coverage that ordered this list was counted "+
+			"over part of one term's matches", resp.Outcome)
+	}
+	if got := resp.Diagnostics["probes_truncated"]; got != 1 {
+		t.Errorf("diagnostics[probes_truncated] = %v, want 1 (%v)", got, resp.Diagnostics)
+	}
+	if _, said := resp.Diagnostics["probe_limit"]; !said {
+		t.Error("no probe_limit diagnostic; the count of truncated probes means nothing without the bound")
+	}
+	if _, said := resp.Diagnostics["term_coverage"]; !said {
+		t.Error("no term_coverage diagnostic; nothing else says the ranking judgment ran on partial input")
+	}
+}
+
+// limits reports the `--limit=` every invocation of one subcommand carried.
+func limits(f *fakeCLI, subcommand string) []int {
+	var out []int
+	for _, call := range f.invocations() {
+		if len(call) == 0 || call[0] != subcommand {
+			continue
+		}
+		for _, arg := range call {
+			if n, ok := strings.CutPrefix(arg, "--limit="); ok {
+				parsed, err := strconv.Atoi(n)
+				if err != nil {
+					continue
+				}
+				out = append(out, parsed)
+			}
+		}
+	}
+	return out
+}
+
+func limitArg(t *testing.T, args []string) int {
+	t.Helper()
+	for _, arg := range args {
+		if n, ok := strings.CutPrefix(arg, "--limit="); ok {
+			parsed, err := strconv.Atoi(n)
+			if err != nil {
+				t.Fatalf("unreadable --limit: %v", err)
+			}
+			return parsed
+		}
+	}
+	t.Fatalf("no --limit in %v", args)
+	return 0
+}
+
+// saturatedSearch renders n distinct search hits: what td returns when its
+// limit, rather than the end of the match set, stopped it.
+func saturatedSearch(n int) []byte {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i := range n {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `{"Issue":{"id":"td-%06x","title":"issue %d","status":"open","type":"task",`+
+			`"priority":"P2","created_at":"2026-07-01T00:00:00Z","updated_at":"2026-07-01T00:00:00Z"},`+
+			`"Score":40,"MatchField":"description"}`, i, i)
+	}
+	b.WriteByte(']')
+	return []byte(b.String())
 }
 
 func TestProbeCountIsBoundedByConfiguration(t *testing.T) {

@@ -134,6 +134,18 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		outcome = recall.SearchPartial
 		diagnostics["failed_probes"] = len(gathered.probeErrs)
 	}
+	if gathered.probesTruncated > 0 {
+		// The order below is decided by how many probes found each issue, and
+		// a truncated probe means that count is a floor rather than a count: an
+		// issue matching this term beyond the limit is indistinguishable here
+		// from one that does not match it at all. Partial rather than success,
+		// because the ranking is the thing that ran on incomplete input and a
+		// caller reading a confident order has no other way to know.
+		outcome = recall.SearchPartial
+		diagnostics["probes_truncated"] = gathered.probesTruncated
+		diagnostics["probe_limit"] = probeLimit
+		diagnostics["term_coverage"] = "floor: a probe stopped at its limit, so an issue matching that term beyond it is not counted"
+	}
 
 	return recall.SearchResponse{
 		Candidates:      candidates,
@@ -221,6 +233,14 @@ type gathered struct {
 	// probes is one entry with three probes counted, not three candidates.
 	hits      map[string]*hitState
 	probeErrs []error
+
+	// probesTruncated counts the probes that came back holding exactly their
+	// limit, which means td had more matches to give. Coverage is counted over
+	// what the probes returned, so each of these is a term whose match set was
+	// only partly seen and a coverage number that is a floor rather than a
+	// count. It is carried out of the gathering because a ranking judgment made
+	// on partial input has to be reported as one.
+	probesTruncated int
 
 	invocations int
 	wall        time.Duration
@@ -320,7 +340,7 @@ func (a *Adapter) gather(ctx context.Context, set settings, probes []string) gat
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			args := searchArgs(set, probe, set.maxCandidates())
+			args := searchArgs(set, probe, probeLimit)
 			res, err := a.run(ctx, args...)
 			record(res)
 			var hits []searchHit
@@ -332,6 +352,14 @@ func (a *Adapter) gather(ctx context.Context, set settings, probes []string) gat
 			if err != nil {
 				out.probeErrs = append(out.probeErrs, err)
 				return
+			}
+			if len(hits) >= probeLimit {
+				// td stopped at the limit rather than at the end of its match
+				// set, so this term's contribution to every issue's coverage
+				// count was computed over part of what matched. Counted before
+				// the records are filtered, because the question is what td
+				// returned and not what survived parsing.
+				out.probesTruncated++
 			}
 			for _, hit := range hits {
 				if !hit.Issue.valid() {

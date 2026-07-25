@@ -54,6 +54,29 @@ const (
 	// reported as partial coverage rather than passed off as the whole
 	// workspace.
 	corpusLimit = 5000
+
+	// probeLimit bounds what one term probe returns, and it is deliberately
+	// not max_candidates.
+	//
+	// max_candidates caps the OUTPUT list — how many candidates this source
+	// hands to fusion — and using it for the input made the one ranking
+	// judgment this adapter adds run on partial data that nothing reported.
+	// Term coverage counted how many probes had an issue in their own top
+	// max_candidates, not how many query terms match the issue. Measured in
+	// ~/code/braid at 50, the probe for `source` returned 50 of 242 actual
+	// matches and `registry` 50 of 143, so an issue matching every query term
+	// but ranking 60th for one of them scored 4 and lost to a weaker issue
+	// scoring 5. Nothing said so: `truncated` describes the final list and
+	// `corpus_truncated` the listing.
+	//
+	// The honest bound is the one the listing already uses. A probe cannot
+	// return more issues than the workspace holds, and this adapter already
+	// declares it reads at most corpusLimit of them, so a probe that reaches
+	// this limit is the same runaway workspace the listing bound exists for.
+	// Raising it costs payload and no process: measured on braid, the `source`
+	// probe took 0.26s returning 50 records and 0.26s returning 242, because
+	// what a td invocation costs is the spawn.
+	probeLimit = corpusLimit
 )
 
 // Statuses and types td defines. They are validated at handshake rather than
@@ -610,7 +633,7 @@ func settingsSchema() map[string]any {
 			},
 			"max_candidates": map[string]any{
 				"type": "integer", "minimum": 1,
-				"description": "Cap on candidates returned by one search.",
+				"description": "Cap on candidates returned by one search. It bounds the output list only: a term probe reads the workspace under this adapter's own bound, so lowering this cannot change which issue outranks which.",
 			},
 			"max_term_probes": map[string]any{
 				"type": "integer", "minimum": 0,
