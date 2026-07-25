@@ -158,6 +158,11 @@ func aggregateRefresh(results []recall.RefreshSourceOutcome) recall.RefreshOutco
 			degraded = true
 		case recall.RefreshSourceFailed:
 			degraded = true
+		case recall.RefreshSourceSkipped:
+			// Skips are the declared non-target set for all-source refresh:
+			// disabled, denied, or lacking checkpoint capability. They do not
+			// degrade a usable refresh, but an all-skipped request still fails
+			// below because it produced no usable state.
 		}
 	}
 	if usable == 0 {
