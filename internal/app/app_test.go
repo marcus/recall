@@ -1,0 +1,559 @@
+package app_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/app"
+	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/internal/ranking"
+	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/internal/source"
+)
+
+// fake is a scriptable adapter. Every way a real source misbehaves is a field
+// here rather than a separate type, so a test reads as the situation it models.
+type fake struct {
+	manifest    recall.Manifest
+	health      recall.Health
+	healthErr   error
+	candidates  []recall.Candidate
+	outcome     recall.SearchOutcome
+	searchErr   error
+	delay       time.Duration
+	evidence    recall.ExpandResponse
+	expandErr   error
+	searchCalls int
+}
+
+func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
+	return f.manifest, nil
+}
+
+func (f *fake) Search(ctx context.Context, _ recall.SearchRequest) (recall.SearchResponse, error) {
+	f.searchCalls++
+	if f.delay > 0 {
+		select {
+		case <-time.After(f.delay):
+		case <-ctx.Done():
+			return recall.SearchResponse{Outcome: recall.SearchTimeout}, ctx.Err()
+		}
+	}
+	if f.searchErr != nil {
+		return recall.SearchResponse{Outcome: recall.SearchUnavailable}, f.searchErr
+	}
+	out := f.outcome
+	if out == "" {
+		out = recall.SearchSuccess
+	}
+	return recall.SearchResponse{Candidates: f.candidates, Outcome: out}, nil
+}
+
+func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandResponse, error) {
+	return f.evidence, f.expandErr
+}
+
+func (f *fake) Health(context.Context) (recall.Health, error) {
+	if f.healthErr != nil {
+		return f.health, f.healthErr
+	}
+	h := f.health
+	if h.Status == "" {
+		h.Status = recall.HealthHealthy
+		h.Coverage = recall.IndexComplete
+	}
+	return h, nil
+}
+
+func (f *fake) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+	return f.Health(ctx)
+}
+
+func (f *fake) Close() error { return nil }
+
+func manifest(types ...recall.RecordType) recall.Manifest {
+	return recall.Manifest{
+		ProtocolVersion: 1,
+		AdapterID:       "fake/1",
+		RecordTypes:     types,
+		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessIndexed},
+		AsOfSupport:     recall.AsOfFilter,
+		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
+	}
+}
+
+func cand(sourceID, local string, rank int, opts ...func(*recall.Candidate)) recall.Candidate {
+	c := recall.Candidate{
+		SourceRecordID: local,
+		Locator:        recall.Locator{SourceID: sourceID, Local: local},
+		RecordType:     recall.RecordDocument,
+		Title:          "title " + local,
+		Excerpt:        "excerpt for " + local,
+		LocalRank:      rank,
+	}
+	for _, o := range opts {
+		o(&c)
+	}
+	return c
+}
+
+// harness builds a real config, a real registry, and a real ranker over fake
+// adapters, so eligibility, identity stamping, and the ceiling are all the
+// production code paths.
+type harness struct {
+	app    *app.App
+	fakes  map[string]*fake
+	config *config.Config
+}
+
+const configTOML = `
+[defaults]
+profile = "work"
+timeout_ms = 2000
+
+[[sources]]
+source_uid = "01UIDDOCS"
+source_id = "docs"
+adapter = "fakedocs"
+location = "/tmp/docs"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[[sources]]
+source_uid = "01UIDTASKS"
+source_id = "tasks"
+adapter = "faketasks"
+location = "/tmp/tasks"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[[sources]]
+source_uid = "01UIDVAULT"
+source_id = "vault"
+adapter = "fakevault"
+location = "/tmp/vault"
+freshness_mode = "indexed"
+sensitivity = "restricted"
+base_prior = 1.0
+
+[profiles.work]
+sources = ["docs", "tasks", "vault"]
+max_sensitivity = "internal"
+`
+
+func newHarness(t *testing.T, tune func(map[string]*fake)) *harness {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, "recall")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configTOML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	builtinNames := []string{"fakedocs", "faketasks", "fakevault"}
+	var builtins []config.Builtin
+	for _, n := range builtinNames {
+		builtins = append(builtins, config.Builtin{
+			Name:           n,
+			FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
+		})
+	}
+
+	cfg, err := config.Load(config.Options{
+		Paths: config.Paths{
+			ConfigHome: home,
+			StateHome:  filepath.Join(home, "state"),
+			CacheHome:  filepath.Join(home, "cache"),
+		},
+		Builtins: builtins,
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	fakes := map[string]*fake{}
+	for _, n := range builtinNames {
+		fakes[n] = &fake{manifest: manifest(recall.RecordDocument)}
+	}
+	if tune != nil {
+		tune(fakes)
+	}
+
+	factories := map[string]source.Factory{}
+	for name, f := range fakes {
+		factories[name] = func() adapter.Adapter { return f }
+	}
+
+	reg := source.NewRegistry(cfg, source.Options{
+		Builtins: factories,
+		StateDir: t.TempDir(),
+	})
+	t.Cleanup(func() { _ = reg.Close() })
+
+	ranker, err := ranking.New(ranking.Config{
+		Sources: map[recall.SourceUID]ranking.SourceConfig{
+			"01UIDDOCS":  {SourceID: "docs", BasePrior: 1},
+			"01UIDTASKS": {SourceID: "tasks", BasePrior: 1},
+			"01UIDVAULT": {SourceID: "vault", BasePrior: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &harness{
+		app:    app.New(app.Options{Config: cfg, Registry: reg, Ranker: ranker}),
+		fakes:  fakes,
+		config: cfg,
+	}
+}
+
+func query(q string) recall.QueryRequest {
+	return recall.QueryRequest{
+		Query:  q,
+		Mode:   recall.ModeExplicit,
+		Budget: recall.Budget{LatencyMS: 2000},
+		Limit:  10,
+	}
+}
+
+func reportFor(t *testing.T, resp recall.QueryResponse, id string) recall.SourceReport {
+	t.Helper()
+	for _, r := range resp.SourceOutcomes {
+		if r.SourceID == id {
+			return r
+		}
+	}
+	t.Fatalf("no outcome reported for %q; a source that did not answer must still be visible", id)
+	return recall.SourceReport{}
+}
+
+// A source classified above the profile ceiling is never asked at all.
+// Filtering its results afterwards would still have sent it the query, which is
+// itself a disclosure.
+func TestSourceAboveTheCeilingIsNeverAsked(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+		f["fakevault"].candidates = []recall.Candidate{cand("vault", "secret", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.fakes["fakevault"].searchCalls != 0 {
+		t.Error("a source above the ceiling was queried")
+	}
+	rep := reportFor(t, resp, "vault")
+	if rep.Reason != source.ReasonSensitivity {
+		t.Errorf("vault reason = %q, want %q", rep.Reason, source.ReasonSensitivity)
+	}
+	// The ceiling is the user's own policy, so honoring it is not a
+	// degradation. Reporting one here would make every well-configured query
+	// look impaired and the signal would stop meaning anything.
+	if resp.Coverage != recall.CoverageComplete {
+		t.Errorf("coverage = %s; a source excluded by the configured ceiling is not degradation",
+			resp.Coverage)
+	}
+	for _, r := range resp.Results {
+		if r.Primary.SourceID == "vault" {
+			t.Error("vault evidence reached the response")
+		}
+	}
+}
+
+// A source may be permitted while an individual record is not: an adapter may
+// classify a record more restrictively than its source.
+func TestCandidateAboveTheCeilingIsDroppedAndCounted(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{
+			cand("docs", "public.md", 1),
+			cand("docs", "sealed.md", 2, func(c *recall.Candidate) {
+				c.Sensitivity = recall.SensitivityRestricted
+			}),
+		}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range resp.Results {
+		if strings.Contains(r.Primary.Locator.Local, "sealed") {
+			t.Fatal("a record above the ceiling was shown")
+		}
+	}
+	var counted int
+	for _, s := range resp.Suppressed {
+		if s.Reason == recall.SuppressSensitivity {
+			counted += s.Count
+		}
+	}
+	if counted != 1 {
+		t.Errorf("sensitivity suppressions = %d, want 1 counted so a host can say something was withheld", counted)
+	}
+}
+
+// A source that cannot honor a historical boundary is excluded and says so.
+// Answering from current state would be a wrong answer shaped like a right one.
+func TestAsOfExcludesSourcesThatCannotHonorIt(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		m := manifest(recall.RecordDocument)
+		m.AsOfSupport = recall.AsOfNone
+		f["faketasks"].manifest = m
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "td-1", 1)}
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+	})
+
+	at := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	req := query("what did we decide")
+	req.AsOf = &at
+
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.fakes["faketasks"].searchCalls != 0 {
+		t.Error("a source declaring as_of_support none was asked a historical question")
+	}
+	if rep := reportFor(t, resp, "tasks"); rep.Reason != source.ReasonAsOfUnsupported {
+		t.Errorf("tasks reason = %q, want %q", rep.Reason, source.ReasonAsOfUnsupported)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %s, want degraded", resp.Coverage)
+	}
+}
+
+// The invariant with the sharpest failure mode: an unreachable source must
+// never look like a source with nothing to say.
+func TestUnreachableSourceIsNotAnEmptySuccess(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].searchErr = protocol.ErrSourceUnavailable
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Outcome.Searched() {
+		t.Errorf("outcome = %s, want a failure", rep.Outcome)
+	}
+	if rep.Reason != "unreachable" {
+		t.Errorf("reason = %q, want unreachable", rep.Reason)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %s, want degraded", resp.Coverage)
+	}
+	// The healthy source still answered. One source failing is degraded
+	// coverage, not a failed request.
+	if resp.Outcome != recall.OutcomeAnswered {
+		t.Errorf("outcome = %s, want answered", resp.Outcome)
+	}
+}
+
+// Nothing found is only an answer if something looked.
+func TestEveryAskedSourceFailingIsFailedNotAbstained(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].searchErr = protocol.ErrSourceUnavailable
+		f["faketasks"].searchErr = protocol.ErrSourceUnavailable
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.OutcomeFailed {
+		t.Errorf("outcome = %s, want failed: no source answered, so no-results is a claim nothing supports", resp.Outcome)
+	}
+}
+
+func TestNoMatchesIsAbstained(t *testing.T) {
+	h := newHarness(t, nil) // every source healthy, none returns anything
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.OutcomeAbstained {
+		t.Errorf("outcome = %s, want abstained", resp.Outcome)
+	}
+	if resp.Coverage != recall.CoverageComplete {
+		t.Errorf("coverage = %s; abstaining with every source healthy is complete coverage", resp.Coverage)
+	}
+}
+
+// A source slower than its budget is reported as timed out, and the request
+// still returns. The deadline is the caller's, not the slowest source's.
+func TestSlowSourceTimesOutWithoutHoldingTheRequest(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].delay = 3 * time.Second
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+	})
+
+	req := query("anything")
+	req.Budget.LatencyMS = 200
+
+	start := time.Now()
+	resp, err := h.app.Query(context.Background(), req)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("query took %v against a 200ms budget", elapsed)
+	}
+	if rep := reportFor(t, resp, "tasks"); rep.Outcome.Searched() {
+		t.Errorf("tasks outcome = %s, want a failure", rep.Outcome)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %s, want degraded", resp.Coverage)
+	}
+}
+
+// Source content is data. Control sequences must not survive into anything a
+// terminal renders.
+func TestRetrievedContentIsSanitized(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{
+			cand("docs", "a.md", 1, func(c *recall.Candidate) {
+				c.Title = "before\x1b[31mred"
+				c.Excerpt = "click javascript:alert(1)"
+			}),
+		}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) == 0 {
+		t.Fatal("no results")
+	}
+	got := resp.Results[0].Primary
+	if strings.ContainsRune(got.Title, 0x1b) {
+		t.Errorf("title still carries an escape: %q", got.Title)
+	}
+	if strings.Contains(got.Excerpt, "javascript:") {
+		t.Errorf("excerpt still carries an executable scheme: %q", got.Excerpt)
+	}
+}
+
+// Freshness is a source-health fact that ranking cannot know, so the app fills
+// it. Without this the freshness block is missing from every explanation, and
+// those are the fields that say whether an answer is current.
+func TestExplanationCarriesFreshness(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "a.md", 1)}
+		f["fakedocs"].health = recall.Health{
+			Status:          recall.HealthHealthy,
+			Coverage:        recall.IndexComplete,
+			IndexGeneration: "gen-000042",
+			IndexConfig:     "bm25-k1.2",
+		}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) == 0 {
+		t.Fatal("no results")
+	}
+	fr := resp.Results[0].Explanation.Freshness
+	if fr.Mode != recall.FreshnessIndexed {
+		t.Errorf("freshness mode = %q, want the configured indexed", fr.Mode)
+	}
+	if fr.IndexGeneration != "gen-000042" || fr.IndexConfig != "bm25-k1.2" {
+		t.Errorf("generation identity missing from the explanation: %+v", fr)
+	}
+}
+
+// The plan is returned so a caller can see what was searched rather than
+// inferring it from what came back.
+func TestPlanReportsEveryDecision(t *testing.T) {
+	h := newHarness(t, nil)
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, p := range resp.Plan.Sources {
+		seen[p.SourceID] = true
+		if !p.Eligible && p.Reason == "" {
+			t.Errorf("%s was excluded with no reason given", p.SourceID)
+		}
+	}
+	for _, want := range []string{"docs", "tasks", "vault"} {
+		if !seen[want] {
+			t.Errorf("plan does not mention %q", want)
+		}
+	}
+	if resp.Plan.RankConst == 0 {
+		t.Error("plan omits the rank constant that produced the ordering")
+	}
+}
+
+// A locator can be held and replayed long after the response that carried it,
+// and a ceiling may have narrowed in between.
+func TestExpandRechecksPermission(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakevault"].evidence = recall.ExpandResponse{Content: "the secret"}
+	})
+
+	_, err := h.app.Expand(context.Background(), recall.ExpandRequest{
+		Locator: recall.Locator{SourceID: "vault", Local: "secret"},
+		Detail:  recall.DetailFull,
+	}, "work")
+	if !errors.Is(err, protocol.ErrSourceDenied) {
+		t.Fatalf("err = %v, want ErrSourceDenied", err)
+	}
+}
+
+// A portable locator may name a source configured on another machine. That is a
+// fact about this configuration, not a missing record.
+func TestExpandUnknownSourceIsNotConfigured(t *testing.T) {
+	h := newHarness(t, nil)
+
+	_, err := h.app.Expand(context.Background(), recall.ExpandRequest{
+		Locator: recall.Locator{SourceID: "jira", Local: "PROJ-1"},
+	}, "work")
+	if !errors.Is(err, protocol.ErrSourceNotConfigured) {
+		t.Fatalf("err = %v, want ErrSourceNotConfigured", err)
+	}
+}
+
+func TestExpandSanitizesEvidence(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].evidence = recall.ExpandResponse{
+			Content:    "line one\x1b]0;pwned\x07line two",
+			Provenance: "a.md:1-2",
+		}
+	})
+
+	got, err := h.app.Expand(context.Background(), recall.ExpandRequest{
+		Locator: recall.Locator{SourceID: "docs", Local: "a.md"},
+		Detail:  recall.DetailFull,
+	}, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsRune(got.Content, 0x1b) {
+		t.Errorf("evidence still carries an escape: %q", got.Content)
+	}
+}

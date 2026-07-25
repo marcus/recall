@@ -191,6 +191,14 @@ truncated            bool, with dropped-result count
 coverage, or answer with degraded coverage. Degraded coverage is stated
 inline; Recall never silently narrows coverage.
 
+Not every omission degrades coverage. A source left out because the request
+scoped it away, because it is disabled, or because the profile ceiling sits
+below its classification is the configured system working as asked. Reporting
+that as degraded would make every well-configured query look impaired and the
+signal would stop meaning anything. A source that was eligible and could not
+answer — unhealthy, denied, out of budget, or unable to honor `as_of` —
+degrades coverage. Both are reported in `source_outcomes` either way.
+
 `truncated` means budget shaping dropped trailing results. Truncation is not
 degradation.
 
@@ -202,10 +210,17 @@ extra fields.
 
 ### Abstention
 
-Recall abstains when no cluster carries a direct match signal, or when every
-eligible source failed. Abstention is a rule over match signals and source
-outcomes, never a threshold on a fusion score: fusion scores are ordinal and
-uncalibrated, so no confidence threshold is exposed.
+Recall abstains when nothing survived selection and at least one source
+answered. It reports `failed` instead when every source that was asked failed:
+"no results" is a claim about the corpus, and nothing supports it when nothing
+looked.
+
+Abstention is a rule over results and source outcomes, never a threshold on a
+fusion score. Those scores are ordinal and uncalibrated, so a threshold on one
+would be a number pretending to be a confidence. An earlier draft of this
+document said Recall abstains when no cluster carries a "direct match signal" —
+that would make every paraphrase query abstain in a lexical-first v1, since only
+an identifier match is direct.
 
 ### Expand
 
@@ -771,7 +786,8 @@ cmd/recall           CLI entry points
 internal/recall      domain types; depends on nothing else
 internal/lineage     locator resolution, lineage roots, independence
 internal/config      loading, merge, trust boundary, validation
-internal/source      registry, instance resolution, eligibility
+internal/source      registry, instance resolution, eligibility, plan
+internal/app         orchestration: fan out, admit, fuse, shape, decide
 internal/adapter     adapter interface, subprocess supervision
 internal/protocol    JSON-RPC framing, schemas, conformance replay
 internal/ranking     grouping, clustering, fusion, selection
