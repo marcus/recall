@@ -143,7 +143,12 @@ const queryInputSchema = `{
     },
     "project": {
       "type": "string",
-      "description": "Restrict project-aware sources to this project. Sources that do not serve it report not_applicable rather than claiming they searched."
+      "description": "Restrict results to this project. Sources that cannot evaluate projects skip with filter_unsupported rather than returning broader evidence."
+    },
+    "entities": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Restrict results to records matching these entities. Sources that cannot evaluate entities skip with filter_unsupported rather than returning broader evidence."
     },
     "since": {
       "type": "string",
@@ -316,6 +321,7 @@ type queryArgs struct {
 	Sources      []string `json:"sources"`
 	RecordTypes  []string `json:"record_types"`
 	Project      string   `json:"project"`
+	Entities     []string `json:"entities"`
 	Since        string   `json:"since"`
 	Until        string   `json:"until"`
 	AsOf         string   `json:"as_of"`
@@ -335,7 +341,7 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 		Budget: recall.Budget{LatencyMS: args.BudgetMS, ResponseTokens: args.BudgetTokens},
 	}
 
-	scope := &recall.Scope{SourceIDs: args.Sources, Project: args.Project}
+	scope := &recall.Scope{SourceIDs: args.Sources, Project: args.Project, Entities: args.Entities}
 	for _, t := range args.RecordTypes {
 		scope.RecordTypes = append(scope.RecordTypes, recall.RecordType(t))
 	}
@@ -346,7 +352,7 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 	if scope.Until, err = parseInstant("until", args.Until); err != nil {
 		return toolFailure("%s", err.Error())
 	}
-	if len(scope.SourceIDs) > 0 || len(scope.RecordTypes) > 0 || scope.Project != "" ||
+	if len(scope.SourceIDs) > 0 || len(scope.RecordTypes) > 0 || len(scope.Entities) > 0 || scope.Project != "" ||
 		scope.Since != nil || scope.Until != nil {
 		req.Scope = scope
 	}

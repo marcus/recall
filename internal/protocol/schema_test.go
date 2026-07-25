@@ -61,10 +61,23 @@ func TestGoTypesSatisfyTheirSchemas(t *testing.T) {
 		{
 			name: "search params", method: protocol.MethodSearch,
 			value: recall.SearchRequest{
-				Query:    "state of td-f62256",
-				Filters:  recall.Filters{RecordTypes: []recall.RecordType{recall.RecordTask}},
+				Query: "state of td-f62256",
+				Filters: recall.Filters{
+					RecordTypes: []recall.RecordType{recall.RecordTask},
+					Entities:    []string{"Marcus"},
+					Project:     "recall",
+				},
 				Limit:    20,
 				Deadline: now,
+			},
+		},
+		{
+			name: "skipped search result", method: protocol.MethodSearch, result: true,
+			value: recall.SearchResponse{
+				Candidates:  []recall.Candidate{},
+				Diagnostics: map[string]any{"unsupported_filters": []string{"project"}},
+				Outcome:     recall.SearchSkipped,
+				Reason:      recall.SkipFilterUnsupported,
 			},
 		},
 		{

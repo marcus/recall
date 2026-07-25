@@ -132,6 +132,8 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		req.Scope = &recall.Scope{
 			SourceIDs:   c.Scope.SourceIDs,
 			RecordTypes: c.Scope.RecordTypes,
+			Entities:    c.Scope.Entities,
+			Project:     c.Scope.Project,
 		}
 	}
 

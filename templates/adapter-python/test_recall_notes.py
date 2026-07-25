@@ -312,6 +312,24 @@ class PublicationInvariantTests(unittest.TestCase):
             ["tasks:td-123", "mail:message-9"],
         )
 
+    def test_unsupported_filter_skips_before_query(self):
+        with mock.patch.object(
+            self.adapter, "current", side_effect=AssertionError("retrieval ran")
+        ):
+            result = self.adapter.search(
+                {
+                    "query": "needle",
+                    "filters": {"project": "recall", "entities": ["Marcus"]},
+                },
+                notes.Cancellation(0),
+            )
+        self.assertEqual(result["outcome"], "skipped")
+        self.assertEqual(result["reason"], "filter_unsupported")
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(
+            result["diagnostics"]["unsupported_filters"], ["entities", "project"]
+        )
+
 
 class DiagnosticSanitizationTests(unittest.TestCase):
     def test_hostile_directory_and_filename_are_safe_in_health_and_stderr(self):

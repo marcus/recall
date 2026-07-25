@@ -46,16 +46,16 @@ type Scope struct {
 	Since       *time.Time   `json:"since,omitempty"`
 	Until       *time.Time   `json:"until,omitempty"`
 
-	// Project routes a request to the sources that serve one project, for the
-	// sources that have such a notion — a td workspace is a project, and a task
-	// store files work under one.
+	// Entities and Project are source-local structured constraints. A document
+	// corpus can match lexical entity tokens, while a task source can match
+	// labels, contexts, or project handles; the core cannot give those
+	// different meanings one global implementation.
 	//
-	// Unlike the fields above it is not evaluated by the core, because the core
-	// has no idea which source is which project. It is passed to every eligible
-	// source and each one answers for itself, which is why a source that is not
-	// the one named skips with `not_applicable` rather than searching and
-	// returning nothing.
-	Project string `json:"project,omitempty"`
+	// Both reach every eligible source. An adapter either enforces each one or
+	// skips with filter_unsupported before retrieval; a source that understands
+	// the constraint but is not the named project may skip as not_applicable.
+	Entities []string `json:"entities,omitempty"`
+	Project  string   `json:"project,omitempty"`
 }
 
 // Budget bounds one request in time and output size.

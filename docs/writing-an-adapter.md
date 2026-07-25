@@ -140,17 +140,12 @@ two of four". One bad record must not take the source down, and it must not
 vanish either. See `search-partial`.
 
 **A filter you cannot apply.** The request narrows by entity or by project and
-your source has no such concept. You have three options and two of them are
-wrong: applying it by guessing invents matches, and dropping every candidate
-because you cannot prove a match manufactures an absence. What is left is to
-answer the broader question and say plainly that you did — `outcome: "partial"`
-with the unapplied filters named in diagnostics.
-
-This last one is a rough edge in v1 and worth knowing about: unlike `as_of`,
-where the manifest declares `none | filter | snapshot` and the core excludes
-sources that cannot honor a boundary, there is no capability flag for filter
-support. A `partial` outcome plus a named diagnostic is the honest encoding
-available today. See `search-filtered`.
+your source has no such concept. Applying it by guessing invents matches, while
+returning a broader result set as `partial` lets out-of-scope evidence answer a
+question it does not satisfy. Before retrieval, return `outcome: "skipped"`,
+`reason: "filter_unsupported"`, zero candidates, and name the unsupported
+filters in diagnostics. The core degrades mixed-source coverage and refuses to
+fuse candidates attached to a skipped response. See `search-filtered`.
 
 ### What health has to agree with
 

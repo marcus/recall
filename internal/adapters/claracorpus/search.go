@@ -33,6 +33,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	if err != nil {
 		return adapter.FailedSearch(err), err
 	}
+	if resp, skipped := adapter.UnsupportedFilters(req.Filters, "entities", "project"); skipped {
+		return resp, nil
+	}
 	if err := stall(ctx, s.set.StallMS); err != nil {
 		return adapter.FailedSearch(err), err
 	}

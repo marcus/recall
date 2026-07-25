@@ -249,6 +249,12 @@ own: one source not being the one asked for is routing working as intended.
 `filter_unsupported` does, because what the adapter would have returned is a
 superset or a subset of the request and it cannot say which.
 
+An adapter must decide this before retrieval and return zero candidates.
+Returning broader candidates as `partial` does not make them evidence for the
+filtered question. The core also discards any candidates attached to a
+`skipped` response, so a malformed external adapter cannot leak out-of-scope
+evidence into fusion.
+
 Two rules keep this from becoming a cheaper way to look healthy:
 
 - **A reason outside the vocabulary is treated as unstated, and unstated

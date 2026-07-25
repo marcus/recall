@@ -55,6 +55,25 @@ func connectFixture(t *testing.T, f adapter.Adapter, opt adapter.Options) *adapt
 	return conn
 }
 
+func TestUnsupportedFiltersNamesOnlyPresentConstraints(t *testing.T) {
+	resp, skipped := adapter.UnsupportedFilters(recall.Filters{
+		Project: "recall", Entities: []string{"Marcus"},
+	}, "entities", "project")
+	if !skipped || resp.Outcome != recall.SearchSkipped || resp.Reason != recall.SkipFilterUnsupported {
+		t.Fatalf("response = %+v, skipped = %v", resp, skipped)
+	}
+	if len(resp.Candidates) != 0 {
+		t.Fatalf("candidates = %d, want none", len(resp.Candidates))
+	}
+	got, _ := resp.Diagnostics["unsupported_filters"].([]string)
+	if len(got) != 2 || got[0] != "entities" || got[1] != "project" {
+		t.Fatalf("unsupported_filters = %v", got)
+	}
+	if _, skipped := adapter.UnsupportedFilters(recall.Filters{}, "entities", "project"); skipped {
+		t.Fatal("empty filters were skipped")
+	}
+}
+
 // One contract, two transports. The same adapter answered directly and over the
 // wire must produce the same candidates; a difference here means the JSON-RPC
 // path has become a second contract.

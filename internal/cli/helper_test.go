@@ -32,6 +32,7 @@ type fake struct {
 	searchErr  error
 	evidence   recall.ExpandResponse
 	expandErr  error
+	lastSearch recall.SearchRequest
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
@@ -41,7 +42,8 @@ func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, err
 	return f.manifest, nil
 }
 
-func (f *fake) Search(_ context.Context, _ recall.SearchRequest) (recall.SearchResponse, error) {
+func (f *fake) Search(_ context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
+	f.lastSearch = req
 	if f.searchErr != nil {
 		return recall.SearchResponse{Outcome: recall.SearchUnavailable}, f.searchErr
 	}

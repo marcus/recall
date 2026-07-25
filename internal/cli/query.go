@@ -24,7 +24,8 @@ flags:
   --budget-ms N        latency budget for the whole request
   --budget-tokens N    response size budget; trailing results compress, then drop
   --scope KEY=VALUE    narrow the request; repeatable and comma-separable.
-                       Keys: source, type, since, until. Times are RFC 3339.
+                       Keys: source, type, project, entity, since, until.
+                       Times are RFC 3339.
   --as-of TIME         answer as of a past instant (RFC 3339). Sources that
                        cannot honor a historical boundary are excluded and
                        reported, and coverage becomes degraded.
@@ -48,7 +49,7 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		asOfText  = fs.String("as-of", "", "historical boundary, RFC 3339")
 	)
 	var scopes multiFlag
-	fs.Var(&scopes, "scope", "narrow the request: source=, type=, project=, since=, until=")
+	fs.Var(&scopes, "scope", "narrow the request: source=, type=, project=, entity=, since=, until=")
 	remote := addRemoteFlags(fs)
 
 	if ok, code := parse(env, fs, queryHelp, args); !ok {
@@ -335,13 +336,15 @@ func parseScope(in []string) (*recall.Scope, error) {
 			}
 			key, value, ok := strings.Cut(part, "=")
 			if !ok || value == "" {
-				return nil, fmt.Errorf("scope %q: want key=value, one of source, type, project, since, until", part)
+				return nil, fmt.Errorf("scope %q: want key=value, one of source, type, project, entity, since, until", part)
 			}
 			switch key {
 			case "source":
 				scope.SourceIDs = append(scope.SourceIDs, value)
 			case "type":
 				scope.RecordTypes = append(scope.RecordTypes, recall.RecordType(value))
+			case "entity":
+				scope.Entities = append(scope.Entities, value)
 			case "since":
 				t, err := parseTime(key, value)
 				if err != nil {
@@ -364,7 +367,7 @@ func parseScope(in []string) (*recall.Scope, error) {
 				}
 				scope.Project = value
 			default:
-				return nil, fmt.Errorf("scope key %q: want one of source, type, project, since, until", key)
+				return nil, fmt.Errorf("scope key %q: want one of source, type, project, entity, since, until", key)
 			}
 			set = true
 		}

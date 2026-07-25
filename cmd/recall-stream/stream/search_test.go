@@ -51,6 +51,24 @@ func TestSchemaVersionAwareParsing(t *testing.T) {
 	}
 }
 
+func TestUnsupportedProjectAndEntitySkipBeforeRetrieval(t *testing.T) {
+	a, _ := start(t, fixture(t, corpus), settings(map[string]any{"debug_stall_ms": 30000}))
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	resp, err := a.Search(ctx, recall.SearchRequest{Filters: recall.Filters{
+		Project: "recall", Entities: []string{"Marcus"},
+	}})
+	if err != nil {
+		t.Fatalf("unsupported filter should skip, not stall: %v", err)
+	}
+	if resp.Outcome != recall.SearchSkipped || resp.Reason != recall.SkipFilterUnsupported {
+		t.Fatalf("response = %+v, want skipped/filter_unsupported", resp)
+	}
+	if len(resp.Candidates) != 0 {
+		t.Fatalf("candidates = %d, want none", len(resp.Candidates))
+	}
+}
+
 func TestExactIdentifierPartitionsAboveLexical(t *testing.T) {
 	// exact_identifier is emitted only for a whole-token match on a stable
 	// identifier. It sorts above everything else, mirroring the core's own

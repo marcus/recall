@@ -32,7 +32,7 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"decision","limit":7,"sources":["notes"],"record_types":["document"],"project":"recall","since":"2026-07-01T00:00:00Z","until":"2026-07-25T00:00:00Z","as_of":"2026-07-24T12:00:00Z","budget_tokens":900,"budget_ms":750}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"decision","limit":7,"sources":["notes"],"record_types":["document"],"project":"recall","entities":["Marcus"],"since":"2026-07-01T00:00:00Z","until":"2026-07-25T00:00:00Z","as_of":"2026-07-24T12:00:00Z","budget_tokens":900,"budget_ms":750}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"recall_expand","arguments":{"locator":"notes:record-1#L1-2"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"recall_sources","arguments":{}}}`,
 	)
@@ -65,6 +65,7 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 	if core.lastQuery.Limit != 7 || core.lastQuery.Budget.LatencyMS != 750 ||
 		core.lastQuery.Budget.ResponseTokens != 900 || core.lastQuery.Scope == nil ||
 		core.lastQuery.Scope.Project != "recall" || len(core.lastQuery.Scope.SourceIDs) != 1 ||
+		len(core.lastQuery.Scope.Entities) != 1 || core.lastQuery.Scope.Entities[0] != "Marcus" ||
 		core.lastQuery.AsOf == nil {
 		t.Fatalf("MCP query lost typed request fields: %+v", core.lastQuery)
 	}

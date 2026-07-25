@@ -180,6 +180,7 @@ func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.T
 	if req.Scope != nil {
 		sr.Filters = recall.Filters{
 			RecordTypes: req.Scope.RecordTypes,
+			Entities:    req.Scope.Entities,
 			Since:       req.Scope.Since,
 			Until:       req.Scope.Until,
 			// Passed to every eligible source rather than evaluated here: the
@@ -196,6 +197,11 @@ func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.T
 
 	res.response, res.err = adp.Search(ctx, sr)
 	res.elapsed = a.now().Sub(started)
+	if res.response.Outcome == recall.SearchSkipped {
+		// Skipping means the adapter did not answer this constrained question.
+		// Discard candidates even if a broken external adapter sent them.
+		res.response.Candidates = []recall.Candidate{}
+	}
 
 	// A source that could not answer never reports success with no candidates.
 	if res.err != nil && !res.response.Outcome.Degrades() {
@@ -215,6 +221,12 @@ func (a *App) admit(results []searchResult, ceiling recall.Sensitivity) ([]recal
 	denied := 0
 
 	for _, r := range results {
+		if r.response.Outcome == recall.SearchSkipped {
+			// A skipped source did not answer this question. Even a malformed
+			// or adversarial adapter response cannot smuggle broader evidence
+			// into fusion alongside the skip.
+			continue
+		}
 		for _, c := range r.response.Candidates {
 			if !evidence.Permit(c, ceiling) {
 				denied++

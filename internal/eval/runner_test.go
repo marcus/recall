@@ -22,6 +22,7 @@ type engine struct {
 	expandContent map[string]string
 	expandBudget  map[string]int64
 	asOfSeen      map[string]*time.Time
+	scopeSeen     map[string]*recall.Scope
 }
 
 func newEngine() *engine {
@@ -32,11 +33,13 @@ func newEngine() *engine {
 		expandContent: map[string]string{},
 		expandBudget:  map[string]int64{},
 		asOfSeen:      map[string]*time.Time{},
+		scopeSeen:     map[string]*recall.Scope{},
 	}
 }
 
 func (e *engine) Query(_ context.Context, req recall.QueryRequest) (recall.QueryResponse, error) {
 	e.asOfSeen[req.Query] = req.AsOf
+	e.scopeSeen[req.Query] = req.Scope
 	if err := e.queryErr[req.Query]; err != nil {
 		return recall.QueryResponse{Outcome: recall.OutcomeFailed, Coverage: recall.CoverageDegraded}, err
 	}
@@ -144,6 +147,22 @@ func TestAsOfReachesTheEngine(t *testing.T) {
 	seen := e.asOfSeen["what did we decide"]
 	if seen == nil || !seen.Equal(at) {
 		t.Errorf("engine saw as_of %v, want %v", seen, at)
+	}
+}
+
+func TestProjectAndEntityScopeReachTheEngine(t *testing.T) {
+	e := newEngine()
+	e.responses["find the decision"] = answered("uid-docs:a.md")
+	r := eval.NewRunner(e, packFor(t, minimalPack), eval.RunOptions{})
+	if _, err := r.Run(context.Background(), []eval.Case{{
+		CaseID: "c1", Query: "find the decision", ExpectedBehavior: eval.BehaviorAnswer,
+		Scope: &eval.CaseScope{Project: "recall", Entities: []string{"Marcus"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	seen := e.scopeSeen["find the decision"]
+	if seen == nil || seen.Project != "recall" || len(seen.Entities) != 1 || seen.Entities[0] != "Marcus" {
+		t.Fatalf("engine saw scope %+v, want project and entity", seen)
 	}
 }
 

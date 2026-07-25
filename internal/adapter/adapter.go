@@ -183,6 +183,37 @@ func FailedSearch(err error) recall.SearchResponse {
 	}
 }
 
+// UnsupportedFilters returns the only honest response for a filter this
+// adapter cannot evaluate. It is deliberately called before retrieval: a
+// broader result set is not evidence for the narrower question, even when
+// labeled partial.
+func UnsupportedFilters(filters recall.Filters, names ...string) (recall.SearchResponse, bool) {
+	var unsupported []string
+	for _, name := range names {
+		switch name {
+		case "entities":
+			if len(filters.Entities) > 0 {
+				unsupported = append(unsupported, name)
+			}
+		case "project":
+			if filters.Project != "" {
+				unsupported = append(unsupported, name)
+			}
+		}
+	}
+	if len(unsupported) == 0 {
+		return recall.SearchResponse{}, false
+	}
+	return recall.SearchResponse{
+		Candidates: []recall.Candidate{},
+		Outcome:    recall.SearchSkipped,
+		Reason:     recall.SkipFilterUnsupported,
+		Diagnostics: map[string]any{
+			"unsupported_filters": unsupported,
+		},
+	}, true
+}
+
 // Unhealthy renders a failed probe. An unreachable source is never healthy and
 // never has a known coverage.
 func Unhealthy(err error) recall.Health {

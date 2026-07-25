@@ -43,8 +43,10 @@ type fake struct {
 	// search was actually asked for. Together they are how an end-to-end test
 	// reaches Filters.Project, which no host surface populated until scope
 	// gained it.
-	project    string
-	sawProject string
+	project     string
+	sawProject  string
+	sawEntities []string
+	reason      string
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
@@ -55,6 +57,7 @@ func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, err
 func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	f.searchCalls++
 	f.sawProject = req.Filters.Project
+	f.sawEntities = append([]string(nil), req.Filters.Entities...)
 	if f.project != "" && req.Filters.Project != "" && !strings.EqualFold(f.project, req.Filters.Project) {
 		// What a real routed source does: it is not the one that was named, so
 		// it did not look. Success here would assert a boundary it never
@@ -77,7 +80,7 @@ func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.Sea
 	if out == "" {
 		out = recall.SearchSuccess
 	}
-	return recall.SearchResponse{Candidates: f.candidates, Outcome: out}, nil
+	return recall.SearchResponse{Candidates: f.candidates, Outcome: out, Reason: f.reason}, nil
 }
 
 func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandResponse, error) {
@@ -686,11 +689,9 @@ func TestPerRequestLimitIsHonored(t *testing.T) {
 // A project filter reaches the adapters, and a project no source serves does
 // not come back as complete coverage.
 //
-// Filters.Project was populated by no host surface at all: `recall query
-// --scope` accepted source, type, since and until, the eval case schema had no
-// project field, and internal/api was doc-only. The td adapter's routing on it
-// was tested only inside that package. A contract field nothing could reach
-// end to end is a field nobody could tell was broken — and it was.
+// This is the application boundary behind every host surface. A contract field
+// that only adapter package tests populate is otherwise one nobody can tell is
+// broken end to end.
 func TestProjectScopeRoutesAndDoesNotFakeCompleteCoverage(t *testing.T) {
 	h := newHarness(t, func(f map[string]*fake) {
 		f["fakedocs"].project = "recall"
@@ -760,5 +761,35 @@ func TestUnexplainedSkipDegrades(t *testing.T) {
 	}
 	if resp.Coverage != recall.CoverageDegraded {
 		t.Errorf("coverage = %q, want degraded for a skip with no stated reason", resp.Coverage)
+	}
+}
+
+// A skipped response is a declaration that the source did not answer the
+// constrained question. Candidates attached to it are necessarily broader
+// evidence and must not reach fusion, even if an external adapter is broken.
+func TestUnsupportedFilterCannotSmuggleCandidatesIntoFusion(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].outcome = recall.SearchSkipped
+		f["fakedocs"].reason = recall.SkipFilterUnsupported
+		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "out-of-scope", 1)}
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "in-scope", 1)}
+	})
+	resp, err := h.app.Query(context.Background(), recall.QueryRequest{
+		Query: "ranking", Scope: &recall.Scope{Entities: []string{"Marcus"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.fakes["fakedocs"].sawEntities; len(got) != 1 || got[0] != "Marcus" {
+		t.Fatalf("adapter saw entities %v, want [Marcus]", got)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Primary.SourceRecordID != "in-scope" {
+		t.Fatalf("results = %+v, want only in-scope evidence", resp.Results)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %q, want degraded for mixed success and filter_unsupported", resp.Coverage)
+	}
+	if rep := reportFor(t, resp, "docs"); rep.Candidates != 0 {
+		t.Errorf("skipped source reports %d candidates, want 0", rep.Candidates)
 	}
 }

@@ -283,6 +283,26 @@ func TestScopeNarrowsThePlanWithoutDegrading(t *testing.T) {
 	}
 }
 
+func TestProjectAndEntityScopeReachAdapters(t *testing.T) {
+	docs := &fake{manifest: manifest(), candidates: []recall.Candidate{candidate("a.md", 1)}}
+	tasks := &fake{manifest: manifest(), candidates: []recall.Candidate{candidate("td-1", 1)}}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": tasks}),
+	})
+	code, _, stderr := h.run("query", "--scope", "project=recall,entity=Marcus", "decision")
+	if code != cli.ExitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, stderr)
+	}
+	for name, f := range map[string]*fake{"docs": docs, "tasks": tasks} {
+		if f.lastSearch.Filters.Project != "recall" ||
+			len(f.lastSearch.Filters.Entities) != 1 ||
+			f.lastSearch.Filters.Entities[0] != "Marcus" {
+			t.Errorf("%s saw filters %+v, want project and entity", name, f.lastSearch.Filters)
+		}
+	}
+}
+
 // Every withheld candidate is counted with a reason, so a person can be told
 // something was not shown without being told what it was.
 func TestSuppressionIsReportedInBothSurfaces(t *testing.T) {

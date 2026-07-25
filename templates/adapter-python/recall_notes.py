@@ -1254,6 +1254,21 @@ class Adapter:
     def search(self, params: dict, cancel: Cancellation) -> dict:
         settings, source_id, floor = self.session()
         started = time.time()
+        filters = params.get("filters") or {}
+        unsupported = [
+            name
+            for name in ("entities", "project")
+            if filters.get(name)
+        ]
+        if unsupported:
+            # Do not retrieve a broader corpus and label it partial: none of
+            # those candidates is evidence for the constrained question.
+            return {
+                "candidates": [],
+                "diagnostics": {"unsupported_filters": unsupported},
+                "outcome": "skipped",
+                "reason": "filter_unsupported",
+            }
         if settings["debug_stall_ms"]:
             cancel.sleep(settings["debug_stall_ms"] / 1000.0)
         cancel.check()
@@ -1262,20 +1277,6 @@ class Adapter:
         cancel.check()
 
         terms = tokenize(params.get("query", ""))
-        filters = params.get("filters") or {}
-
-        # Filters this adapter cannot evaluate. It has no entity extraction and
-        # no notion of a project, so it can neither apply them nor prove that a
-        # note satisfies them. Applying them by guessing would invent matches;
-        # dropping every candidate would manufacture an absence. What is left is
-        # to answer the broader question and say plainly that this is what
-        # happened, which is what `partial` plus a named diagnostic means.
-        unapplied = [
-            name
-            for name in ("entities", "project")
-            if filters.get(name)
-        ]
-
         where, args = [], []
         if params.get("as_of"):
             where.append("s.event_epoch <= ?")
@@ -1328,10 +1329,9 @@ class Adapter:
         ]
 
         outcome = "success"
-        if snap.coverage != "complete" or unapplied:
+        if snap.coverage != "complete":
             # Stated, never implied by a short list. A note that failed to parse
-            # is unknown, not absent, and a filter that was not applied means
-            # this list answers a broader question than the one asked.
+            # is unknown, not absent.
             outcome = "partial"
 
         diagnostics = {
@@ -1354,8 +1354,6 @@ class Adapter:
             diagnostics["unreadable"] = [one_line(str(name)) for name in snap.unreadable]
         if snap.truncated:
             diagnostics["listing_truncated"] = True
-        if unapplied:
-            diagnostics["unapplied_filters"] = unapplied
         return {
             "candidates": candidates,
             "diagnostics": diagnostics,

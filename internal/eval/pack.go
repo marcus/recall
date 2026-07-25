@@ -145,6 +145,8 @@ type Case struct {
 type CaseScope struct {
 	SourceIDs   []string            `json:"source_ids,omitempty"`
 	RecordTypes []recall.RecordType `json:"record_types,omitempty"`
+	Entities    []string            `json:"entities,omitempty"`
+	Project     string              `json:"project,omitempty"`
 }
 
 // Assertions are the policy claims a case makes. They are not relevance

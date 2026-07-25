@@ -190,6 +190,10 @@ func fullCase() eval.Case {
 		Tags:             []string{"exact", "task", "current-state"},
 		TimeoutMS:        250,
 		Notes:            "Exact stable identifier must reach the top of the fused list.",
+		Scope: &eval.CaseScope{
+			SourceIDs: []string{"tasks"}, RecordTypes: []recall.RecordType{recall.RecordTask},
+			Entities: []string{"Marcus"}, Project: "recall",
+		},
 		Assertions: &eval.Assertions{
 			ExpectedCoverage: recall.CoverageDegraded,
 			ExpectedSourceOutcomes: map[recall.SourceUID]recall.SearchOutcome{

@@ -143,6 +143,26 @@ func ids(res recall.SearchResponse) []string {
 	return out
 }
 
+func TestUnsupportedProjectAndEntitySkipBeforeRetrieval(t *testing.T) {
+	a, _ := start(t, signalCorpus(t), "clara-signals", map[string]any{
+		"store": "signals", "debug_stall_ms": 30000,
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	res, err := a.Search(ctx, recall.SearchRequest{Filters: recall.Filters{
+		Project: "recall", Entities: []string{"Marcus"},
+	}})
+	if err != nil {
+		t.Fatalf("unsupported filter should skip, not stall: %v", err)
+	}
+	if res.Outcome != recall.SearchSkipped || res.Reason != recall.SkipFilterUnsupported {
+		t.Fatalf("response = %+v, want skipped/filter_unsupported", res)
+	}
+	if len(res.Candidates) != 0 {
+		t.Fatalf("candidates = %d, want none", len(res.Candidates))
+	}
+}
+
 func find(t *testing.T, res recall.SearchResponse, id string) recall.Candidate {
 	t.Helper()
 	for _, c := range res.Candidates {
