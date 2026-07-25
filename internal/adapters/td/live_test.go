@@ -63,8 +63,8 @@ func TestLiveBinary(t *testing.T) {
 	if health.RecordCount != 2 {
 		t.Errorf("record_count = %d, want 2", health.RecordCount)
 	}
-	if health.SourceWatermark == "" {
-		t.Error("no watermark from a live workspace")
+	if health.SourceWatermark != "" {
+		t.Errorf("watermark %q from a probe that read no listing", health.SourceWatermark)
 	}
 
 	// Retrieval, with the typed fields intact and td's own ordering preserved.

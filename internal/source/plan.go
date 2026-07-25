@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/marcus/recall/internal/config"
@@ -58,6 +59,21 @@ type Target struct {
 	Manifest recall.Manifest
 	Deadline time.Time
 	Limit    int
+
+	// Health is what the source reported when eligibility was decided, carried
+	// so that the probe deciding eligibility is the only health probe a request
+	// makes of it.
+	//
+	// Reporting used to call Health a second time after the search, for the
+	// generation identity and the cold-start flag it puts in a source report.
+	// For a source whose health probe is a network round trip or a process
+	// spawn that doubled the cost of every query — the td adapter spent two of
+	// its eight spawns per query on it, each reading the whole workspace — and
+	// bought nothing: it is the same report, taken later. Later is also the
+	// wrong instant to take it. What a report should say is the health that let
+	// this source into the plan, not health measured after the answer was
+	// already produced from it.
+	Health recall.Health
 }
 
 // Plan is the resolved retrieval plan: who may answer, with what budget, and
@@ -123,71 +139,109 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		plan.Deadline = start.Add(DefaultQueryBudget)
 	}
 
-	for _, inst := range instances {
+	// Every source is handshaken and probed at once, because a handshake and a
+	// health probe are both round trips to somewhere else — an index to open, a
+	// server to reach, a process to spawn — and running thirteen of them one
+	// after another made planning cost the sum of the slowest sources rather
+	// than the slowest source. Retrieval itself has always fanned out; this is
+	// the same reasoning applied to the step that decides who may answer.
+	//
+	// Results land in a slice indexed by configured position and are folded
+	// back in that order, so the plan a caller reads does not depend on which
+	// source answered first. A plan that reordered itself under load would make
+	// two identical queries report different things.
+	verdicts := make([]verdict, len(instances))
+	var wg sync.WaitGroup
+	for i, inst := range instances {
 		if reason, ok := staticIneligible(req, profile, inst); !ok {
-			plan.Excluded = append(plan.Excluded, exclude(inst, reason))
+			verdicts[i] = verdict{reason: reason}
 			continue
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			verdicts[i] = r.consider(ctx, req, inst, plan.Deadline, reserve, perSource, now)
+		}()
+	}
+	wg.Wait()
 
-		// The handshake comes before the probe, and the order is load-bearing.
-		//
-		// A built-in adapter is constructed unconfigured — it learns its
-		// corpus, workdir, and settings at the handshake — so probing first
-		// asks a source that has not been told where to read, and it answers
-		// unavailable because that is the truth. Every built-in source was
-		// excluded as unhealthy on that basis, which made `recall query`
-		// return nothing while `recall doctor`, which initializes before
-		// probing, called the same source healthy.
-		//
-		// It is safe to handshake here because every permission check has
-		// already run above: initializing a source the ceiling denies would be
-		// the disclosure the ceiling exists to prevent.
-		manifest, err := r.Initialize(ctx, inst)
-		if err != nil {
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAdapterUnavailable))
-			continue
+	for i, inst := range instances {
+		if v := verdicts[i]; v.reason != "" {
+			plan.Excluded = append(plan.Excluded, exclude(inst, v.reason))
+		} else {
+			plan.Targets = append(plan.Targets, v.target)
 		}
-		a, err := r.Adapter(inst)
-		if err != nil {
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAdapterUnavailable))
-			continue
-		}
-		health, err := a.Health(ctx)
-		switch {
-		case err != nil && health.Status == recall.HealthDenied:
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonDenied))
-			continue
-		case err != nil || !health.Usable():
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonUnhealthy))
-			continue
-		}
-		// A source that cannot honor a historical boundary is excluded and said
-		// so. Letting it answer from current state would be a wrong answer
-		// wearing the shape of a right one.
-		if req.AsOf != nil && !manifest.AsOfSupport.Honors() {
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonAsOfUnsupported))
-			continue
-		}
-		if !typesOverlap(req, inst, manifest) {
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonRecordTypeMismatch))
-			continue
-		}
-
-		deadline := sourceDeadline(now(), plan.Deadline, reserve, inst.Timeout)
-		if !deadline.After(now()) {
-			// The budget is already spent. Asking anyway would guarantee a
-			// timeout and charge the caller for it.
-			plan.Excluded = append(plan.Excluded, exclude(inst, ReasonBudgetExhausted))
-			continue
-		}
-		plan.Targets = append(plan.Targets, Target{
-			Instance: inst,
-			Manifest: manifest,
-			Deadline: deadline,
-			Limit:    perSource,
-		})
 	}
 	return plan, nil
+}
+
+// verdict is one source's eligibility: a target, or the reason there is none.
+type verdict struct {
+	target Target
+	reason string
+}
+
+// consider handshakes one source, probes it, and decides whether it may answer.
+//
+// The handshake comes before the probe, and the order is load-bearing.
+//
+// A built-in adapter is constructed unconfigured — it learns its corpus,
+// workdir, and settings at the handshake — so probing first asks a source that
+// has not been told where to read, and it answers unavailable because that is
+// the truth. Every built-in source was excluded as unhealthy on that basis,
+// which made `recall query` return nothing while `recall doctor`, which
+// initializes before probing, called the same source healthy.
+//
+// It is safe to handshake here because every permission check has already run
+// in [staticIneligible]: initializing a source the ceiling denies would be the
+// disclosure the ceiling exists to prevent.
+func (r *Registry) consider(
+	ctx context.Context,
+	req recall.QueryRequest,
+	inst *config.SourceInstance,
+	budget time.Time,
+	reserve time.Duration,
+	perSource int,
+	now func() time.Time,
+) verdict {
+	manifest, err := r.Initialize(ctx, inst)
+	if err != nil {
+		return verdict{reason: ReasonAdapterUnavailable}
+	}
+	a, err := r.Adapter(inst)
+	if err != nil {
+		return verdict{reason: ReasonAdapterUnavailable}
+	}
+	health, err := a.Health(ctx)
+	switch {
+	case err != nil && health.Status == recall.HealthDenied:
+		return verdict{reason: ReasonDenied}
+	case err != nil || !health.Usable():
+		return verdict{reason: ReasonUnhealthy}
+	}
+	// A source that cannot honor a historical boundary is excluded and said so.
+	// Letting it answer from current state would be a wrong answer wearing the
+	// shape of a right one.
+	if req.AsOf != nil && !manifest.AsOfSupport.Honors() {
+		return verdict{reason: ReasonAsOfUnsupported}
+	}
+	if !typesOverlap(req, inst, manifest) {
+		return verdict{reason: ReasonRecordTypeMismatch}
+	}
+
+	deadline := sourceDeadline(now(), budget, reserve, inst.Timeout)
+	if !deadline.After(now()) {
+		// The budget is already spent. Asking anyway would guarantee a timeout
+		// and charge the caller for it.
+		return verdict{reason: ReasonBudgetExhausted}
+	}
+	return verdict{target: Target{
+		Instance: inst,
+		Manifest: manifest,
+		Deadline: deadline,
+		Limit:    perSource,
+		Health:   health,
+	}}
 }
 
 // DefaultQueryBudget bounds a request whose caller stated none.

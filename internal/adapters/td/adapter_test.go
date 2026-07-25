@@ -126,8 +126,12 @@ func TestHealthReportsAReadableWorkspace(t *testing.T) {
 	if health.Coverage != recall.IndexComplete {
 		t.Errorf("coverage = %q, want complete", health.Coverage)
 	}
-	if health.SourceWatermark == "" {
-		t.Error("no watermark: td publishes no revision, so a search has no freshness evidence without one")
+	if health.SourceWatermark != "" {
+		t.Errorf("watermark %q from a probe that read no listing; td publishes no revision, "+
+			"so there is nothing here to fingerprint", health.SourceWatermark)
+	}
+	if _, said := health.Diagnostics["watermark"]; !said {
+		t.Error("no watermark and no diagnostic saying why; an empty field is indistinguishable from a bug")
 	}
 	if got := health.Diagnostics["workspace"]; got != "tdfix" {
 		t.Errorf("diagnostics[workspace] = %v, want the configured workspace name", got)
@@ -182,17 +186,40 @@ func TestMissingWorkspaceIsUnavailableAndNeverEmptySuccess(t *testing.T) {
 	}
 }
 
-// A workspace td can resolve but not list is degraded, not unavailable: the
-// source is reachable and nothing has confirmed what it holds.
-func TestUnreadableListingDegradesRatherThanDisappears(t *testing.T) {
-	info := fixture(t, "info.json")
-	cli := &fakeCLI{reply: func(args []string) (td.Result, error) {
-		if args[0] == "info" {
-			return ok(info), nil
-		}
-		return td.Result{Stdout: []byte("not json at all"), ExitCode: 0}, nil
-	}}
+// Health costs one invocation, because the core probes it once per source per
+// query before anything is searched. It used to read the workspace listing too
+// — 1.6 MB of JSON on the largest workspace here — for a watermark that only a
+// health-only surface displays.
+func TestHealthReadsInfoAndNotTheWorkspace(t *testing.T) {
+	cli := recordedWorkspace(t)
 	a := newAdapter(t, cli, nil)
+
+	if _, err := a.Health(context.Background()); err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if n := cli.countCalls("info"); n != 1 {
+		t.Errorf("%d info invocations, want 1", n)
+	}
+	if n := cli.countCalls("list"); n != 0 {
+		t.Errorf("%d listing invocations from a health probe, want 0: a listing is what a "+
+			"search reads, and health runs on the path of every query", n)
+	}
+}
+
+// A scope too large for one listing is reported as partial coverage without a
+// listing being read, because td's own counts are an upper bound on what a
+// listing would return. Losing this signal would leave a source enumerating
+// part of its scope while claiming a complete boundary.
+func TestAScopeTooLargeToListIsPartialCoverage(t *testing.T) {
+	// td's counts, with more issues in the workspace than one listing reads.
+	huge := &fakeCLI{reply: func(args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return ok([]byte(`{"project":"tdfix","issues":{"total":6000,"open":6000}}`)), nil
+		}
+		t.Errorf("unexpected invocation: td %s", strings.Join(args, " "))
+		return td.Result{}, nil
+	}}
+	a := newAdapter(t, huge, nil)
 
 	health, err := a.Health(context.Background())
 	if err != nil {
@@ -201,11 +228,34 @@ func TestUnreadableListingDegradesRatherThanDisappears(t *testing.T) {
 	if health.Status != recall.HealthDegraded {
 		t.Errorf("status = %q (%v), want degraded", health.Status, health.Diagnostics)
 	}
-	if health.Coverage != recall.IndexUnknown {
-		t.Errorf("coverage = %q, want unknown", health.Coverage)
+	if health.Coverage != recall.IndexPartial {
+		t.Errorf("coverage = %q, want partial: a listing would stop before the end of the scope", health.Coverage)
 	}
-	if health.SourceWatermark != "" {
-		t.Error("a watermark was reported for a listing that could not be read")
+	if _, said := health.Diagnostics["listing"]; !said {
+		t.Error("partial coverage with nothing saying why")
+	}
+}
+
+// A source scoped to a status is bounded by that status's count and not by the
+// whole workspace, so a big archive of closed work does not make an instance
+// reading open issues report partial coverage it does not have.
+func TestScopedCoverageIsBoundedByTheConfiguredStatuses(t *testing.T) {
+	mostlyClosed := &fakeCLI{reply: func(args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return ok([]byte(`{"project":"tdfix","issues":{"total":6000,"open":40,"closed":5960}}`)), nil
+		}
+		t.Errorf("unexpected invocation: td %s", strings.Join(args, " "))
+		return td.Result{}, nil
+	}}
+	a := newAdapter(t, mostlyClosed, map[string]any{"statuses": []string{"open"}})
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Coverage != recall.IndexComplete {
+		t.Errorf("coverage = %q (%v), want complete: 40 open issues fit in one listing",
+			health.Coverage, health.Diagnostics)
 	}
 }
 

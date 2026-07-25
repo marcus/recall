@@ -37,6 +37,7 @@ type fake struct {
 	evidence    recall.ExpandResponse
 	expandErr   error
 	searchCalls int
+	healthCalls int
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
@@ -68,6 +69,7 @@ func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandRespo
 }
 
 func (f *fake) Health(context.Context) (recall.Health, error) {
+	f.healthCalls++
 	if f.needsHandshake && !f.initialized {
 		return recall.Health{Status: recall.HealthUnavailable}, protocol.ErrSourceUnavailable
 	}
@@ -460,6 +462,29 @@ func TestRetrievedContentIsSanitized(t *testing.T) {
 	}
 	if strings.Contains(got.Excerpt, "javascript:") {
 		t.Errorf("excerpt still carries an executable scheme: %q", got.Excerpt)
+	}
+}
+
+// A health probe is a round trip: an index to open, a server to reach, a
+// process to spawn. The plan already made one to decide eligibility, and the
+// reporting that used to make a second one restated the same report from a
+// later instant. For the td adapter that second probe was two of the eight
+// process spawns one query cost, each reading a whole workspace.
+func TestOneHealthProbePerSourcePerQuery(t *testing.T) {
+	h := newHarness(t, nil)
+
+	if _, err := h.app.Query(context.Background(), query("anything")); err != nil {
+		t.Fatal(err)
+	}
+	probed := 0
+	for name, f := range h.fakes {
+		if f.healthCalls > 1 {
+			t.Errorf("%s was probed %d times for one query", name, f.healthCalls)
+		}
+		probed += f.healthCalls
+	}
+	if probed == 0 {
+		t.Fatal("no source was probed at all; the assertion above would pass vacuously")
 	}
 }
 

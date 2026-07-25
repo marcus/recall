@@ -302,13 +302,19 @@ func (a *Adapter) Close() error {
 	return nil
 }
 
-// Health probes the workspace.
+// Health probes the workspace with one `td info`, and nothing else.
 //
 // The honest health question for this source is not "did a command return" but
 // "does this workspace resolve to a database td can read". `td info` answers
 // exactly that, and it answers it with the workspace's own name and issue
 // counts, so a location pointing at the wrong repository is visible in
 // diagnostics rather than silently returning another project's work.
+//
+// One invocation is the whole probe on purpose. Health is called once per
+// source per query before anything is searched, so whatever it costs is charged
+// to every question asked of this machine. See the freshness note further down
+// for what reading the workspace listing here used to buy and where that
+// evidence lives now.
 //
 // A missing, unreadable, or uninitialized workspace is unavailable. It is
 // never a successful search with no matches: td exits non-zero and says
@@ -388,50 +394,74 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		health.Diagnostics[protocol.DiagStoreIdentity] = ws.Root
 	}
 
-	// The listing is what a search reads, so probing it here is what makes
-	// health and search agree about what exists — and it is the only way to
-	// produce a watermark, since td publishes no revision of its own.
-	records, raw, err := a.corpus(ctx, set)
-	switch {
-	case err != nil:
-		// td resolved the workspace and then could not list it. The source is
-		// reachable, so this is degraded rather than unavailable, and coverage
-		// is unknown because nothing has confirmed what the workspace holds.
-		health.Status = recall.HealthDegraded
-		health.Coverage = recall.IndexUnknown
-		health.Diagnostics["listing"] = "unavailable"
+	// `td info` is the whole of this probe, and the freshness evidence health
+	// can report is bounded by that.
+	//
+	// It used to read the workspace listing here as well, because td publishes
+	// no revision of its own and a hash of the listing is the only fingerprint
+	// this source can produce. That put 1.6 MB of JSON — the largest workspace
+	// in this deployment — on the path of every query, twice, to report a
+	// watermark nothing on that path reads. Cheaper substitutes were looked for
+	// and refused: `td info` carries a session id that changes between
+	// invocations, and td's `--sort` silently ignores a field it does not know,
+	// so a watermark built on "the most recently updated issue" would have been
+	// a value that stops changing when td changes its sort keys. A watermark
+	// that quietly stops moving is worse than none.
+	//
+	// The listing watermark is not lost where it decides anything. Search reads
+	// the listing because it needs the structured fallback and the free id
+	// lookups anyway, and stamps the fingerprint on the response and on every
+	// candidate as its source_revision, which is where freshness reaches an
+	// answer. What a health-only probe can no longer produce is a watermark of
+	// its own, and this says so rather than leaving the field silently empty.
+	health.Diagnostics["watermark"] = "not read here: td publishes no revision, and its only fingerprint is the workspace listing, which search reads and health does not"
 
-	default:
-		health.SourceWatermark = watermark(raw)
-		health.Diagnostics["listed"] = len(records)
-		if len(records) >= corpusLimit {
-			// The listing hit this adapter's own bound, so the watermark
-			// fingerprints part of the workspace rather than all of it.
-			health.Status = recall.HealthDegraded
-			health.Coverage = recall.IndexPartial
-			health.Diagnostics["listing"] = "truncated at " + strconv.Itoa(corpusLimit)
-		}
+	if scope := set.scopeBound(info); scope >= corpusLimit {
+		// A listing for this instance would stop at this adapter's bound before
+		// it reached the end of the scope, so what search confirms present is
+		// part of the workspace and not all of it. Read off td's own counts
+		// rather than by listing: the counts are an UPPER bound on what a
+		// listing would return, since a type or label filter only narrows them
+		// further, so this declares incomplete coverage early rather than late.
+		// Early is the safe direction for a claim about a boundary.
+		health.Status = recall.HealthDegraded
+		health.Coverage = recall.IndexPartial
+		health.Diagnostics["listing"] = fmt.Sprintf(
+			"would truncate: %d issues in this source's scope, and a listing reads at most %d",
+			scope, corpusLimit)
 	}
 	return health, nil
 }
 
-// corpus reads the configured slice of the workspace in one invocation.
+// scopeBound is an upper bound on how many issues a listing for this instance
+// would return, taken from the counts `td info` reports.
 //
-// It returns the raw payload as well as the records, because the payload is
-// the only freshness evidence td offers: there is no revision, no cursor, and
-// no reliable ordering to quote, but identical bytes mean the same workspace
-// state was read, and any change to any issue changes them.
-func (a *Adapter) corpus(ctx context.Context, set settings) ([]issue, []byte, error) {
-	args := listArgs(set)
-	res, err := a.run(ctx, args...)
-	if err != nil {
-		return nil, nil, err
+// Statuses narrow it exactly, because td counts issues per status. Types and
+// labels are not represented: they only narrow the result further, and the one
+// claim made on this number is "a listing might not fit", which an over-estimate
+// makes early rather than wrongly. Guessing a narrower number would be the
+// opposite trade — a source that lists half its scope while reporting complete
+// coverage, which is the false-boundary failure this adapter exists to avoid.
+func (s settings) scopeBound(info workspaceInfo) int64 {
+	if len(s.Statuses) == 0 {
+		return info.Issues.Total
 	}
-	var records []issue
-	if err := decodeJSON(res, &records, args...); err != nil {
-		return nil, nil, err
+	var bound int64
+	for _, status := range s.Statuses {
+		switch strings.ToLower(status) {
+		case "open":
+			bound += info.Issues.Open
+		case "in_progress":
+			bound += info.Issues.InProgress
+		case "blocked":
+			bound += info.Issues.Blocked
+		case "in_review":
+			bound += info.Issues.InReview
+		case "closed":
+			bound += info.Issues.Closed
+		}
 	}
-	return records, res.Stdout, nil
+	return bound
 }
 
 // listArgs builds a `td list` invocation over the instance's configured scope.

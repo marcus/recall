@@ -437,22 +437,33 @@ func TestCandidatesCarryTheWorkspaceAndTheirTypedFields(t *testing.T) {
 	}
 }
 
-// The freshness evidence a search reports is the same fact health reports, and
-// it is derived from the same read. Two different answers to "which workspace
-// state is this" would make both worthless.
-func TestSearchAndHealthAgreeOnTheWatermark(t *testing.T) {
+// Search is where the workspace fingerprint comes from, because search is what
+// reads the listing: it needs the structured fallback and the free id lookups
+// anyway, so the watermark is free there and 1.6 MB of JSON anywhere else.
+// Health says it has none rather than reporting one it did not read.
+func TestTheWatermarkComesFromTheReadThatProducedIt(t *testing.T) {
 	a := newAdapter(t, recordedWorkspace(t), nil)
 
 	resp, err := search(t, a, "adapter")
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
+	if resp.SourceWatermark == "" {
+		t.Error("no watermark on a search that read the listing")
+	}
+	for _, c := range resp.Candidates {
+		if c.SourceRevision != resp.SourceWatermark {
+			t.Errorf("%s carries revision %q, the response says %q; freshness reaches an answer "+
+				"through the candidate", c.SourceRecordID, c.SourceRevision, resp.SourceWatermark)
+		}
+	}
+
 	health, err := a.Health(context.Background())
 	if err != nil {
 		t.Fatalf("health: %v", err)
 	}
-	if resp.SourceWatermark != health.SourceWatermark {
-		t.Errorf("search watermark %q, health watermark %q", resp.SourceWatermark, health.SourceWatermark)
+	if health.SourceWatermark != "" {
+		t.Errorf("health watermark %q from a probe that read no listing", health.SourceWatermark)
 	}
 }
 

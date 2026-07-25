@@ -153,7 +153,12 @@ func (a *App) fanOut(ctx context.Context, req recall.QueryRequest, plan source.P
 }
 
 func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.Target) searchResult {
-	res := searchResult{target: t}
+	// The health carried on the target is the probe that decided this source
+	// was eligible, and it is the only one this request makes. Probing again
+	// after the search cost a second round trip per source — for the td adapter
+	// a second process spawn reading the whole workspace — to restate a report
+	// the plan already had. See the field's own comment in source.Target.
+	res := searchResult{target: t, health: t.Health}
 	started := a.now()
 
 	adp, err := a.registry.Adapter(t.Instance)
@@ -189,9 +194,6 @@ func (a *App) searchOne(ctx context.Context, req recall.QueryRequest, t source.T
 	// A source that could not answer never reports success with no candidates.
 	if res.err != nil && !res.response.Outcome.Degrades() {
 		res.response.Outcome = recall.SearchFailed
-	}
-	if h, herr := adp.Health(ctx); herr == nil {
-		res.health = h
 	}
 	return res
 }
