@@ -194,6 +194,32 @@ func TestLocalRankIsDenseAndOrdered(t *testing.T) {
 	}
 }
 
+func TestNaturalQuestionAndKeywordFormShareRetrieval(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, cleanCorpus(t), nil)
+
+	// This pair is the adapter-level version of dev-pack cases
+	// abstain-wifi-016 and abstain-sentence-018. Neither content term exists,
+	// so grammatical scaffolding must not manufacture twenty weak candidates.
+	for _, query := range []string{"wifi password", "what is the wifi password"} {
+		resp := search(t, a, query)
+		if len(resp.Candidates) != 0 {
+			t.Errorf("%q returned %d candidates, want an empty successful search", query, len(resp.Candidates))
+		}
+		if resp.Outcome != recall.SearchSuccess {
+			t.Errorf("%q outcome = %q, want successful coverage of an empty result", query, resp.Outcome)
+		}
+	}
+
+	question := search(t, a, "what is the wifi password")
+	if got := question.Diagnostics["query_analyzer"]; got != "alnum-fold+english-function-words-v1" {
+		t.Errorf("query analyzer diagnostic = %v", got)
+	}
+	if got := question.Diagnostics["query_terms_removed"]; got != 3 {
+		t.Errorf("removed terms diagnostic = %v, want 3", got)
+	}
+}
+
 // TestExactIdentifierOnlyAtTokenBoundaries is the false-positive test the spec
 // asks for. exact_identifier partitions the entire result set above everything
 // without it, so a signal emitted for prose that merely contains a file's words

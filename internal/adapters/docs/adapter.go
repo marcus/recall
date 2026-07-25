@@ -16,7 +16,7 @@ import (
 
 // Adapter identity, reported in the manifest.
 const (
-	adapterID   = "recall-docs/0.1.0"
+	adapterID   = "recall-docs/0.2.0"
 	displayName = "Documents"
 
 	// freshnessPolicy states the exact partial boundary this source may report
@@ -249,7 +249,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	start := time.Now()
-	hits := searchIndex(gen, req)
+	hits, query := searchIndex(gen, req)
 	found := candidates(gen, sourceID, hits, req.Limit)
 
 	// A generation built over a partial boundary answers partial, every time it
@@ -261,7 +261,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 	return recall.SearchResponse{
 		Candidates:      found,
-		Diagnostics:     searchDiagnostics(gen, req, len(hits), time.Since(start)),
+		Diagnostics:     searchDiagnostics(gen, req, query, len(hits), time.Since(start)),
 		SourceWatermark: gen.header.Watermark,
 		Outcome:         outcome,
 	}, nil

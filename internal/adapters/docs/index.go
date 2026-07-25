@@ -118,8 +118,8 @@ type indexHeader struct {
 // evidence on every result, rather than as an unexplained change in what the
 // source answers.
 func indexConfig(h indexHeader) string {
-	return fmt.Sprintf("jsonl/%d chunking=heading tokenizer=alnum-fold scoring=bm25-k%g-b%g settings=%s",
-		h.Format, bm25K1, bm25B, orNone(h.SettingsDigest))
+	return fmt.Sprintf("jsonl/%d chunking=heading tokenizer=alnum-fold query=%s scoring=bm25-k%g-b%g settings=%s",
+		h.Format, queryAnalyzer, bm25K1, bm25B, orNone(h.SettingsDigest))
 }
 
 func orNone(s string) string {

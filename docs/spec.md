@@ -495,6 +495,22 @@ Chunk-aware lexical search, optional semantic search, file and heading
 metadata, direct reads by path and range. Usually needs an adapter-owned index;
 original files remain the source of truth.
 
+The built-in documents adapter applies one versioned query analyzer before
+lexical scoring. It folds alphanumeric terms and removes a bounded list of
+English articles, copular/do auxiliaries, and interrogatives: the grammatical
+shell that turns keywords into a question. Those terms may not be the only
+evidence that opens a result set. When at least one content term matches, the
+full query remains the ranking input, preserving established positive-query
+ordering; when no content term matches, grammatical scaffolding cannot
+manufacture candidates. This is query normalization, not index censorship:
+exact path and alias matching still sees every raw token. Double-quoted terms
+are kept, all-function-word queries fall back to their raw terms, and pronouns,
+prepositions, conjunctions, modals, intent verbs, negation, demonstratives,
+temporal and directional terms are never discarded. The list contains English
+words only; tokens in other languages and scripts pass through unchanged.
+Diagnostics report the analyzer and how many terms it removed, and
+`index_config` names its version.
+
 **Structured databases** — people, tasks, projects, events. Exact identifier
 lookup, field filters, native FTS, adapter-defined structured queries. Typed
 fields are preserved in candidate metadata; flattening a person or task into

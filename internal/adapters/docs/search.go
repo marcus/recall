@@ -37,19 +37,23 @@ type hit struct {
 // term statistics, so the tie-breaks are what make the ORDER identical too —
 // without them, equal scores would come out in whatever order the postings
 // happened to be visited.
-func searchIndex(g *generation, req recall.SearchRequest) []hit {
+func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis) {
 	if !wantsDocuments(req.Filters.RecordTypes) {
-		return nil
+		return nil, queryAnalysis{}
 	}
 	allowed := docFilter(g, req)
-	tokens := tokenize(req.Query)
+	query := analyzeQuery(req.Query)
+	query = preserveRankingAfterContentMatch(g, query)
 
 	scores := map[int]float64{}
-	if len(tokens) > 0 && len(g.chunks) > 0 {
-		scoreBM25(g, uniqueTerms(tokens), allowed, scores)
+	if len(query.terms) > 0 && len(g.chunks) > 0 {
+		scoreBM25(g, uniqueTerms(query.terms), allowed, scores)
 	}
 
-	exact, alias := identifierMatches(g, tokens)
+	// Exact identifiers deliberately use the raw token stream. A path, alias,
+	// or title can contain an English function word, and exact lookup must not
+	// change because lexical prose normalization did.
+	exact, alias := identifierMatches(g, query.raw)
 
 	// An exact identifier match must surface the document even when its text
 	// shares no term with the query: "docs/spec.md" names a file rather than
@@ -82,7 +86,32 @@ func searchIndex(g *generation, req recall.SearchRequest) []hit {
 		}
 		return cx.Ord < cy.Ord
 	})
-	return hits
+	return hits, query
+}
+
+// preserveRankingAfterContentMatch keeps the baseline's full-query ranking
+// when at least one meaningful term reaches the index. Function words are
+// excluded only from proving relevance by themselves: if every content term is
+// absent, they cannot manufacture candidates; if content is present, the full
+// query may still order those results exactly as it did before normalization.
+//
+// The returned analysis remains the single term path used by BM25 and candidate
+// selection. There is no second stopword-only score that can leak candidates
+// around the decision.
+func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryAnalysis {
+	if !query.normalized {
+		return query
+	}
+	for _, term := range query.terms {
+		if len(g.postings[term]) == 0 {
+			continue
+		}
+		query.terms = append(query.terms[:0], query.raw...)
+		query.removed = 0
+		query.normalized = false
+		return query
+	}
+	return query
 }
 
 // scoreBM25 accumulates Okapi BM25 over the postings.
@@ -301,14 +330,25 @@ func chunkTitle(doc indexedDoc, c indexedChunk) string {
 
 // searchDiagnostics reports what actually ran, so a thin result is
 // distinguishable from a misrouted query.
-func searchDiagnostics(g *generation, req recall.SearchRequest, pool int, elapsed time.Duration) map[string]any {
+func searchDiagnostics(
+	g *generation,
+	req recall.SearchRequest,
+	query queryAnalysis,
+	pool int,
+	elapsed time.Duration,
+) map[string]any {
 	diag := map[string]any{
-		"query_mode":    string(recall.QueryLexical),
-		"generation":    g.id,
-		"pool_size":     pool,
-		"indexed_count": len(g.docs),
-		"chunk_count":   len(g.chunks),
-		"elapsed_ms":    elapsed.Milliseconds(),
+		"query_mode":       string(recall.QueryLexical),
+		"query_analyzer":   queryAnalyzer,
+		"query_term_count": len(uniqueTerms(query.terms)),
+		"generation":       g.id,
+		"pool_size":        pool,
+		"indexed_count":    len(g.docs),
+		"chunk_count":      len(g.chunks),
+		"elapsed_ms":       elapsed.Milliseconds(),
+	}
+	if query.normalized {
+		diag["query_terms_removed"] = query.removed
 	}
 	if len(g.failures) > 0 {
 		diag["failed_count"] = len(g.failures)
