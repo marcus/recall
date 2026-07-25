@@ -1,0 +1,17 @@
+{
+  "status": "degraded",
+  "checked_at": "2026-07-23T12:00:00Z",
+  "last_success_at": "2026-07-23T11:58:00Z",
+  "source_watermark": "cursor-4412",
+  "index_watermark": "cursor-4390",
+  "index_generation": "gen-000017",
+  "index_model": "none",
+  "record_count": 18422,
+  "indexed_count": 18390,
+  "failed_count": 3,
+  "coverage": "partial",
+  "diagnostics": {
+    "lag_records": 32
+  },
+  "cold_start_ns": 42000000
+}

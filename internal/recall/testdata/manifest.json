@@ -1,0 +1,29 @@
+{
+  "protocol_version": 1,
+  "adapter_id": "recall-stream/0.1.0",
+  "display_name": "Clara signals",
+  "record_types": [
+    "event",
+    "message"
+  ],
+  "query_modes": [
+    "exact",
+    "lexical",
+    "temporal"
+  ],
+  "freshness_modes": [
+    "indexed"
+  ],
+  "as_of_support": "filter",
+  "capabilities": [
+    "search",
+    "expand",
+    "checkpoint"
+  ],
+  "max_concurrency": 1,
+  "freshness_policy": "incremental, cursor checkpointed after durable write",
+  "sensitivity": "internal",
+  "settings_schema": {
+    "type": "object"
+  }
+}

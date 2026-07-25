@@ -1,0 +1,175 @@
+{
+  "results": [
+    {
+      "primary": {
+        "candidate_id": "c-0001",
+        "source_uid": "01J8ZKQ4M7",
+        "source_id": "clara-signals",
+        "source_record_id": "sig-8891",
+        "locator": "clara-signals:sig-8891",
+        "derived_from": [
+          "tasks:td-f62256"
+        ],
+        "record_type": "event",
+        "title": "Task td-f62256 moved to in_review",
+        "excerpt": "state: open -\u003e in_review",
+        "local_rank": 1,
+        "local_score": 12.75,
+        "match_signals": [
+          "exact_identifier",
+          "lexical"
+        ],
+        "observed_at": "2026-07-23T12:00:00Z",
+        "confirmed_at": "2026-07-23T12:00:05Z",
+        "event_time": "2026-07-22T19:30:00Z",
+        "valid_from": "2026-07-22T19:30:00Z",
+        "valid_to": "2026-07-24T09:00:00Z",
+        "source_revision": "cursor-4412",
+        "sensitivity": "internal",
+        "metadata": {
+          "project": "recall",
+          "state": "in_review"
+        },
+        "content_fingerprint": "sha256:9f2c"
+      },
+      "members": [
+        {
+          "lineage_root": "01J8ZKQ4M7:sig-8891",
+          "candidates": [
+            {
+              "candidate_id": "c-0001",
+              "source_uid": "01J8ZKQ4M7",
+              "source_id": "clara-signals",
+              "source_record_id": "sig-8891",
+              "locator": "clara-signals:sig-8891",
+              "derived_from": [
+                "tasks:td-f62256"
+              ],
+              "record_type": "event",
+              "title": "Task td-f62256 moved to in_review",
+              "excerpt": "state: open -\u003e in_review",
+              "local_rank": 1,
+              "local_score": 12.75,
+              "match_signals": [
+                "exact_identifier",
+                "lexical"
+              ],
+              "observed_at": "2026-07-23T12:00:00Z",
+              "confirmed_at": "2026-07-23T12:00:05Z",
+              "event_time": "2026-07-22T19:30:00Z",
+              "valid_from": "2026-07-22T19:30:00Z",
+              "valid_to": "2026-07-24T09:00:00Z",
+              "source_revision": "cursor-4412",
+              "sensitivity": "internal",
+              "metadata": {
+                "project": "recall",
+                "state": "in_review"
+              },
+              "content_fingerprint": "sha256:9f2c"
+            }
+          ]
+        }
+      ],
+      "explanation": {
+        "source_uid": "01J8ZKQ4M7",
+        "source_id": "clara-signals",
+        "local_rank": 1,
+        "local_pool_size": 8,
+        "match_signals": [
+          "exact_identifier"
+        ],
+        "prior": {
+          "base": 1,
+          "intent": 0.25,
+          "rule": "identifier_query",
+          "effective": 1.25
+        },
+        "lineage_root": "01J8ZKQ4M7:sig-8891",
+        "corroboration": {
+          "distinct_lineages": 2,
+          "sources": [
+            "tasks",
+            "clara-signals"
+          ],
+          "cap": 2,
+          "cap_applied": false
+        },
+        "freshness": {
+          "mode": "indexed",
+          "source_revision": "cursor-4412",
+          "index_generation": "gen-000017",
+          "index_model": "none",
+          "observed_at": "2026-07-23T12:00:00Z",
+          "confirmed_at": "2026-07-23T12:00:05Z",
+          "as_of_honored": "filter"
+        },
+        "reranker": {
+          "used": false
+        },
+        "exact_promoted": true,
+        "score": 0.0328,
+        "rank_constant": 60
+      },
+      "score": 0.0328
+    }
+  ],
+  "source_outcomes": [
+    {
+      "source_uid": "01J8ZKQ4M7",
+      "source_id": "clara-signals",
+      "outcome": "success",
+      "candidates": 8,
+      "elapsed_ns": 18000000,
+      "source_watermark": "cursor-4412",
+      "index_generation": "gen-000017",
+      "confirmed_at": "2026-07-23T12:00:05Z"
+    },
+    {
+      "source_uid": "01J8ZKQ4M8",
+      "source_id": "clara-docs",
+      "outcome": "skipped",
+      "reason": "as_of_unsupported",
+      "candidates": 0,
+      "elapsed_ns": 0
+    }
+  ],
+  "plan": {
+    "profile": "work",
+    "sources": [
+      {
+        "source_uid": "01J8ZKQ4M7",
+        "source_id": "clara-signals",
+        "eligible": true,
+        "limit": 20,
+        "timeout_ns": 200000000,
+        "prior": 1.25
+      },
+      {
+        "source_uid": "01J8ZKQ4M8",
+        "source_id": "clara-docs",
+        "eligible": false,
+        "reason": "as_of_unsupported",
+        "limit": 0,
+        "timeout_ns": 0,
+        "prior": 0
+      }
+    ],
+    "deadline": "2026-07-23T12:00:00Z",
+    "fusion_reserve_ns": 25000000,
+    "limit": 10,
+    "rank_constant": 60,
+    "corroboration_cap": 2
+  },
+  "suppressed": [
+    {
+      "reason": "lineage_suppressed",
+      "count": 1,
+      "lineage_root": "01J8ZKQ4M7:sig-8000"
+    }
+  ],
+  "outcome": "answered",
+  "coverage": "degraded",
+  "truncated": true,
+  "dropped_results": 3,
+  "elapsed_ns": 63000000
+}

@@ -684,11 +684,13 @@ out-of-process adapters over the versioned protocol.
 
 ```text
 cmd/recall           CLI entry points
+internal/recall      domain types; depends on nothing else
+internal/lineage     locator resolution, lineage roots, independence
 internal/config      loading, merge, trust boundary, validation
 internal/source      registry, instance resolution, eligibility
-internal/adapter     built-in adapter interface, subprocess supervision
+internal/adapter     adapter interface, subprocess supervision
 internal/protocol    JSON-RPC framing, schemas, conformance replay
-internal/ranking     lineage grouping, clustering, fusion, selection
+internal/ranking     grouping, clustering, fusion, selection
 internal/evidence    expansion, budget shaping, sanitization
 internal/explain     structured explanations and rendering
 internal/eval        packs, metrics, gates, runs, reports

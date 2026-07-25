@@ -1,0 +1,31 @@
+{
+  "candidate_id": "c-0001",
+  "source_uid": "01J8ZKQ4M7",
+  "source_id": "clara-signals",
+  "source_record_id": "sig-8891",
+  "locator": "clara-signals:sig-8891",
+  "derived_from": [
+    "tasks:td-f62256"
+  ],
+  "record_type": "event",
+  "title": "Task td-f62256 moved to in_review",
+  "excerpt": "state: open -\u003e in_review",
+  "local_rank": 1,
+  "local_score": 12.75,
+  "match_signals": [
+    "exact_identifier",
+    "lexical"
+  ],
+  "observed_at": "2026-07-23T12:00:00Z",
+  "confirmed_at": "2026-07-23T12:00:05Z",
+  "event_time": "2026-07-22T19:30:00Z",
+  "valid_from": "2026-07-22T19:30:00Z",
+  "valid_to": "2026-07-24T09:00:00Z",
+  "source_revision": "cursor-4412",
+  "sensitivity": "internal",
+  "metadata": {
+    "project": "recall",
+    "state": "in_review"
+  },
+  "content_fingerprint": "sha256:9f2c"
+}
