@@ -352,6 +352,11 @@ conformance/
   <case>/fixture/           source data for the case
 ```
 
+Repository-hosted fixtures must be synthetic or explicitly public. Private
+source bodies and authored personal or work questions inherit the source
+corpus's sensitivity and belong outside the checkout behind a user-configured
+path.
+
 A transcript that only fixed those file names would not be replayable, because
 three things about a recorded exchange are specific to the machine that
 recorded it. The manifest settles them:
