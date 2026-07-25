@@ -1,0 +1,2953 @@
+{
+  "schema_version": 1,
+  "run_id": "smoke-1784962702694655000",
+  "status": "pass",
+  "started_at": "2026-07-24T23:58:22.694655-07:00",
+  "finished_at": "2026-07-24T23:58:23.437187-07:00",
+  "pack": {
+    "pack_id": "smoke",
+    "version": "0.1.0",
+    "content_hash": "sha256:6211d341caad2e5ca63568aa0ebb2588fdd71b3fdece6f96896ed54685a24b66"
+  },
+  "environment": {
+    "recall_commit": "883fd10",
+    "dirty": false,
+    "profile_hash": "",
+    "os": "darwin",
+    "arch": "arm64",
+    "cache_policy": "warm",
+    "warm": true
+  },
+  "metrics": {
+    "cases": 41,
+    "overall": {
+      "ndcg_at_10": {
+        "value": 0.7664585878796282,
+        "n": 36
+      },
+      "recall_at_5": {
+        "value": 0.9027777777777778,
+        "n": 36
+      },
+      "recall_at_20": {
+        "value": 1,
+        "n": 36
+      },
+      "mrr_at_10": {
+        "value": 0.6553391053391052,
+        "n": 33
+      },
+      "success_at_5": {
+        "value": 1,
+        "n": 36
+      },
+      "forbidden_at_5": {
+        "value": 0,
+        "n": 8
+      },
+      "abstention_accuracy": {
+        "value": 1,
+        "n": 41
+      },
+      "coverage_accuracy": {
+        "value": 1,
+        "n": 41
+      },
+      "locator_success": {
+        "value": 1,
+        "n": 36
+      },
+      "provenance_accuracy": {
+        "value": 1,
+        "n": 36
+      },
+      "source_outcome_accuracy": {
+        "value": 1,
+        "n": 10
+      },
+      "cases": 41,
+      "latency": {
+        "cold": {
+          "n": 0,
+          "p50_ns": 0,
+          "p95_ns": 0
+        },
+        "warm": {
+          "n": 41,
+          "p50_ns": 1297708,
+          "p95_ns": 63332833
+        }
+      }
+    },
+    "by_tag": {
+      "groups": {
+        "abstain": {
+          "ndcg_at_10": {
+            "value": 0,
+            "n": 0
+          },
+          "recall_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "recall_at_20": {
+            "value": 0,
+            "n": 0
+          },
+          "mrr_at_10": {
+            "value": 0,
+            "n": 0
+          },
+          "success_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 3
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "locator_success": {
+            "value": 0,
+            "n": 0
+          },
+          "provenance_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 5,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 5,
+              "p50_ns": 851125,
+              "p95_ns": 61501666
+            }
+          }
+        },
+        "alias": {
+          "ndcg_at_10": {
+            "value": 0.839381114730088,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 1129666,
+              "p95_ns": 1297708
+            }
+          }
+        },
+        "answer": {
+          "ndcg_at_10": {
+            "value": 0.6590018048024133,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 82769708,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "as-of": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 167041,
+              "p95_ns": 1186750
+            }
+          }
+        },
+        "as-of-unsupported": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1186750,
+              "p95_ns": 1186750
+            }
+          }
+        },
+        "config-trust": {
+          "ndcg_at_10": {
+            "value": 0.6005491084563834,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 1796333,
+              "p95_ns": 1884625
+            }
+          }
+        },
+        "corroboration": {
+          "ndcg_at_10": {
+            "value": 0.9530127177673412,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 954125,
+              "p95_ns": 983834
+            }
+          }
+        },
+        "cross-source": {
+          "ndcg_at_10": {
+            "value": 0.792281547507146,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 0.6666666666666666,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.8333333333333334,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 1702958,
+              "p95_ns": 246650792
+            }
+          }
+        },
+        "current": {
+          "ndcg_at_10": {
+            "value": 0.8810876753361411,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 0.875,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.7083333333333334,
+            "n": 4
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 303667,
+              "p95_ns": 246650792
+            }
+          }
+        },
+        "degraded": {
+          "ndcg_at_10": {
+            "value": 0.6965176745774047,
+            "n": 6
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 6
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 6
+          },
+          "mrr_at_10": {
+            "value": 0.5625,
+            "n": 4
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 6
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 7
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 7
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 6
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 7
+          },
+          "cases": 7,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 7,
+              "p50_ns": 62887958,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "denied": {
+          "ndcg_at_10": {
+            "value": 0.6590018048024133,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1386000,
+              "p95_ns": 1386000
+            }
+          }
+        },
+        "detail-context": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1283208,
+              "p95_ns": 1283208
+            }
+          }
+        },
+        "detail-excerpt": {
+          "ndcg_at_10": {
+            "value": 0.6309297535714574,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1457833,
+              "p95_ns": 1457833
+            }
+          }
+        },
+        "detail-full": {
+          "ndcg_at_10": {
+            "value": 0.7039180890341348,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1368791,
+              "p95_ns": 1368791
+            }
+          }
+        },
+        "detail-summary": {
+          "ndcg_at_10": {
+            "value": 0.6309297535714574,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1513250,
+              "p95_ns": 1513250
+            }
+          }
+        },
+        "document": {
+          "ndcg_at_10": {
+            "value": 0.7543628242110799,
+            "n": 18
+          },
+          "recall_at_5": {
+            "value": 0.8611111111111112,
+            "n": 18
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 18
+          },
+          "mrr_at_10": {
+            "value": 0.6509803921568628,
+            "n": 17
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 18
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 20
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 20
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 18
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 18
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "cases": 20,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 20,
+              "p50_ns": 1292208,
+              "p95_ns": 54268250
+            }
+          }
+        },
+        "duplicate-lineage": {
+          "ndcg_at_10": {
+            "value": 0.9530127177673412,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 983834,
+              "p95_ns": 1379833
+            }
+          }
+        },
+        "event": {
+          "ndcg_at_10": {
+            "value": 0.8898246546956377,
+            "n": 8
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 8
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 8
+          },
+          "mrr_at_10": {
+            "value": 0.7708333333333333,
+            "n": 8
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 8
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 8
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 8,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 8,
+              "p50_ns": 303667,
+              "p95_ns": 1702958
+            }
+          }
+        },
+        "exact": {
+          "ndcg_at_10": {
+            "value": 0.8363117456086018,
+            "n": 5
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 5
+          },
+          "mrr_at_10": {
+            "value": 0.64,
+            "n": 5
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 5
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 6,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 6,
+              "p50_ns": 984917,
+              "p95_ns": 54268250
+            }
+          }
+        },
+        "expansion": {
+          "ndcg_at_10": {
+            "value": 0.7105320535225539,
+            "n": 5
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 5
+          },
+          "mrr_at_10": {
+            "value": 0.6666666666666667,
+            "n": 5
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 5
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 5,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 5,
+              "p50_ns": 1368791,
+              "p95_ns": 1513250
+            }
+          }
+        },
+        "explicit": {
+          "ndcg_at_10": {
+            "value": 0.8519590445170674,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 575833,
+              "p95_ns": 1417167
+            }
+          }
+        },
+        "fusion": {
+          "ndcg_at_10": {
+            "value": 0.7943520365916639,
+            "n": 5
+          },
+          "recall_at_5": {
+            "value": 0.7,
+            "n": 5
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 5
+          },
+          "mrr_at_10": {
+            "value": 0.8,
+            "n": 5
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 5
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 5,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 5,
+              "p50_ns": 1642750,
+              "p95_ns": 246650792
+            }
+          }
+        },
+        "historical": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 212667,
+              "p95_ns": 1186750
+            }
+          }
+        },
+        "identifier": {
+          "ndcg_at_10": {
+            "value": 0.9783886454004387,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.8333333333333334,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 904875,
+              "p95_ns": 54268250
+            }
+          }
+        },
+        "lineage": {
+          "ndcg_at_10": {
+            "value": 0.827072363351459,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.7333333333333334,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 1292208,
+              "p95_ns": 1379833
+            }
+          }
+        },
+        "locator-revision": {
+          "ndcg_at_10": {
+            "value": 0.58688267143572,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.3333333333333333,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 565333,
+              "p95_ns": 565333
+            }
+          }
+        },
+        "near-miss": {
+          "ndcg_at_10": {
+            "value": 0.7838152811907584,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.2,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 984917,
+              "p95_ns": 1297708
+            }
+          }
+        },
+        "paraphrase": {
+          "ndcg_at_10": {
+            "value": 0.5028050351593049,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 0.5,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.2888888888888889,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 1098792,
+              "p95_ns": 1292208
+            }
+          }
+        },
+        "partial": {
+          "ndcg_at_10": {
+            "value": 0.62912236775955,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.375,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 63027333,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "pre-reply": {
+          "ndcg_at_10": {
+            "value": 0.5307212739772434,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.14285714285714285,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1836459,
+              "p95_ns": 1836459
+            }
+          }
+        },
+        "security-critical": {
+          "ndcg_at_10": {
+            "value": 0.6136691816527043,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 3
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 5,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 5,
+              "p50_ns": 1796333,
+              "p95_ns": 19905875
+            }
+          }
+        },
+        "sensitivity-ceiling": {
+          "ndcg_at_10": {
+            "value": 0.6399093280453461,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 3
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 667208,
+              "p95_ns": 19905875
+            }
+          }
+        },
+        "source-outcome": {
+          "ndcg_at_10": {
+            "value": 0.6300260606655037,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.375,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 62887958,
+              "p95_ns": 63332833
+            }
+          }
+        },
+        "stale": {
+          "ndcg_at_10": {
+            "value": 0.8675034925694373,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.3333333333333333,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 279125,
+              "p95_ns": 279125
+            }
+          }
+        },
+        "superseded": {
+          "ndcg_at_10": {
+            "value": 0.7945300841420756,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.611111111111111,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 303667,
+              "p95_ns": 565333
+            }
+          }
+        },
+        "suppress-explicit": {
+          "ndcg_at_10": {
+            "value": 0.8519590445170674,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1417167,
+              "p95_ns": 1417167
+            }
+          }
+        },
+        "suppress-pre-reply": {
+          "ndcg_at_10": {
+            "value": 0.5307212739772434,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.14285714285714285,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 1836459,
+              "p95_ns": 1836459
+            }
+          }
+        },
+        "suppression": {
+          "ndcg_at_10": {
+            "value": 0.6913401592471554,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 0.5,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.5714285714285714,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 1
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 1417167,
+              "p95_ns": 1836459
+            }
+          }
+        },
+        "task": {
+          "ndcg_at_10": {
+            "value": 0.8753689285042876,
+            "n": 5
+          },
+          "recall_at_5": {
+            "value": 0.8,
+            "n": 5
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 5
+          },
+          "mrr_at_10": {
+            "value": 0.9,
+            "n": 5
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 5
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 6,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 6,
+              "p50_ns": 1379833,
+              "p95_ns": 246650792
+            }
+          }
+        },
+        "timeout": {
+          "ndcg_at_10": {
+            "value": 0.6449657791869354,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 62887958,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "unavailable": {
+          "ndcg_at_10": {
+            "value": 0.6449657791869354,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.5,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 63332833,
+              "p95_ns": 82769708
+            }
+          }
+        }
+      },
+      "macro": {
+        "ndcg_at_10": {
+          "value": 0.7615183217759872,
+          "n": 40
+        },
+        "recall_at_5": {
+          "value": 0.8975694444444443,
+          "n": 40
+        },
+        "recall_at_20": {
+          "value": 1,
+          "n": 40
+        },
+        "mrr_at_10": {
+          "value": 0.6368280812324929,
+          "n": 40
+        },
+        "success_at_5": {
+          "value": 1,
+          "n": 40
+        },
+        "forbidden_at_5": {
+          "value": 0,
+          "n": 19
+        },
+        "abstention_accuracy": {
+          "value": 1,
+          "n": 41
+        },
+        "coverage_accuracy": {
+          "value": 1,
+          "n": 41
+        },
+        "locator_success": {
+          "value": 1,
+          "n": 40
+        },
+        "provenance_accuracy": {
+          "value": 1,
+          "n": 40
+        },
+        "source_outcome_accuracy": {
+          "value": 1,
+          "n": 15
+        },
+        "groups": 41
+      }
+    },
+    "by_source_family": {
+      "groups": {
+        "flaky": {
+          "ndcg_at_10": {
+            "value": 0.6300260606655037,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.375,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 63027333,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "handbook": {
+          "ndcg_at_10": {
+            "value": 0.7864208420851078,
+            "n": 15
+          },
+          "recall_at_5": {
+            "value": 0.8,
+            "n": 15
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 15
+          },
+          "mrr_at_10": {
+            "value": 0.729251700680272,
+            "n": 14
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 15
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 15
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 15
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 15
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 15
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 15,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 15,
+              "p50_ns": 1297708,
+              "p95_ns": 246650792
+            }
+          }
+        },
+        "notes": {
+          "ndcg_at_10": {
+            "value": 0.7264791220953909,
+            "n": 28
+          },
+          "recall_at_5": {
+            "value": 0.875,
+            "n": 28
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 28
+          },
+          "mrr_at_10": {
+            "value": 0.6183809523809524,
+            "n": 25
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 28
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 3
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 28
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 28
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 28
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 28
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "cases": 28,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 28,
+              "p50_ns": 1417167,
+              "p95_ns": 82769708
+            }
+          }
+        },
+        "signals": {
+          "ndcg_at_10": {
+            "value": 0.810826949652826,
+            "n": 14
+          },
+          "recall_at_5": {
+            "value": 0.8928571428571429,
+            "n": 14
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 14
+          },
+          "mrr_at_10": {
+            "value": 0.7006802721088434,
+            "n": 14
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 14
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 4
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 14
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 14
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 14
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 14
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 14,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 14,
+              "p50_ns": 1186750,
+              "p95_ns": 1884625
+            }
+          }
+        },
+        "tasks": {
+          "ndcg_at_10": {
+            "value": 0.7734025753253906,
+            "n": 9
+          },
+          "recall_at_5": {
+            "value": 0.7777777777777778,
+            "n": 9
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 9
+          },
+          "mrr_at_10": {
+            "value": 0.7380952380952381,
+            "n": 9
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 9
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 2
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 9
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 9
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 9
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 9
+          },
+          "source_outcome_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "cases": 9,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 9,
+              "p50_ns": 1702958,
+              "p95_ns": 246650792
+            }
+          }
+        }
+      },
+      "macro": {
+        "ndcg_at_10": {
+          "value": 0.7454311099648437,
+          "n": 5
+        },
+        "recall_at_5": {
+          "value": 0.8691269841269842,
+          "n": 5
+        },
+        "recall_at_20": {
+          "value": 1,
+          "n": 5
+        },
+        "mrr_at_10": {
+          "value": 0.6322816326530611,
+          "n": 5
+        },
+        "success_at_5": {
+          "value": 1,
+          "n": 5
+        },
+        "forbidden_at_5": {
+          "value": 0,
+          "n": 4
+        },
+        "abstention_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "coverage_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "locator_success": {
+          "value": 1,
+          "n": 5
+        },
+        "provenance_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "source_outcome_accuracy": {
+          "value": 1,
+          "n": 3
+        },
+        "groups": 5
+      }
+    }
+  },
+  "gates": [
+    {
+      "name": "no_sensitivity_leaks",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "no_forbidden_evidence",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "locators_resolve",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "source_outcomes_honest",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "coverage_honest",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "exact_identifier_success",
+      "status": "pass",
+      "threshold": 0.4,
+      "observed": 0.4
+    },
+    {
+      "name": "abstention_accuracy",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "p95_latency",
+      "status": "pass",
+      "threshold": 400,
+      "observed": 63.332833
+    },
+    {
+      "name": "run_integrity",
+      "status": "pass"
+    }
+  ]
+}

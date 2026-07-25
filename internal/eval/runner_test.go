@@ -138,6 +138,29 @@ func TestAsOfReachesTheEngine(t *testing.T) {
 	}
 }
 
+// Latency is how long the query took, never the age of the case's boundary.
+// The runner used to time a case with the same clock it pinned to the as_of, so
+// a case bounded to March reported a "latency" of four months — and those
+// months sat in the sample the p95 budget gate reads, which passed only because
+// the nearest-rank position happened to fall below them.
+func TestAPinnedAsOfIsNotALatency(t *testing.T) {
+	e := newEngine()
+	e.responses["what did we decide"] = answered("uid-docs:a.md")
+
+	at := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	r := eval.NewRunner(e, packFor(t, minimalPack), eval.RunOptions{})
+	got, err := r.Run(context.Background(), []eval.Case{{
+		CaseID: "c1", Query: "what did we decide", AsOf: &at,
+		ExpectedBehavior: eval.BehaviorAnswer,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Latency <= 0 || got[0].Latency > time.Minute {
+		t.Errorf("latency = %v, want the duration of one in-process query", got[0].Latency)
+	}
+}
+
 // A pack exists in part to check what happens when things break, so a failed
 // query is a recorded result and not a broken run.
 func TestFailedQueryIsARecordedResult(t *testing.T) {
@@ -371,5 +394,59 @@ func TestUndefinedMetricsAreNotAChange(t *testing.T) {
 				t.Errorf("change = %v, want none", d.Change)
 			}
 		}
+	}
+}
+
+// The whole argument for a committed baseline is that a machine says no. A
+// comparison that reported a loss and still called itself acceptable would let
+// drift through a green build exactly as an absent baseline did.
+func TestARateThatMovedDownIsNotAcceptable(t *testing.T) {
+	base := eval.Run{RunID: "a", Status: eval.StatusPass}
+	base.Metrics.Overall.NDCG10 = eval.Mean{Value: 0.7665, N: 36}
+	cand := eval.Run{RunID: "b", Status: eval.StatusPass}
+	cand.Metrics.Overall.NDCG10 = eval.Mean{Value: 0.7615, N: 36}
+
+	got := eval.Compare(base, cand, nil, nil)
+	if got.Acceptable() {
+		t.Error("nDCG@10 lost five thousandths and the comparison was acceptable")
+	}
+	if len(got.Regressions) != 1 {
+		t.Fatalf("regressions = %v, want the one metric that moved", got.Regressions)
+	}
+	if !strings.Contains(eval.SummarizeComparison(got), "Regressed") {
+		t.Error("the rendered comparison did not lead with the verdict")
+	}
+}
+
+// A gate that fires on the last bit of a float is a gate people route around.
+// The smallest move one case can make to a forty-case average is around 1e-3,
+// so noise this far below it is a rounding difference between two machines and
+// not a quality regression.
+func TestFloatNoiseIsNotARegression(t *testing.T) {
+	base := eval.Run{RunID: "a", Status: eval.StatusPass}
+	base.Metrics.Overall.NDCG10 = eval.Mean{Value: 0.7664585878796282, N: 36}
+	cand := eval.Run{RunID: "b", Status: eval.StatusPass}
+	cand.Metrics.Overall.NDCG10 = eval.Mean{Value: 0.7664585878796281, N: 36}
+
+	got := eval.Compare(base, cand, nil, nil)
+	if !got.Acceptable() {
+		t.Errorf("a one-bit difference was called a regression: %v", got.Regressions)
+	}
+}
+
+// The committed baseline is a run record with no cases.jsonl beside it, because
+// that file carries excerpts and stays out of the repository. Reading the
+// absence as a set of newly appeared cases would bury the metric deltas under a
+// page of noise about nothing having happened.
+func TestABaselineWithoutPerCaseDetailInventsNoCaseChanges(t *testing.T) {
+	base := eval.Run{RunID: "a", Status: eval.StatusPass}
+	cand := eval.Run{RunID: "b", Status: eval.StatusPass}
+
+	got := eval.Compare(base, cand, nil, []eval.CaseScore{{CaseID: "c1"}, {CaseID: "c2"}})
+	if len(got.Cases) != 0 {
+		t.Errorf("cases = %v, want none: the baseline never claimed they were absent", got.Cases)
+	}
+	if !got.Acceptable() {
+		t.Errorf("a baseline without per-case detail was treated as a loss: %v", got.Regressions)
 	}
 }

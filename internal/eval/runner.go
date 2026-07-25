@@ -31,9 +31,12 @@ type SourceLocation struct {
 
 // RunOptions configure one evaluation run.
 type RunOptions struct {
-	// Clock is the run's notion of now when a case declares no as_of. A case
-	// that declares one has its clock pinned there instead.
-	Clock func() time.Time
+	// The runner has no injectable clock. A case's as_of reaches the sources on
+	// the request, which is where a historical question belongs, and the only
+	// other thing a runner times is how long a query took — which is wall time
+	// or it is not latency. A Clock field lived here, was read by nothing but
+	// that subtraction, and turned four-month-old as_of boundaries into
+	// four-month latencies.
 
 	// Locations are the configured sources, checked against the pack's network
 	// policy before anything runs.
@@ -59,9 +62,6 @@ type Runner struct {
 
 // NewRunner prepares a run.
 func NewRunner(engine Engine, pack *Pack, opt RunOptions) *Runner {
-	if opt.Clock == nil {
-		opt.Clock = time.Now
-	}
 	if opt.ExpandDetail == "" {
 		opt.ExpandDetail = recall.DetailExcerpt
 	}
@@ -113,15 +113,9 @@ func (r *Runner) checkNetworkPolicy() error {
 // runCase puts one case to the engine and reduces the response to what metrics
 // consume.
 func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
-	// A case with an as_of is asking a historical question, so the run's clock
-	// moves there too. Leaving the clock at now would let a source treat the
-	// boundary as future-dated and quietly answer from current state.
-	now := r.opt.Clock
-	if c.AsOf != nil {
-		at := *c.AsOf
-		now = func() time.Time { return at }
-	}
-
+	// A case with an as_of is asking a historical question, and the boundary
+	// travels on the request so a source cannot treat it as future-dated and
+	// quietly answer from current state.
 	req := recall.QueryRequest{
 		Query:   c.Query,
 		Profile: c.Profile,
@@ -141,14 +135,17 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		}
 	}
 
-	started := now()
+	// Latency is wall time, never the case's clock. A pinned clock is pinned
+	// for the sources, so they answer the historical question; it says nothing
+	// about how long the query took. Reading it as a duration subtracted the
+	// as_of instant from the real one and reported the age of the boundary —
+	// the March as_of cases each measured a "latency" of four months. Two of
+	// them sat just past the nearest-rank p95 position, so the budget gate was
+	// passing on the arithmetic of where the outliers landed rather than on
+	// anything the engine did.
+	started := time.Now()
 	resp, queryErr := r.engine.Query(ctx, req)
-	elapsed := now().Sub(started)
-	if elapsed <= 0 {
-		// A pinned clock does not advance. Measuring wall time is the runner's
-		// job, not the case's.
-		elapsed = time.Since(started)
-	}
+	elapsed := time.Since(started)
 
 	result := CaseResult{
 		CaseID:   c.CaseID,

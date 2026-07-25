@@ -20,8 +20,15 @@ const evalHelp = `usage: recall eval <validate|run|compare|report> [flags]
 
   validate --pack <dir>              check a pack against the schemas
   run      --pack <dir> [--output d] run every case and write the artifacts
-  compare  <baseline> <candidate>    diff two runs
+  compare  <baseline> <candidate>    diff two runs, and refuse a regression
   report   <run>                     re-render a run's summary
+
+A run argument is either a run directory or a run.json on its own. The
+committed baseline is a run.json, because the per-case file beside it carries
+excerpts and belongs outside the repository:
+
+  recall eval run --pack eval/packs/smoke --output "$d"
+  recall eval compare eval/baselines/smoke.json "$d"
 
 flags:
   --pack <dir>     the pack directory holding pack.json
@@ -33,8 +40,9 @@ flags:
 Artifacts carry excerpts even when packs carry only references, so they inherit
 the pack's sensitivity and are written outside the repository.
 
-exit codes: 0 the run passed every gate, 1 the command could not run,
-3 the run is invalid because a gate failed.`
+exit codes: 0 the run passed every gate and the comparison found no
+regression, 1 the command could not run, 3 the answer is no — a gate failed,
+the runs were not comparable, or a measurement moved down.`
 
 // ExitInvalid means the run completed and is not admissible evidence.
 //
@@ -220,7 +228,6 @@ func evalRun(ctx context.Context, env Env, args []string) int {
 
 	started := env.now()()
 	results, err := eval.NewRunner(core, pack, eval.RunOptions{
-		Clock:     env.now(),
 		Locations: locations,
 		Cold:      *cold,
 	}).Run(ctx, cases)
@@ -304,10 +311,16 @@ func evalCompare(env Env, args []string) int {
 			fail(env, err)
 			return ExitError
 		}
-		return ExitOK
+	} else {
+		writeTo(env.Stdout, eval.SummarizeComparison(got))
 	}
-	writeTo(env.Stdout, eval.SummarizeComparison(got))
-	if !got.Comparable {
+
+	// A comparison that prints a regression and exits 0 is a report nobody
+	// reads twice. CI decides on the exit status, so a metric that moved down
+	// has to be the same kind of no as a failed gate — otherwise the drift this
+	// command exists to catch scrolls past in a green build. The verdict is the
+	// same whether the output was rendered for a person or emitted as JSON.
+	if !got.Acceptable() {
 		return ExitInvalid
 	}
 	return ExitOK
@@ -347,17 +360,37 @@ func evalFlags(env Env, name string) (*flag.FlagSet, *bool) {
 }
 
 // readRun reads a run and its per-case scores back off disk.
-func readRun(dir string) (eval.Run, []eval.CaseScore, error) {
+//
+// path is either a run directory or a run record on its own. The committed
+// baseline is the record alone: cases.jsonl carries excerpts and locators, so
+// it inherits the pack's sensitivity and never enters the repository. A compare
+// that could only read directories could not be pointed at the one baseline the
+// repository actually holds, which is the whole reason the baseline exists.
+func readRun(path string) (eval.Run, []eval.CaseScore, error) {
 	var run eval.Run
-	raw, err := os.ReadFile(filepath.Join(dir, eval.FileRun))
+	info, err := os.Stat(path)
+	if err != nil {
+		return run, nil, err
+	}
+
+	runPath, casesPath := path, ""
+	if info.IsDir() {
+		runPath = filepath.Join(path, eval.FileRun)
+		casesPath = filepath.Join(path, eval.FileCases)
+	}
+
+	raw, err := os.ReadFile(runPath)
 	if err != nil {
 		return run, nil, err
 	}
 	if err := json.Unmarshal(raw, &run); err != nil {
-		return run, nil, fmt.Errorf("%s: %w", dir, err)
+		return run, nil, fmt.Errorf("%s: %w", runPath, err)
+	}
+	if casesPath == "" {
+		return run, nil, nil
 	}
 
-	scores, err := eval.ReadCaseScores(filepath.Join(dir, eval.FileCases))
+	scores, err := eval.ReadCaseScores(casesPath)
 	if err != nil {
 		return run, nil, err
 	}

@@ -48,6 +48,26 @@ type Comparison struct {
 	Regressions []Delta `json:"regressions,omitempty"`
 }
 
+// Acceptable reports whether the candidate may be promoted over the baseline.
+//
+// It is a method rather than something each caller re-derives, because the CLI
+// and CI both have to answer it the same way: a comparison that is not evidence
+// and a comparison that is evidence of a loss are the same verdict.
+func (c Comparison) Acceptable() bool {
+	return c.Comparable && len(c.Regressions) == 0
+}
+
+// floatNoise is how far a rate may move down before it counts as a regression.
+//
+// It is not slack for real movement. The smoke pack is deterministic, and the
+// smallest change one case can make to a forty-case average is around 1e-3 —
+// six orders of magnitude above this. It exists so that a difference in the
+// last bit of a float, from a compiler free to fuse a multiply and an add or a
+// baseline frozen on one architecture and checked on another, is not reported
+// as a quality regression. A report that cries wolf over 1e-17 is a report
+// people learn to skip.
+const floatNoise = 1e-9
+
 // Compare diffs two runs.
 //
 // It refuses to compare runs that did not measure the same thing. Two runs over
@@ -85,10 +105,18 @@ func Compare(baseline, candidate Run, baseScores, candScores []CaseScore) Compar
 
 	c.Overall = ratesDelta("", baseline.Metrics.Overall.Rates, candidate.Metrics.Overall.Rates)
 	c.ByTag = groupDeltas(baseline.Metrics.ByTag, candidate.Metrics.ByTag)
-	c.Cases = caseChanges(baseScores, candScores)
+
+	// A baseline frozen as a run record on its own carries no per-case detail:
+	// cases.jsonl holds excerpts and never enters the repository. Diffing
+	// against an absent baseline would report every case in the candidate as
+	// newly appeared, burying the metric deltas that are the whole point under
+	// a page of noise about nothing having changed.
+	if len(baseScores) > 0 {
+		c.Cases = caseChanges(baseScores, candScores)
+	}
 
 	for _, d := range append(append([]Delta{}, c.Overall...), c.ByTag...) {
-		if d.Defined && d.Change < 0 {
+		if d.Defined && d.Change < -floatNoise {
 			c.Regressions = append(c.Regressions, d)
 		}
 	}
@@ -110,8 +138,10 @@ func ratesDelta(group string, base, cand Rates) []Delta {
 			d.Change = cv.Value - b.Value
 			// Forbidden evidence is the one rate where less is better, so its
 			// sign is flipped to keep "negative change means worse" true
-			// everywhere a reader looks.
-			if f.name == "forbidden_at_5" {
+			// everywhere a reader looks. Zero is left alone because negating it
+			// yields negative zero, which renders as "-0.0000" and reads as a
+			// loss on the one line most runs will show here.
+			if f.name == "forbidden_at_5" && d.Change != 0 {
 				d.Change = -d.Change
 			}
 		}
@@ -191,10 +221,24 @@ func SummarizeComparison(c Comparison) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s vs %s\n\n", short(c.BaselineRun), short(c.CandidateRun))
 
-	if !c.Comparable {
+	// The verdict leads. A reader who stops after one line must not stop on a
+	// number that turned out not to be evidence, or on a table whose one
+	// downward row was three screens further down.
+	switch {
+	case !c.Comparable:
 		b.WriteString("**Not comparable.** These runs did not measure the same thing, ")
 		b.WriteString("so the numbers below are not a before and after.\n\n")
+	case len(c.Regressions) == 1:
+		b.WriteString("**Regressed.** One measurement moved down against the baseline. ")
+		b.WriteString("It is named under Regressions below, and the exit status says the same thing.\n\n")
+	case len(c.Regressions) > 1:
+		fmt.Fprintf(&b, "**Regressed.** %d measurements moved down against the baseline. "+
+			"They are named under Regressions below, and the exit status says the same thing.\n\n",
+			len(c.Regressions))
+	default:
+		b.WriteString("**No regression.** Nothing measured moved down.\n\n")
 	}
+
 	for _, blocker := range c.Blockers {
 		fmt.Fprintf(&b, "- %s\n", blocker)
 	}

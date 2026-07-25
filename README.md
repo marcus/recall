@@ -32,10 +32,15 @@ External adapters ship here as separate commands:
   the reasons behind each one. See `cmd/recall-ongoing/ongoing` for what it
   declares and why.
 
-`eval/baselines/smoke.json` is documented in
-[evaluation.md](docs/evaluation.md) but is **not committed yet**, so
-`recall eval compare` has nothing to compare against and metric drift goes
-unnoticed. See the backlog before trusting a metric quoted in a commit message.
+`eval/baselines/smoke.json` is the frozen smoke run. CI runs the pack and
+`recall eval compare`s the result against it on every change, and the comparison
+exits non-zero if any rate moves down, so drift fails a build instead of waiting
+to be noticed. Refresh it deliberately when a change is meant to move a number —
+see [evaluation.md](docs/evaluation.md#layout).
+
+Quote a metric with the population it came from. Overall pools cases, the
+case-tag macro weights tags equally, and they differ by construction: nDCG@10 is
+0.7665 pooled and 0.7615 across tags on the same run.
 
 ## Install
 

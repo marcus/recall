@@ -76,6 +76,25 @@ Run artifacts contain excerpts even when packs do not. They inherit the pack's
 sensitivity, default to `$XDG_STATE_HOME/recall/<profile>/eval/`, and are never
 committed.
 
+`baselines/smoke.json` is one such artifact's `run.json`, and only that file.
+The `cases.jsonl` beside it carries excerpts and locators, so the baseline is
+the record alone — which is why `recall eval compare` accepts a run directory
+or a bare run record for either side. A comparison against a bare record reports
+metric deltas and no per-case changes, because the baseline never claimed
+anything about individual cases.
+
+Refresh it deliberately, never as a side effect of a run:
+
+```sh
+recall eval run --pack eval/packs/smoke --output "$d"
+cp "$d/run.json" eval/baselines/smoke.json
+```
+
+Changing the pack changes its content hash, and a baseline naming a different
+hash is not comparable at all. A test asserts the committed baseline names the
+committed pack, so a pack edit that forgets this step fails in `make test`
+rather than surfacing in CI as a phantom ranking regression.
+
 ## Cases And Judgments
 
 Queries and judgments are separate files so a runner can give an agent the
@@ -170,8 +189,9 @@ and index versions; model names and artifact hashes; host OS, architecture, and
 memory; cache policy and warm/cold state; random seeds; and per-case source
 outcomes, candidates, lineage roots, explanations, and timing.
 
-Fixture runs inject the clock from each case's `as_of`. Network access is
-disabled. Model-backed and network-backed adapters replay recorded protocol
+Each case's `as_of` bounds the request, so sources answer the historical
+question instead of treating the boundary as future-dated and replying from
+current state. Network access is disabled. Model-backed and network-backed adapters replay recorded protocol
 transcripts (see [conformance](adapter-protocol.md#conformance)) rather than
 running live.
 
@@ -186,6 +206,23 @@ recall eval export-trec <run>          (stage 2)
 A run produces `run.json` (environment, metrics, gates, status),
 `cases.jsonl` (one detailed result per case), `summary.md`, and
 `results.trec` when applicable.
+
+`run` exits non-zero when a hard gate fails. `compare` exits non-zero when the
+two runs are not comparable **or** when any rate moved down, overall or in any
+case-tag group. Both are the same verdict to a script: do not promote this.
+Latency is not compared — it is a property of the machine, and a baseline frozen
+on one host would fail every build on another. CI runs both against the
+committed baseline on every change:
+
+```sh
+recall eval run     --pack eval/packs/smoke --output "$d"
+recall eval compare eval/baselines/smoke.json "$d"
+```
+
+A rate is called a regression when it moves down by more than 1e-9. That is not
+slack for real movement: the smallest change one case can make to a forty-case
+average is around 1e-3. It exists so a difference in the last bit of a float
+between two architectures is not reported as a loss in retrieval quality.
 
 ## Metrics
 
@@ -217,6 +254,9 @@ MRR@10        target is grade 3 (authoritative) only.
 Success@5     threshold is grade >= 2 (useful support).
 Forbidden@5   any judgment marked forbidden appearing in the top 5.
 percentiles   nearest-rank.
+latency       wall time around one query, never the difference between
+              injected clocks. A case bounded to a past instant is asking a
+              historical question, not taking months to answer it.
 ```
 
 **An undefined metric is not zero.** A case with nothing to find has no recall,
@@ -235,6 +275,17 @@ not hide regressions in exact lookups, temporal questions, or no-answer cases.
 The research score in stage 2 uses the **case-tag** macro. Tags are how a pack
 declares what a case is testing, so they are the dimension a regression should
 be visible along.
+
+**Always say which population a number came from.** Overall and macro are
+different measurements of the same run and they do not agree by construction:
+overall pools the cases where a metric is defined, the case-tag macro weights
+each of the forty tag groups equally, and the source-family macro weights each
+of the five families equally. On the smoke pack today that is nDCG@10 0.7665
+pooled over 36 cases, 0.7615 across tags, and 0.7454 across families. Quoting
+one and later reading another off the bottom of `summary.md` produced a reported
+five-thousandth "regression" that a bisect proved had never happened: the
+metrics were byte-identical across every commit involved. A metric written down
+without its population is a trap laid for the next reader.
 
 Latency has no macro average. A percentile of percentiles is not a percentile;
 latency is pooled within each population and reported per group and overall.
@@ -260,10 +311,18 @@ A candidate run is invalid when any hard gate fails:
 - The run completes with no fixture mutation, crash, or undeclared network use.
 - No project-configuration fixture caused a subprocess spawn.
 
-On the first run there is no baseline, so thresholds are absolute values
-recorded in the pack. After the first baseline they become
-"does not regress beyond run variance", set from measured distributions — never
-copied from another retrieval system.
+Thresholds are absolute values recorded in the pack. They stay absolute: they
+are floors on behavior a release must clear at all, and they are checked by
+`run` on a single run with nothing to compare against.
+
+Regression protection is the separate job of `compare` against
+`baselines/smoke.json`, and on this pack it is exact rather than statistical.
+Every rate is deterministic — the same pack over the same commit produces the
+same number to the last bit, on repeated runs and across ten commits — so run
+variance is zero and any downward movement is a real change to explain. A pack
+whose numbers do move between identical runs would need distributions and an
+interval instead; this one does not, and pretending otherwise would buy slack
+that only hides regressions.
 
 ## Research Score *(stage 2)*
 

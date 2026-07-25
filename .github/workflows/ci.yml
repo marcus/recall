@@ -14,7 +14,29 @@ jobs:
         with:
           go-version: '1.26'
       - run: make build test
-      - run: make eval
+
+      # The smoke pack is deterministic, so every quality metric it produces is
+      # a fixed number and any movement is a real change. Running it was never
+      # the hard part; comparing it was. Metrics quoted in a commit message sat
+      # unchecked for ten commits because nothing on this machine knew what they
+      # were supposed to be, and the first person to look compared them against
+      # a different population and reported a regression that had not happened.
+      #
+      # This is the step that ends that. `recall eval run` exits non-zero on a
+      # failed gate and `recall eval compare` exits non-zero when a measurement
+      # moved down against eval/baselines/smoke.json, so the next drift fails a
+      # build instead of waiting to be noticed.
+      #
+      # build-all rather than build: the core spawns external adapters by
+      # command name, and the pack configures one, so a partial build measures a
+      # source that is not there. --output is explicit because the default lands
+      # under a temporary state directory this step cannot name afterwards.
+      - name: eval
+        run: |
+          make build-all
+          PATH="$PWD/bin:$PATH" bin/recall eval run --pack eval/packs/smoke --output "$RUNNER_TEMP/smoke"
+          bin/recall eval compare eval/baselines/smoke.json "$RUNNER_TEMP/smoke"
+
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
