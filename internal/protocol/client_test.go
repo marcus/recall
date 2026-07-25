@@ -94,6 +94,10 @@ func (h *stubHandler) Health(ctx context.Context) (recall.Health, error) {
 	}, nil
 }
 
+func (h *stubHandler) Refresh(context.Context, protocol.RefreshParams) (recall.Health, error) {
+	return recall.Health{Status: recall.HealthHealthy, Coverage: recall.IndexComplete}, nil
+}
+
 func (h *stubHandler) Shutdown(context.Context) error { return nil }
 
 // serveStub wires a client to a handler over two pipes: the same request path a

@@ -486,6 +486,12 @@ The core owns no index. An adapter that maintains one must:
   and drop superseded generations on publication rather than keeping browsable
   history. Expansion caches honor the same boundary.
 
+An adapter that maintains an index declares the `checkpoint` capability and
+serves `recall/refresh`, which is the contract's only entry point for building
+one outside the handshake. It also reports `index_config`, identifying the
+retrieval configuration a generation was built under, so a scoring change
+cannot alter results with nothing recording it.
+
 Adapters receive a writable `workdir` at handshake for index storage. Recall
 never resurfaces a record its source no longer contains, except through a
 source whose contract retains history, such as an archive stream.

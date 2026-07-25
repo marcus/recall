@@ -37,6 +37,19 @@ type Adapter interface {
 	// see [DefaultHealthTTL].
 	Health(ctx context.Context) (recall.Health, error)
 
+	// Refresh brings an adapter-owned projection up to date and reports the
+	// resulting health. An adapter that owns no index returns its health
+	// unchanged.
+	//
+	// This is what [recall.CapCheckpoint] means. Without it the capability was
+	// a word an adapter could declare and nothing could invoke, and the only
+	// in-contract place to build an index was the handshake — which competes
+	// with DefaultHandshakeTimeout on any real corpus.
+	//
+	// A failed refresh returns both the error and the health of the generation
+	// still published, because that is the one still answering queries.
+	Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error)
+
 	// Close releases the adapter. For a subprocess this asks for a clean exit
 	// and then guarantees one.
 	Close() error

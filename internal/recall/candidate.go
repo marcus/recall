@@ -143,6 +143,14 @@ type Health struct {
 	// model change starts a new generation; one generation never mixes models.
 	IndexModel string `json:"index_model,omitempty"`
 
+	// IndexConfig identifies the retrieval configuration the generation was
+	// built under: analyzer, tokenizer, scoring parameters. IndexModel covers
+	// only embeddings, so without this a change to BM25 constants or stemming
+	// silently changes ranking with nothing in the generation recording it —
+	// and an evaluation run comparing two generations would attribute the
+	// difference to the change under test.
+	IndexConfig string `json:"index_config,omitempty"`
+
 	RecordCount  int64 `json:"record_count,omitempty"`
 	IndexedCount int64 `json:"indexed_count,omitempty"`
 	FailedCount  int64 `json:"failed_count,omitempty"`

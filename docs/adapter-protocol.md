@@ -34,6 +34,7 @@ recall/initialize   handshake: version range, workdir, source_id, location,
 recall/search       search request -> candidates envelope
 recall/expand       locator + budget -> evidence
 recall/health       probe -> health report
+recall/refresh      bring an adapter-owned projection up to date -> health
 recall/cancel       notification: abandon a request id
 recall/shutdown     request clean exit
 ```
@@ -59,6 +60,13 @@ Rules:
   prefix is read at face value, and an unknown one is dropped.
 - `recall/cancel` takes `{"id": <request id>}`. `recall/shutdown` takes `{}`
   and returns `{}`.
+- `recall/refresh` is what the `checkpoint` capability means. Only adapters
+  declaring it serve the method; an adapter owning no projection returns its
+  health unchanged rather than reporting work it did not do. A failed refresh
+  returns both the error and the health of the generation still published,
+  because that is the one still answering. Without this method the only
+  in-contract place to build an index was the handshake, which competes with
+  the handshake timeout on any real corpus.
 
 ## Errors
 
@@ -119,6 +127,12 @@ source_watermark     latest source revision, timestamp, or cursor
 index_watermark      indexed revision, when applicable
 index_generation     published generation identity, when applicable
 index_model          embedding model id and version, when applicable
+index_config         identity of the retrieval configuration this generation
+                     was built under: analyzer, tokenizer, scoring parameters.
+                     index_model covers embeddings only, so without this a
+                     change to scoring silently changes ranking with nothing in
+                     the generation recording it, and an evaluation comparing
+                     two generations would credit the change under test.
 record_count         exact or estimated
 indexed_count        records represented by the current index
 failed_count         records rejected or not indexed

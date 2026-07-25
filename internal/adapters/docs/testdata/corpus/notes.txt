@@ -1,0 +1,3 @@
+plaintextonly
+
+This file is indexed only when the .txt suffix is declared in settings.

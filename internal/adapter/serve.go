@@ -41,6 +41,10 @@ func (b bridge) Health(ctx context.Context) (recall.Health, error) {
 	return b.adapter.Health(ctx)
 }
 
+func (b bridge) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	return b.adapter.Refresh(ctx, p)
+}
+
 func (b bridge) Shutdown(context.Context) error {
 	return b.adapter.Close()
 }

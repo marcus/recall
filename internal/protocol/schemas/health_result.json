@@ -4,24 +4,54 @@
   "title": "recall/health result",
   "description": "A recent index timestamp alone is not health. Coverage and watermarks are what make a partial source visible, so coverage is required.",
   "type": "object",
-  "required": ["status", "checked_at", "coverage"],
+  "required": [
+    "status",
+    "checked_at",
+    "coverage"
+  ],
   "additionalProperties": false,
   "properties": {
-    "status": { "$ref": "common.json#/$defs/health_status" },
-    "checked_at": { "$ref": "common.json#/$defs/timestamp" },
-    "last_success_at": { "$ref": "common.json#/$defs/timestamp" },
-    "source_watermark": { "type": "string" },
-    "index_watermark": { "type": "string" },
-    "index_generation": { "type": "string" },
+    "status": {
+      "$ref": "common.json#/$defs/health_status"
+    },
+    "checked_at": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "last_success_at": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "source_watermark": {
+      "type": "string"
+    },
+    "index_watermark": {
+      "type": "string"
+    },
+    "index_generation": {
+      "type": "string"
+    },
     "index_model": {
       "description": "Embedding model of the published generation. One generation never mixes models.",
       "type": "string"
     },
-    "record_count": { "$ref": "common.json#/$defs/count" },
-    "indexed_count": { "$ref": "common.json#/$defs/count" },
-    "failed_count": { "$ref": "common.json#/$defs/count" },
-    "coverage": { "$ref": "common.json#/$defs/index_coverage" },
-    "diagnostics": { "$ref": "common.json#/$defs/diagnostics" },
+    "index_config": {
+      "description": "Identifies the retrieval configuration this generation was built under: analyzer, tokenizer, scoring parameters. index_model covers embeddings only, so without this a change to scoring silently changes ranking with nothing recording it.",
+      "type": "string"
+    },
+    "record_count": {
+      "$ref": "common.json#/$defs/count"
+    },
+    "indexed_count": {
+      "$ref": "common.json#/$defs/count"
+    },
+    "failed_count": {
+      "$ref": "common.json#/$defs/count"
+    },
+    "coverage": {
+      "$ref": "common.json#/$defs/index_coverage"
+    },
+    "diagnostics": {
+      "$ref": "common.json#/$defs/diagnostics"
+    },
     "cold_start_ns": {
       "description": "Time to become ready, when this probe followed a spawn. Measured by the core; an adapter leaves it out.",
       "type": "integer",

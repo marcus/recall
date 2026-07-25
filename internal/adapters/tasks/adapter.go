@@ -514,3 +514,13 @@ func merge(schema map[string]any, description string) map[string]any {
 	out["description"] = description
 	return out
 }
+
+// Refresh is a no-op that reports current health.
+//
+// This source is live: it holds no projection, so there is nothing to bring up
+// to date. The method exists because the contract has it, and returning health
+// unchanged is the honest answer — reporting success for work never done would
+// let a caller believe a stale index had been rebuilt.
+func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+	return a.Health(ctx)
+}

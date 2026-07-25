@@ -40,6 +40,7 @@ var payloadNames = map[string]struct{ params, result string }{
 	MethodSearch:     {"search_params", "search_result"},
 	MethodExpand:     {"expand_params", "expand_result"},
 	MethodHealth:     {"health_params", "health_result"},
+	MethodRefresh:    {"refresh_params", "health_result"},
 	MethodCancel:     {"cancel_params", ""},
 	MethodShutdown:   {"empty", "empty"},
 }

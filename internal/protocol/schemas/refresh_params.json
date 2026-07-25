@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/refresh_params.json",
+  "title": "recall/refresh params",
+  "description": "Asks an adapter to bring its projection up to date. Only adapters declaring the checkpoint capability serve it.",
+  "type": "object",
+  "required": [
+    "deadline"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "deadline": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "full": {
+      "description": "Ask for a complete rebuild rather than an incremental pass. An adapter with no incremental path may treat every refresh as full.",
+      "type": "boolean"
+    }
+  }
+}

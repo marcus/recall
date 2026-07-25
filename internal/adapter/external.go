@@ -152,6 +152,15 @@ func (e *External) Health(ctx context.Context) (recall.Health, error) {
 	return conn.Health(ctx)
 }
 
+// Refresh asks the adapter to bring its projection up to date.
+func (e *External) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	conn, err := e.ensure(ctx)
+	if err != nil {
+		return Unhealthy(err), err
+	}
+	return conn.Refresh(ctx, p)
+}
+
 // Close asks for a clean exit and then guarantees one. It is idempotent.
 func (e *External) Close() error {
 	e.mu.Lock()

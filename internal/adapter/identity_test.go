@@ -22,6 +22,10 @@ func (s *stubAdapter) Search(context.Context, recall.SearchRequest) (recall.Sear
 	return s.search, nil
 }
 
+func (s *stubAdapter) Refresh(context.Context, protocol.RefreshParams) (recall.Health, error) {
+	return recall.Health{Status: recall.HealthHealthy, Coverage: recall.IndexComplete}, nil
+}
+
 func (s *stubAdapter) Expand(_ context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
 	s.expand = req
 	return recall.ExpandResponse{Content: "ok"}, nil

@@ -256,6 +256,14 @@ func (c *Conn) fresh() (healthEntry, bool) {
 	return c.cached, true
 }
 
+// invalidateHealth drops the cached probe so the next Health call asks again.
+func (c *Conn) invalidateHealth() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cachedAt = time.Time{}
+	c.cached = healthEntry{}
+}
+
 func (c *Conn) probe(ctx context.Context) (recall.Health, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -317,3 +325,25 @@ func (c *Conn) Close() error {
 }
 
 var _ Adapter = (*Conn)(nil)
+
+// Refresh asks the adapter to bring its projection up to date.
+//
+// The health cache is dropped afterwards whatever the outcome: a refresh is the
+// one operation certain to have changed what a probe would say, so serving a
+// stale entry here would report the generation the refresh replaced.
+func (c *Conn) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	if p.Deadline.IsZero() {
+		p.Deadline = time.Now().Add(DefaultCallTimeout)
+	}
+	ctx, cancel := deadlineCtx(ctx, p.Deadline)
+	defer cancel()
+
+	var health recall.Health
+	err := c.client.Call(ctx, protocol.MethodRefresh, p, &health)
+	c.invalidateHealth()
+	if err != nil {
+		c.noteFailure(err)
+		return Unhealthy(err), err
+	}
+	return health, nil
+}

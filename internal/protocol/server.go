@@ -22,6 +22,11 @@ type Handler interface {
 	Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error)
 	Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error)
 	Health(ctx context.Context) (recall.Health, error)
+	// Refresh brings an adapter-owned projection up to date and reports the
+	// resulting health. An adapter that owns no index returns its health
+	// unchanged. A failed refresh returns both the error and the health of the
+	// generation still published, which is the one still answering.
+	Refresh(ctx context.Context, p RefreshParams) (recall.Health, error)
 	// Shutdown is asked for a clean exit. Serve returns once in-flight work
 	// finishes; a handler that never finishes is what SIGTERM is for.
 	Shutdown(ctx context.Context) error
@@ -206,6 +211,22 @@ func (s *server) invoke(ctx context.Context, method string, params json.RawMessa
 			return nil, err
 		}
 		return json.Marshal(resp)
+
+	case MethodRefresh:
+		var p RefreshParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, Errorf(CodeInvalidParams, "%v", err)
+		}
+		ctx, cancel, err := withDeadline(ctx, p.Deadline)
+		if err != nil {
+			return nil, err
+		}
+		defer cancel()
+		health, err := s.handler.Refresh(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(health)
 
 	case MethodHealth:
 		var p HealthParams

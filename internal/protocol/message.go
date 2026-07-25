@@ -26,6 +26,7 @@ const (
 	MethodSearch     = "recall/search"
 	MethodExpand     = "recall/expand"
 	MethodHealth     = "recall/health"
+	MethodRefresh    = "recall/refresh"
 	MethodCancel     = "recall/cancel"
 	MethodShutdown   = "recall/shutdown"
 )
@@ -210,6 +211,16 @@ type InitializeParams struct {
 // HealthParams carries the probe's deadline. Every request carries one.
 type HealthParams struct {
 	Deadline time.Time `json:"deadline"`
+}
+
+// RefreshParams asks an adapter to bring its projection up to date and returns
+// the resulting health. Only adapters declaring [recall.CapCheckpoint] serve it.
+type RefreshParams struct {
+	Deadline time.Time `json:"deadline"`
+
+	// Full asks for a complete rebuild rather than an incremental pass. An
+	// adapter with no incremental path may treat every refresh as full.
+	Full bool `json:"full,omitempty"`
 }
 
 // CancelParams names the in-flight request to abandon. Cancellation is

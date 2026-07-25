@@ -259,6 +259,11 @@ func (f *fixture) Health(context.Context) (recall.Health, error) {
 	}, nil
 }
 
+// Refresh reports health unchanged: the fixture owns no projection.
+func (f *fixture) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+	return f.Health(ctx)
+}
+
 func (f *fixture) Close() error { return nil }
 
 func (f *fixture) probeCount() int {
