@@ -99,6 +99,34 @@ type indexHeader struct {
 	Watermark   string    `json:"watermark"`
 	GitRevision string    `json:"git_revision,omitempty"`
 	Root        string    `json:"root"`
+
+	// SettingsDigest is the configuration this generation was built under.
+	//
+	// The watermark already contains it, but only a fresh corpus walk can
+	// recover it from there. Recording it plainly lets the handshake decide,
+	// without touching the corpus, whether the published generation describes
+	// the boundary the current configuration asks for. A generation written
+	// before this field existed reports the empty string, which matches no
+	// configuration and is therefore rebuilt once.
+	SettingsDigest string `json:"settings_digest,omitempty"`
+}
+
+// indexConfig identifies the retrieval configuration a generation was built
+// under, per the spec's index obligations. It carries the settings digest as
+// well as the scoring constants: the digest is what makes a corpus boundary
+// change — an extension added, a directory excluded — visible as freshness
+// evidence on every result, rather than as an unexplained change in what the
+// source answers.
+func indexConfig(h indexHeader) string {
+	return fmt.Sprintf("jsonl/%d chunking=heading tokenizer=alnum-fold scoring=bm25-k%g-b%g settings=%s",
+		h.Format, bm25K1, bm25B, orNone(h.SettingsDigest))
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "unrecorded"
+	}
+	return s
 }
 
 type indexTrailer struct {
@@ -247,11 +275,12 @@ func writeGeneration(ctx context.Context, staging, root string, s Settings, corp
 	body := json.NewEncoder(io.MultiWriter(buf, hasher))
 
 	err = head.Encode(record{Kind: kindHeader, Header: &indexHeader{
-		Format:      indexFormat,
-		BuiltAt:     time.Now().UTC(),
-		Watermark:   corpus.Watermark,
-		GitRevision: corpus.GitRevision,
-		Root:        root,
+		Format:         indexFormat,
+		BuiltAt:        time.Now().UTC(),
+		Watermark:      corpus.Watermark,
+		GitRevision:    corpus.GitRevision,
+		Root:           root,
+		SettingsDigest: s.digest(),
 	}})
 	if err != nil {
 		return "", err

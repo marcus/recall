@@ -32,12 +32,26 @@ type fileRef struct {
 // that is counted rather than fatal.
 type scan struct {
 	Files       []fileRef
+	Skipped     []skippedDir
 	Watermark   string
 	GitRevision string
 }
 
+// skippedDir is one directory the walk did not enter, and the declared reason.
+//
+// A skipped directory is not a failure: no named record is missing from the
+// generation, so counting it as one would make coverage partial for every
+// corpus containing a .git/ and destroy the one signal that says records are
+// genuinely absent. It is reported separately instead, because a boundary
+// nobody can see is indistinguishable from a corpus that has nothing to say.
+type skippedDir struct {
+	Path   string // corpus-relative, slash-separated
+	Reason string
+}
+
 func scanCorpus(root string, s Settings) (scan, error) {
 	var files []fileRef
+	var skipped []skippedDir
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -50,7 +64,15 @@ func scanCorpus(root string, s Settings) (scan, error) {
 			return nil
 		}
 		if d.IsDir() {
-			if path != root && skipDir(d.Name()) {
+			// The root is never excluded by its own name. An operator who
+			// points a source at `.claude/notes` named that directory, and a
+			// pattern that swallowed the root would leave a source configured
+			// to index nothing.
+			if path == root {
+				return nil
+			}
+			if reason, ok := skipReason(path, d.Name(), s); ok {
+				skipped = append(skipped, skippedDir{Path: relOrBase(root, path), Reason: reason})
 				return fs.SkipDir
 			}
 			return nil
@@ -82,31 +104,39 @@ func scanCorpus(root string, s Settings) (scan, error) {
 	// WalkDir already visits in lexical order; sorting says so explicitly,
 	// because chunk order, locator order, and the watermark all depend on it.
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Path < skipped[j].Path })
 
-	out := scan{Files: files, GitRevision: gitRevision(root)}
+	out := scan{Files: files, Skipped: skipped, GitRevision: gitRevision(root)}
 	out.Watermark = watermark(files, s.digest(), out.GitRevision)
 	return out, nil
 }
 
-// skipDir keeps the walk out of directories that are never corpus content.
+// skipReason reports why the walk does not enter a directory, if it does not.
 //
-// Dot-directories are excluded as a class, not by name. They hold tool state —
-// caches, build output, virtualenvs, agent worktrees — and the failure they
-// cause is worse than indexing junk: a directory like `.claude/worktrees/`
-// contains whole checkouts of the corpus, so the same document is indexed
-// several times under distinct paths. Lineage groups on source_record_id, and
-// those copies carry different ones, so a single document arrives as several
-// independent lineage roots and corroborates itself. Nothing downstream can
-// detect that, because at that point the copies genuinely are distinct records.
-//
-// The cost is `.github/`, which is the one dot-directory people write prose in.
-// A corpus that needs it can point an instance's location or Root straight at
-// it, which is explicit and cannot silently pull in a checkout.
-func skipDir(name string) bool {
-	if len(name) > 1 && strings.HasPrefix(name, ".") {
-		return true
+// Both reasons are declared configuration, and both are reported: an exclusion
+// the operator cannot see is the failure this whole mechanism exists to avoid.
+// The nested-repository check is the precise one — it names the actual damage,
+// a second checkout of the same documents — while the name patterns are the
+// cheap one that also keeps caches, build output, and virtualenvs out.
+func skipReason(path, name string, s Settings) (string, bool) {
+	if pattern, ok := s.excludedDir(name); ok {
+		return "exclude_dirs " + pattern, true
 	}
-	return name == "node_modules"
+	if s.ExcludeNestedRepos && isRepository(path) {
+		return "nested repository", true
+	}
+	return "", false
+}
+
+// isRepository reports whether a directory holds a .git entry of its own.
+//
+// Lstat rather than Stat, and no check of what the entry is: a clone keeps a
+// .git directory, a worktree and a submodule keep a .git FILE naming the real
+// one, and all three are a separate checkout whose documents are copies of
+// something already indexed under another path.
+func isRepository(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 // watermark identifies a corpus state.
@@ -116,9 +146,15 @@ func skipDir(name string) bool {
 // recorded as evidence and the digest of the file list decides equality.
 //
 // The settings digest is part of it because settings decide what the corpus IS:
-// changing the indexed extensions or a declared alias changes the generation's
-// content without touching a single file, and an index that reported itself
-// current afterwards would be answering under configuration nobody reviewed.
+// changing the indexed extensions, the excluded directories, or a declared
+// alias changes the generation's content without touching a single file, and an
+// index that reported itself current afterwards would be answering under
+// configuration nobody reviewed.
+//
+// The skipped directories are deliberately NOT part of it. They contribute no
+// records, so a new .venv appearing next to the notes changes nothing about
+// what the index contains, and letting it move the watermark would report a
+// current index as stale until someone rebuilt it into the same content.
 func watermark(files []fileRef, settingsDigest, gitRev string) string {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "settings\x00%s\n", settingsDigest)

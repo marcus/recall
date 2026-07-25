@@ -124,6 +124,14 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 		// The workdir holds an index of a different corpus. Answering from it
 		// would attribute one source's documents to another.
 		gen = nil
+	case err == nil && gen.header.SettingsDigest != settings.digest():
+		// The generation was built under configuration that decided a different
+		// corpus boundary — other extensions, other excluded directories. It is
+		// not merely stale: every answer it gives is over a boundary the current
+		// configuration does not describe, and staleness alone would leave it
+		// serving that boundary until someone happened to refresh. Rebuilding
+		// here is the same cost the first handshake already pays.
+		gen = nil
 	case err != nil && !errors.Is(err, errNoGeneration):
 		// A corrupt or truncated generation is not a reason to refuse service:
 		// it is a reason to rebuild. It is reported either way.
@@ -325,6 +333,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 	if gen != nil {
 		health.IndexWatermark = gen.header.Watermark
 		health.IndexGeneration = gen.id
+		health.IndexConfig = indexConfig(gen.header)
 		health.IndexedCount = int64(len(gen.docs))
 		health.FailedCount = int64(len(gen.failures))
 		health.Coverage = gen.coverage
@@ -351,6 +360,16 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 
 	health.SourceWatermark = corpus.Watermark
 	health.RecordCount = int64(len(corpus.Files))
+	// Reported beside coverage, and always, including zero. A directory the
+	// walk refused to enter is content inside the root the operator named that
+	// no query can reach, so "complete coverage over 40 records" and "complete
+	// coverage over 40 records, 3 directories excluded" are different claims.
+	// It is not failed_count: no named record is missing, and counting it as a
+	// failure would make coverage partial for every corpus with a .git/.
+	health.Diagnostics["skipped_dirs"] = len(corpus.Skipped)
+	if len(corpus.Skipped) > 0 {
+		health.Diagnostics["skipped_dirs_sample"] = skippedSummary(corpus.Skipped)
+	}
 	if corpus.GitRevision != "" {
 		health.Diagnostics["git_revision"] = corpus.GitRevision
 	}
@@ -384,6 +403,18 @@ func failureSummary(failures []indexFailure) []string {
 	out := make([]string, 0, min(sample, len(failures)))
 	for _, f := range failures[:min(sample, len(failures))] {
 		out = append(out, f.Path+": "+f.Reason)
+	}
+	return out
+}
+
+// skippedSummary keeps the report bounded the way failureSummary does: the
+// count is exact, and the sample is enough to recognize which rule excluded
+// what without printing a node_modules tree into an operator's terminal.
+func skippedSummary(skipped []skippedDir) []string {
+	const sample = 5
+	out := make([]string, 0, min(sample, len(skipped)))
+	for _, s := range skipped[:min(sample, len(skipped))] {
+		out = append(out, s.Path+": "+s.Reason)
 	}
 	return out
 }

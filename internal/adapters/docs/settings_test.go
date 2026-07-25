@@ -78,10 +78,16 @@ func TestRootOverridesLocation(t *testing.T) {
 	}
 }
 
-// TestSettingsChangeMakesTheIndexStale. Settings decide what a generation
-// contains, so a generation built under different settings is not current, even
-// though not one file changed.
-func TestSettingsChangeMakesTheIndexStale(t *testing.T) {
+// TestSettingsChangeRebuildsTheIndex. Settings decide what a generation
+// contains, so a generation built under different settings does not describe
+// the corpus the current configuration asks for — not one file has to change
+// for that to be true.
+//
+// Reopening it and reporting degraded would not be enough: nothing triggers a
+// rebuild on its own, so the source would answer from the old boundary
+// indefinitely while every search reported success. The handshake rebuilds
+// instead, which is the cost the first handshake already pays.
+func TestSettingsChangeRebuildsTheIndex(t *testing.T) {
 	t.Parallel()
 	root := cleanCorpus(t)
 	workdir := t.TempDir()
@@ -90,10 +96,12 @@ func TestSettingsChangeMakesTheIndexStale(t *testing.T) {
 	if _, err := first.Initialize(context.Background(), config(root, workdir, nil)); err != nil {
 		t.Fatalf("handshake: %v", err)
 	}
-	if h := health(t, first); h.Status != recall.HealthHealthy {
-		t.Fatalf("status = %q before any change: %v", h.Status, h.Diagnostics)
+	before := health(t, first)
+	if before.Status != recall.HealthHealthy {
+		t.Fatalf("status = %q before any change: %v", before.Status, before.Diagnostics)
 	}
 	_ = first.Close()
+	published := currentGeneration(t, workdir)
 
 	second := docs.New()
 	t.Cleanup(func() { _ = second.Close() })
@@ -101,18 +109,126 @@ func TestSettingsChangeMakesTheIndexStale(t *testing.T) {
 	if _, err := second.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
 		t.Fatalf("second handshake: %v", err)
 	}
-	// The handshake reopened the published generation rather than rebuilding,
-	// so the source keeps answering — but it must not claim to be current under
-	// configuration it was not built under.
+
 	h := health(t, second)
-	if stale, _ := h.Diagnostics["stale"].(bool); !stale {
-		t.Errorf("health does not mark the generation stale after a settings change: %v", h.Diagnostics)
+	if h.IndexGeneration == published {
+		t.Fatalf("generation %q survived a settings change that redefines the corpus", published)
 	}
-	if h.Status != recall.HealthDegraded {
-		t.Errorf("status = %q, want degraded", h.Status)
+	if h.Status != recall.HealthHealthy {
+		t.Errorf("status = %q after a rebuild under the new settings: %v", h.Status, h.Diagnostics)
 	}
-	if h.IndexWatermark == h.SourceWatermark {
+	if h.IndexWatermark != h.SourceWatermark {
+		t.Errorf("index watermark %q != source watermark %q right after the rebuild",
+			h.IndexWatermark, h.SourceWatermark)
+	}
+	if h.IndexWatermark == before.IndexWatermark {
 		t.Error("the watermark did not move with the settings that decide what is indexed")
+	}
+	if resp := search(t, second, "plaintextonly"); len(resp.Candidates) == 0 {
+		t.Error("the rebuilt generation does not contain the file the new settings admit")
+	}
+}
+
+// TestUnchangedSettingsReopenTheGeneration is the other half of the rule above:
+// a handshake under the settings a generation was built under must not rebuild,
+// or every restart would pay for a full corpus walk it does not need.
+func TestUnchangedSettingsReopenTheGeneration(t *testing.T) {
+	t.Parallel()
+	root := cleanCorpus(t)
+	workdir := t.TempDir()
+	settings := map[string]any{"extensions": []any{".md"}, "exclude_dirs": []any{"node_modules"}}
+
+	first := docs.New()
+	if _, err := first.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
+		t.Fatalf("handshake: %v", err)
+	}
+	_ = first.Close()
+	published := currentGeneration(t, workdir)
+
+	second := docs.New()
+	t.Cleanup(func() { _ = second.Close() })
+	if _, err := second.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
+		t.Fatalf("second handshake: %v", err)
+	}
+	if got := currentGeneration(t, workdir); got != published {
+		t.Errorf("handshake rebuilt %q into %q under identical settings", published, got)
+	}
+}
+
+// TestExcludeDirsChangeRebuildsTheIndex. The exclusions decide what the corpus
+// IS, so they are in the settings digest exactly as the extensions are: an
+// index built while .github/ was excluded must not keep answering after someone
+// admitted it, reporting complete coverage over the old boundary.
+func TestExcludeDirsChangeRebuildsTheIndex(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	workdir := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "# Notes\n\nranking decisions\n")
+	writeFile(t, filepath.Join(root, ".github", "CONTRIBUTING.md"),
+		"# Contributing\n\nopen a pull request against main\n")
+
+	first := docs.New()
+	if _, err := first.Initialize(context.Background(), config(root, workdir, nil)); err != nil {
+		t.Fatalf("handshake: %v", err)
+	}
+	before := health(t, first)
+	if before.RecordCount != 1 {
+		t.Fatalf("record_count = %d, want 1 under the default exclusions", before.RecordCount)
+	}
+	_ = first.Close()
+
+	second := docs.New()
+	t.Cleanup(func() { _ = second.Close() })
+	settings := map[string]any{"exclude_dirs": []any{"node_modules"}}
+	if _, err := second.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
+		t.Fatalf("second handshake: %v", err)
+	}
+
+	h := health(t, second)
+	if h.IndexGeneration == before.IndexGeneration {
+		t.Fatalf("generation %q survived a change to the excluded directories", before.IndexGeneration)
+	}
+	if h.RecordCount != 2 || h.IndexedCount != 2 {
+		t.Errorf("record_count = %d, indexed_count = %d, want 2: the admitted directory is corpus now",
+			h.RecordCount, h.IndexedCount)
+	}
+	if h.IndexConfig == before.IndexConfig {
+		t.Errorf("index_config is %q for both boundaries; a corpus change nothing records is a change nobody can attribute",
+			h.IndexConfig)
+	}
+	if resp := search(t, second, "pull request against main"); len(resp.Candidates) == 0 {
+		t.Error("the rebuilt generation does not contain the admitted directory's documents")
+	}
+}
+
+// TestMalformedExclusionsFailTheHandshake. A pattern that cannot match is an
+// exclusion that looks configured and excludes nothing, which is the silent
+// boundary this setting exists to make visible.
+func TestMalformedExclusionsFailTheHandshake(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		settings map[string]any
+		wants    string
+	}{
+		{"a path", map[string]any{"exclude_dirs": []any{"docs/vendor"}}, "docs/vendor"},
+		{"a bad glob", map[string]any{"exclude_dirs": []any{"[unclosed"}}, "[unclosed"},
+		{"an empty name", map[string]any{"exclude_dirs": []any{"  "}}, "empty"},
+		{"a non-boolean", map[string]any{"exclude_nested_repos": "yes"}, "exclude_nested_repos"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			a := docs.New()
+			t.Cleanup(func() { _ = a.Close() })
+			_, err := a.Initialize(context.Background(), config(cleanCorpus(t), t.TempDir(), tc.settings))
+			if err == nil {
+				t.Fatalf("handshake accepted %v", tc.settings)
+			}
+			if !strings.Contains(err.Error(), tc.wants) {
+				t.Errorf("error %q does not name what was wrong (%q)", err, tc.wants)
+			}
+		})
 	}
 }
 

@@ -7,6 +7,14 @@
 // it owns no identity, no prior, and no cross-source comparison. It writes only
 // inside the workdir supplied at handshake.
 //
+// The corpus boundary is configuration rather than a rule. exclude_dirs and
+// exclude_nested_repos decide which directories are walked; both are in the
+// settings digest, so changing one rebuilds the index instead of answering over
+// the boundary the old generation was built under; and every directory the walk
+// refused is counted in health beside coverage. An exclusion nobody can see is
+// a source reporting complete coverage over content inside the root the
+// operator named.
+//
 // Retrieval is lexical only. Semantic retrieval is a later layer that has to
 // earn its place in evaluation, and an embedding model in this package would
 // make the first document adapter unevaluatable against the plain baseline it
