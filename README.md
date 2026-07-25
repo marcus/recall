@@ -13,6 +13,8 @@ the agent can expand under a budget.
 - [Specification](docs/spec.md) — contracts, ranking, trust, time, surfaces
 - [Adapter protocol](docs/adapter-protocol.md) — message shapes, transport,
   conformance
+- [Writing an adapter](docs/writing-an-adapter.md) — the working guide, and
+  [`templates/adapter-python`](templates/adapter-python) to copy
 - [Evaluation](docs/evaluation.md) — packs, metrics, gates, research policy
 - [Profile example](docs/profile-example.md) — a concrete source inventory
 
@@ -31,6 +33,14 @@ External adapters ship here as separate commands:
   attention classifications ongoing computes over them, carried through with
   the reasons behind each one. See `cmd/recall-ongoing/ongoing` for what it
   declares and why.
+
+An adapter that lives outside this repository starts from
+`templates/adapter-python`: a complete adapter in one dependency-free Python
+file, shipping recorded conformance transcripts, so a copy inherits a passing
+suite rather than an empty one. It is Python rather than Go on purpose — an
+external adapter is a process speaking JSON-RPC on stdio, and a Go template
+against this module's internal packages would prove the packages rather than the
+wire and could not be copied out of the tree at all.
 
 `eval/baselines/smoke.json` is the frozen smoke run. CI runs the pack and
 `recall eval compare`s the result against it on every change, and the comparison

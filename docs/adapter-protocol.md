@@ -365,3 +365,6 @@ locator semantics.
 
 Adapter commands are declared only in user-level configuration. See the
 [trust boundary](spec.md#layers-and-trust-boundary).
+
+[writing-an-adapter.md](writing-an-adapter.md) is the working guide — what this
+contract's rules prevent, and a copyable template that satisfies them.

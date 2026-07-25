@@ -1,0 +1,18 @@
+{
+  "case": "search-truncated",
+  "description": "A listing that did not reach the end of the corpus. `max_notes` is 2 against three notes, so the scan stopped early. Nothing about the candidate list would show it: the two notes that were read are read correctly and rank correctly. The truncation is therefore stated \u2014 outcome `partial`, `listing_truncated` in the diagnostics, coverage partial in health \u2014 because a caller who reads a short list as the whole corpus has been told a false absence.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/store_identity",
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}

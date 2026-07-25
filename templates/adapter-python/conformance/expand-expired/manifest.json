@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "Three locators that do not resolve, and the two different facts that covers. note-ranking#7 parses and names a section the note no longer has; note-absent#0 parses and names a note this generation does not hold. Both are locator_expired (-32003): the source changed incompatibly, and returning a neighbouring section would be the different revision the protocol forbids substituting. The third has no section segment and so is not a notes locator at all: locator_unknown (-32002), which is a statement about the reference rather than about the source.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 4
+}

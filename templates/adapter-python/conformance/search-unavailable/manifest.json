@@ -1,0 +1,13 @@
+{
+  "case": "search-unavailable",
+  "description": "The configured note directory has been renamed away; what remains beside it is under a name nothing is configured to read. The handshake still succeeds, because the configuration is valid and nothing has been asked of the source yet. The search then fails with source_unavailable (-32000) rather than returning zero candidates, which is the invariant this case exists to hold: a source that cannot be reached must never be indistinguishable from one with no matches. Health reports unavailable with unknown coverage, and the diagnostic names the directory by base name only.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at"
+  ],
+  "responses": 3
+}

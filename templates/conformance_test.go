@@ -1,0 +1,81 @@
+// Package templates_test replays the shipped adapter templates against the same
+// engine `recall doctor --conformance` uses.
+//
+// The templates are not Go, and that is the point: an external adapter is a
+// process that speaks JSON-RPC on stdio, so a template written in Go against
+// this module's internal packages would prove the packages rather than the
+// wire, and could not be copied out of this repository at all. What still has
+// to be true is that the transcripts committed beside a template describe the
+// template as it stands. That is what this file checks, on every `make check`,
+// so a copier inherits a suite that passes rather than one that used to.
+//
+// This test lives here and not inside templates/adapter-python because that
+// directory is copied wholesale into someone else's tree, where an import of
+// github.com/marcus/recall/internal/conformance would not resolve and would not
+// mean anything.
+package templates_test
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/marcus/recall/internal/conformance"
+)
+
+// pythonTemplate is the copyable template and the count of cases it must ship:
+// the eight required by docs/adapter-protocol.md#conformance, with the
+// handshake's version rejection recorded separately, plus the two extra
+// coverage shapes — a truncated listing and a filter the adapter cannot apply —
+// that the guide names and that nothing else in the tree demonstrates.
+const (
+	pythonTemplate = "adapter-python"
+	pythonCases    = 11
+)
+
+func TestPythonTemplateConformance(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		// A skip, not a pass. The template is verifiable with nothing but a
+		// Python 3 interpreter, and a machine without one has checked nothing
+		// rather than confirmed anything.
+		t.Skipf("python3 is not on PATH, so the Python template was not replayed: %v", err)
+	}
+
+	root, err := filepath.Abs(filepath.Join(pythonTemplate, "conformance"))
+	if err != nil {
+		t.Fatalf("resolve suite: %v", err)
+	}
+	adapter, err := filepath.Abs(filepath.Join(pythonTemplate, "recall_notes.py"))
+	if err != nil {
+		t.Fatalf("resolve adapter: %v", err)
+	}
+	if _, err := os.Stat(adapter); err != nil {
+		t.Fatalf("template adapter: %v", err)
+	}
+
+	suite, err := conformance.LoadSuite(root)
+	if err != nil {
+		t.Fatalf("load suite: %v", err)
+	}
+	// A suite that quietly lost a case would still pass every case it kept, so
+	// the count is asserted rather than inferred from what is on disk.
+	if len(suite) != pythonCases {
+		t.Fatalf("template ships %d conformance cases, want %d", len(suite), pythonCases)
+	}
+
+	results, err := conformance.Verify(context.Background(), root,
+		conformance.Command(python, adapter), conformance.Options{})
+	if err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	for _, res := range results {
+		if !res.OK() {
+			// One failing case is a failure, not an abort: someone repairing the
+			// template should see every case that moved, in one pass.
+			t.Errorf("%s", res.Report())
+		}
+	}
+}

@@ -1,0 +1,15 @@
+{
+  "case": "search-filtered",
+  "description": "A filter this adapter cannot apply. The request narrows by project and by entity; this source has no notion of either and no way to prove a note satisfies them. Guessing would invent matches and dropping every candidate would manufacture an absence, so the adapter answers the broader question and says so: outcome `partial`, with `unapplied_filters` naming exactly which narrowing did not happen. The time filter in the same request IS applied, which is why one note is missing from the list and is not counted as unapplied.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 2
+}

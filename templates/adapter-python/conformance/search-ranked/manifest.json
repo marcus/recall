@@ -1,0 +1,15 @@
+{
+  "case": "search-ranked",
+  "description": "Three searches over a complete corpus. The first is lexical: candidates come back ranked, each with a locator naming a note and a section, and every section of one note carries that note's source_record_id \u2014 so several hits inside one note are several candidates and one piece of evidence, and this source cannot corroborate itself. One of the notes declares a sensitivity of its own, which raises the source floor for that candidate and could never lower it. The second search names the ticket a note declares as an alias: an exact identifier hit, promoted as a partition ahead of every scored candidate. Tags are deliberately not aliases, or `policy` would be an exact hit on everything anyone ever tagged with it. The third carries as_of, which this adapter declares it can filter: the note written after the boundary is excluded because its own event time says so, not because the index was rebuilt \u2014 which is the difference between `filter` and `snapshot` support.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 4
+}

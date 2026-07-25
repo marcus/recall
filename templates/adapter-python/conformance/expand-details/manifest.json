@@ -1,0 +1,11 @@
+{
+  "case": "expand-details",
+  "description": "Every detail level against one locator, and a budget truncation. The levels widen rather than reshape: summary is the head, excerpt adds a bounded body, full adds the whole body and the tags, and context adds the note's other sections \u2014 each keeping its own locator, because grouping sections into one expansion must not cost a reader the ability to expand one of them. The last request offers 96 bytes: the content is cut at a UTF-8 boundary, `truncated` is true, and `truncation_boundary` says which limit applied, so a caller can tell a budget cut from a source-side limit.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 6
+}

@@ -1,0 +1,18 @@
+{
+  "case": "search-partial",
+  "description": "Honest coverage over a corpus that is not fully readable. One note carries no `date:` header, so it cannot be given an event time and is refused. The search still answers \u2014 one bad note must not take the source down \u2014 but it reports outcome `partial` with the failed count, the file that failed, and the coverage in its diagnostics, so the note it could not read stays unknown rather than looking absent. Health agrees: degraded, coverage partial, record_count above indexed_count by exactly the failure. A recent index alone is not health.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/store_identity",
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}

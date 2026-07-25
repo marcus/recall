@@ -1,0 +1,11 @@
+{
+  "case": "cancel-inflight",
+  "description": "A search cancelled while in flight. `debug_stall_ms` holds the search before it reads anything, the cancel notification arrives while it is still waiting, and the adapter answers with an error rather than a late result \u2014 the core has already told its caller this source did not answer, so a result arriving afterwards is worse than none. The code is -32007 deadline_exceeded: a request abandoned in flight ran out of time, which is a different condition from an adapter declining a budget up front. Recording this case at all depends on the format's rule that a notification is sent without waiting.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}
