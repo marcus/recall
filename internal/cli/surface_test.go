@@ -227,6 +227,50 @@ func TestServeReadDeadlineBoundsSlowRequestBody(t *testing.T) {
 	}
 }
 
+func TestServeWaitsForActiveRequestDrainBeforeReturning(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	stdout := newNotifyingBuffer()
+	stderr := newNotifyingBuffer()
+	done := make(chan int, 1)
+	go func() {
+		done <- cli.Run(ctx, cli.Env{
+			Args: []string{
+				"serve", "--addr", "127.0.0.1:0", "--request-timeout", "250ms",
+			},
+			Stdout: stdout,
+			Stderr: stderr,
+			Core:   &transportCore{},
+		})
+	}()
+	<-stdout.written
+	_, address, _ := strings.Cut(strings.TrimSpace(stdout.String()), " at http://")
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = conn.Write([]byte("POST /v1/query HTTP/1.1\r\nHost: " + address +
+		"\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"))
+	time.Sleep(20 * time.Millisecond)
+	started := time.Now()
+	cancel()
+	select {
+	case code := <-done:
+		elapsed := time.Since(started)
+		if code != cli.ExitOK {
+			t.Fatalf("serve exit=%d stderr=%s", code, stderr.String())
+		}
+		if elapsed < 100*time.Millisecond {
+			t.Fatalf("serve returned in %s before active request drained", elapsed)
+		}
+		if elapsed > time.Second {
+			t.Fatalf("serve exceeded bounded drain: %s", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not complete bounded active-request drain")
+	}
+}
+
 type notifyingBuffer struct {
 	mu      sync.Mutex
 	buf     bytes.Buffer

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/marcus/recall/internal/buildinfo"
@@ -102,6 +103,7 @@ func ServeMCP(ctx context.Context, r io.Reader, w io.Writer, opt MCPOptions) err
 		core:            opt.Core,
 		log:             opt.Log,
 		enc:             json.NewEncoder(w),
+		output:          w,
 		tools:           toolSet(),
 		maxInFlight:     opt.MaxInFlight,
 		shutdownTimeout: opt.ShutdownTimeout,
@@ -113,6 +115,9 @@ func ServeMCP(ctx context.Context, r io.Reader, w io.Writer, opt MCPOptions) err
 		s.shutdownTimeout = DefaultMCPShutdownTimeout
 	}
 	s.slots = make(chan struct{}, s.maxInFlight)
+	s.responses = make(chan mcpResponse, s.maxInFlight+8)
+	s.stopWriter = make(chan struct{})
+	s.writerDone = make(chan struct{})
 	return s.run(ctx, r)
 }
 
@@ -123,10 +128,15 @@ type mcpServer struct {
 	maxInFlight     int
 	shutdownTimeout time.Duration
 	slots           chan struct{}
+	responses       chan mcpResponse
+	stopWriter      chan struct{}
+	writerDone      chan struct{}
+	stopWriterOnce  sync.Once
 
-	mu      sync.Mutex
+	writeMu sync.Mutex
 	enc     *json.Encoder
-	closed  bool
+	output  io.Writer
+	closed  atomic.Bool
 	cancelM sync.Mutex
 	cancels map[string]context.CancelFunc
 	stateM  sync.Mutex
@@ -134,6 +144,7 @@ type mcpServer struct {
 }
 
 func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
+	go s.writeLoop()
 	runCtx, cancelAll := context.WithCancel(ctx)
 	defer cancelAll()
 	reader := bufio.NewReaderSize(r, 64<<10)
@@ -251,15 +262,28 @@ func (s *mcpServer) shutdown(cancel context.CancelFunc, wg *sync.WaitGroup) erro
 
 	timer := time.NewTimer(s.shutdownTimeout)
 	defer timer.Stop()
+	timedOut := false
 	select {
 	case <-done:
 	case <-timer.C:
+		timedOut = true
 		s.report(fmt.Sprintf("shutdown: %d request(s) ignored cancellation after %s",
 			len(s.slots), s.shutdownTimeout))
 	}
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
+	s.closed.Store(true)
+	s.stopWriterOnce.Do(func() { close(s.stopWriter) })
+	if !timedOut {
+		select {
+		case <-s.writerDone:
+		case <-timer.C:
+			timedOut = true
+		}
+	}
+	if timedOut {
+		if closer, ok := s.output.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
 	return nil
 }
 
@@ -486,11 +510,37 @@ func (s *mcpServer) initialize(params json.RawMessage) (any, *mcpError) {
 // write serializes one message. The lock is what keeps two concurrent replies
 // from interleaving into a line no client can parse.
 func (s *mcpServer) write(msg mcpResponse) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.closed.Load() {
 		return
 	}
+	select {
+	case s.responses <- msg:
+	case <-s.stopWriter:
+	}
+}
+
+func (s *mcpServer) writeLoop() {
+	defer close(s.writerDone)
+	for {
+		select {
+		case msg := <-s.responses:
+			s.encode(msg)
+		case <-s.stopWriter:
+			for {
+				select {
+				case msg := <-s.responses:
+					s.encode(msg)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *mcpServer) encode(msg mcpResponse) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	if err := s.enc.Encode(msg); err != nil {
 		s.report("write: " + err.Error())
 	}

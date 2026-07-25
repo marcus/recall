@@ -92,7 +92,9 @@ func runServe(ctx context.Context, env Env, args []string) int {
 		return ExitError
 	}
 
+	shutdownDone := make(chan struct{})
 	stopShutdown := context.AfterFunc(ctx, func() {
+		defer close(shutdownDone)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -105,6 +107,16 @@ func runServe(ctx context.Context, env Env, args []string) int {
 	defer stopShutdown()
 
 	err = server.Serve(listener)
+	if ctx.Err() != nil {
+		// Serve returns as soon as Shutdown closes the listener. The drain (or
+		// forced-Close fallback) is still running and owns active handlers, so
+		// do not close the application core or let main call os.Exit until it
+		// has actually completed.
+		<-shutdownDone
+	} else if !stopShutdown() {
+		// The callback won the race with an unrelated Serve return.
+		<-shutdownDone
+	}
 	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		return ExitOK
 	}

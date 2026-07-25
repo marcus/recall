@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -288,6 +290,57 @@ func TestMCPShutdownDoesNotWaitForeverForNonCooperativeCore(t *testing.T) {
 		t.Fatalf("shutdown took %s, configured %s", elapsed, shutdown)
 	}
 	close(release)
+}
+
+func TestMCPBlockedOutputCannotDefeatShutdownBound(t *testing.T) {
+	output := newBlockingWriteCloser()
+	input := strings.NewReader(
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n")
+	const shutdown = 30 * time.Millisecond
+	started := time.Now()
+	if err := ServeMCP(t.Context(), input, output, MCPOptions{
+		Core: &stubCore{}, ShutdownTimeout: shutdown,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > 8*shutdown {
+		t.Fatalf("blocked output held shutdown for %s", elapsed)
+	}
+	select {
+	case <-output.writeStarted:
+	default:
+		t.Fatal("test did not exercise a blocked encoder write")
+	}
+	if !output.closed.Load() {
+		t.Fatal("shutdown timeout did not close blocked output")
+	}
+}
+
+type blockingWriteCloser struct {
+	writeStarted chan struct{}
+	unblock      chan struct{}
+	startOnce    sync.Once
+	closeOnce    sync.Once
+	closed       atomic.Bool
+}
+
+func newBlockingWriteCloser() *blockingWriteCloser {
+	return &blockingWriteCloser{
+		writeStarted: make(chan struct{}),
+		unblock:      make(chan struct{}),
+	}
+}
+
+func (w *blockingWriteCloser) Write([]byte) (int, error) {
+	w.startOnce.Do(func() { close(w.writeStarted) })
+	<-w.unblock
+	return 0, io.ErrClosedPipe
+}
+
+func (w *blockingWriteCloser) Close() error {
+	w.closed.Store(true)
+	w.closeOnce.Do(func() { close(w.unblock) })
+	return nil
 }
 
 func TestMCPLifecycleRequiresInitializeThenInitialized(t *testing.T) {
