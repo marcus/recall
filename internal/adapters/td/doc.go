@@ -39,14 +39,17 @@
 // way too: an instance would refuse a locator naming an issue held in the
 // database it had itself opened.
 //
-// Three things hold the identity to the database now. [resolveRoot] resolves
-// the root the way td does and [Adapter.Health] checks its answer against the
-// project name `td info` reports, degrading the source when they disagree. The
-// `workspace` setting asserts an identity rather than overriding one, so no
-// configured string can rename another workspace's database. And every
-// candidate carries a content fingerprint over the issue's own identity and
-// version, so even a duplicate configuration cannot corroborate itself — which
-// is what makes the failure recoverable rather than silent.
+// Four things hold the identity to the database now. [resolveRoot] follows td's
+// local-marker, association, git, and db.Open resolution order.
+// [Adapter.Health] checks that answer against `td info` and makes a mismatch
+// unusable. Search and Expand then verify the root with a pinned `td info` and
+// run every evidence command through td's supported
+// `--work-dir=<canonical-root>` flag; a later change to the configured
+// association cannot redirect one command in the operation. The `workspace`
+// setting asserts an identity rather than overriding one, so no configured
+// string can rename another workspace's database. Finally, every candidate
+// fingerprints the opaque store identity, issue id, and issue version, so even
+// a duplicate configuration cannot corroborate itself.
 //
 // # Boundary
 //
@@ -60,10 +63,12 @@
 //
 // [resolveRoot] is the one deliberate exception, and it is an exception in
 // form only: it mirrors td's resolution to learn WHICH database td will open,
-// never to open one, and nothing trusts its answer — td's own project name is
-// what confirms it on every probe. A mirror that drifts produces a source
-// reporting that it cannot confirm its identity, rather than one quietly
-// answering for the wrong workspace.
+// never to open one. Live retrieval refuses a root without
+// `.todos/issues.db`, refuses a root-level redirect, and requires the runner to
+// support a pinned `--work-dir`; pinned `td info` confirms the result before
+// evidence is read. A mirror that drifts produces a source reporting that it
+// cannot pin its identity, rather than one quietly answering for the wrong
+// workspace.
 //
 // The adapter owns no index: every search reads the workspace, which is why
 // the manifest declares only [recall.FreshnessLive].

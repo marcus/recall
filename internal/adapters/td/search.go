@@ -61,10 +61,11 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		// for.
 		return skipped(recall.SkipRecordTypeMismatch, "this source holds only td issues"), nil
 	}
-	ws, err := a.verifiedWorkspace(ctx)
+	pinned, ws, err := a.pinnedWorkspace(ctx)
 	if err != nil {
 		return fail(err, nil)
 	}
+	ctx = pinned
 	if req.Filters.Project != "" && !ws.answersTo(req.Filters.Project) {
 		// A td workspace is a project, so a project filter is how a request
 		// routes to one workspace among several. A workspace that is not the
@@ -90,10 +91,6 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	if exactErr != nil {
 		return fail(exactErr, gathered.timing())
 	}
-	if err := a.verifyWorkspaceUnchanged(ctx, ws); err != nil {
-		return fail(err, gathered.timing())
-	}
-
 	ranked := rank(gathered, exact, terms, set, req.Filters)
 	matched := len(ranked)
 

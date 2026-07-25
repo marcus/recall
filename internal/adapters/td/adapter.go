@@ -328,17 +328,70 @@ func (a *Adapter) verifiedWorkspace(ctx context.Context) (workspace, error) {
 	return ws, nil
 }
 
-// verifyWorkspaceUnchanged closes the check/use interval around evidence
-// reads. td is a one-shot CLI, so identity and evidence cannot be returned by
-// one process on current td; a mandatory post-read probe is the fail-closed
-// alternative. The caller discards everything it read when this fails.
-func (a *Adapter) verifyWorkspaceUnchanged(ctx context.Context, before workspace) error {
-	after, err := a.verifiedWorkspace(ctx)
+// pinnedWorkspace resolves the configured location once, then verifies td's
+// supported --work-dir pin against that canonical store. Every evidence
+// command in the operation receives the returned context and therefore cannot
+// follow a later association change at the configured location.
+func (a *Adapter) pinnedWorkspace(ctx context.Context) (context.Context, workspace, error) {
+	set, _, _, configured := a.config()
+	if set.Replay != "" {
+		return ctx, configured, nil
+	}
+
+	ws, err := a.verifiedWorkspace(ctx)
+	if err != nil {
+		return ctx, workspace{}, err
+	}
+	if err := a.checkPinnableRoot(ws.Root); err != nil {
+		return ctx, workspace{}, err
+	}
+
+	pinned := withPinnedRoot(ctx, ws.Root)
+	info, _, err := a.probeWorkspace(pinned)
+	if err != nil {
+		return ctx, workspace{}, err
+	}
+	configured.Root = ws.Root
+	bound, err := bindWorkspace(configured, info)
+	if err != nil {
+		return ctx, workspace{}, err
+	}
+	if bound.Root != ws.Root {
+		return ctx, workspace{}, fmt.Errorf("%w: pinned td work-dir resolved to another store",
+			protocol.ErrSourceUnavailable)
+	}
+	return pinned, bound, nil
+}
+
+// checkPinnableRoot proves the preconditions under which td --work-dir is a
+// store pin. At a directory containing .todos, td resolves there before
+// consulting mutable associations or git. A .td-root has higher precedence,
+// so its presence makes the directory unsafe to pin and is refused.
+func (a *Adapter) checkPinnableRoot(root string) error {
+	runner, _, err := a.session()
 	if err != nil {
 		return err
 	}
-	if before.Root != after.Root || before.Name != after.Name {
-		return fmt.Errorf("%w: td workspace changed while evidence was being read; evidence discarded",
+	if _, ok := runner.(PinnedRunner); !ok {
+		return fmt.Errorf("%w: td runner cannot pin --work-dir to a verified store",
+			protocol.ErrSourceUnavailable)
+	}
+	switch runner.(type) {
+	case ExecRunner, *ExecRunner:
+		// The real runner is checked against the filesystem below.
+	default:
+		// Injected runners prove pinning through the PinnedRunner contract.
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(root, todosDir, "issues.db")); err != nil {
+		return fmt.Errorf("%w: resolved td store cannot be pinned",
+			protocol.ErrSourceUnavailable)
+	}
+	if _, err := os.Lstat(filepath.Join(root, tdRootFile)); err == nil {
+		return fmt.Errorf("%w: resolved td store has a redirect marker and cannot be pinned",
+			protocol.ErrSourceUnavailable)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("%w: resolved td store redirect state cannot be verified",
 			protocol.ErrSourceUnavailable)
 	}
 	return nil

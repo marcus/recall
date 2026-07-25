@@ -35,10 +35,10 @@ const (
 // own. [Adapter.Health] compares the base name of what this function returned
 // against the project name `td info` reports — td's own statement about the
 // database it just read — and makes the source unusable when they disagree.
-// Search and Expand repeat that binding before they can emit or accept a
-// locator. A drift in td's resolution therefore surfaces as a source that
-// cannot confirm its identity, rather than as one that quietly answers for the
-// wrong workspace.
+// Search and Expand repeat that binding, then point every evidence command at
+// the bound root through td's supported --work-dir flag. A drift in td's
+// resolution therefore surfaces as a source that cannot confirm or pin its
+// identity, rather than as one that quietly answers for the wrong workspace.
 //
 // Filesystem reads only, in the common case. A repository holding its own
 // `.todos/` settles on the first check, so the ordinary configuration costs no

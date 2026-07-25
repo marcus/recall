@@ -42,19 +42,41 @@ const workspaceRoot = "/tmp/tdfix"
 type fakeCLI struct {
 	// reply maps a matcher over argv to a canned result.
 	reply func(args []string) (td.Result, error)
+	// pinnedReply can distinguish evidence run through a verified --work-dir.
+	// Nil means pinned and ordinary commands share the same fixture.
+	pinnedReply func(root string, args []string) (td.Result, error)
 
-	mu    sync.Mutex
-	calls [][]string
+	mu          sync.Mutex
+	calls       [][]string
+	pinnedRoots []string
+	ordinary    int
 }
 
 func (f *fakeCLI) Run(ctx context.Context, args ...string) (td.Result, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string(nil), args...))
+	f.ordinary++
 	f.mu.Unlock()
+	return f.respond(ctx, f.reply, args)
+}
+
+func (f *fakeCLI) RunPinned(ctx context.Context, root string, args ...string) (td.Result, error) {
+	f.mu.Lock()
+	f.calls = append(f.calls, append([]string(nil), args...))
+	f.pinnedRoots = append(f.pinnedRoots, root)
+	f.mu.Unlock()
+	reply := f.reply
+	if f.pinnedReply != nil {
+		reply = func(args []string) (td.Result, error) { return f.pinnedReply(root, args) }
+	}
+	return f.respond(ctx, reply, args)
+}
+
+func (f *fakeCLI) respond(ctx context.Context, reply func([]string) (td.Result, error), args []string) (td.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return td.Result{}, err
 	}
-	res, err := f.reply(args)
+	res, err := reply(args)
 	if err == nil && ctx.Err() != nil {
 		// What [td.ExecRunner] does: a child killed by the deadline also exits
 		// non-zero, and the deadline is the truer explanation.
@@ -73,10 +95,26 @@ func (wedgedCLI) Run(ctx context.Context, _ ...string) (td.Result, error) {
 	return td.Result{}, ctx.Err()
 }
 
+func (w wedgedCLI) RunPinned(ctx context.Context, _ string, args ...string) (td.Result, error) {
+	return w.Run(ctx, args...)
+}
+
 func (f *fakeCLI) invocations() [][]string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([][]string(nil), f.calls...)
+}
+
+func (f *fakeCLI) pinnedInvocations() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.pinnedRoots...)
+}
+
+func (f *fakeCLI) ordinaryInvocations() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ordinary
 }
 
 // countCalls reports how many invocations named a subcommand.

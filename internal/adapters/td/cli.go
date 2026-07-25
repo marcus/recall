@@ -36,6 +36,14 @@ type Runner interface {
 	Run(ctx context.Context, args ...string) (Result, error)
 }
 
+// PinnedRunner can run a command with td's supported --work-dir flag pointed
+// at an already-resolved database root. An adapter runner that cannot do this
+// cannot safely serve live evidence: separate commands against the original
+// location can resolve different associations.
+type PinnedRunner interface {
+	RunPinned(ctx context.Context, root string, args ...string) (Result, error)
+}
+
 // ExecRunner runs the real executable against one workspace.
 type ExecRunner struct {
 	// Binary is the executable path, or a name resolved on PATH.
@@ -54,12 +62,21 @@ type ExecRunner struct {
 
 // Run spawns td and waits for it.
 func (r ExecRunner) Run(ctx context.Context, args ...string) (Result, error) {
+	return r.runAt(ctx, r.Root, args...)
+}
+
+// RunPinned overrides the configured location with one resolved store root.
+func (r ExecRunner) RunPinned(ctx context.Context, root string, args ...string) (Result, error) {
+	return r.runAt(ctx, root, args...)
+}
+
+func (r ExecRunner) runAt(ctx context.Context, root string, args ...string) (Result, error) {
 	start := time.Now()
 	full := args
-	if r.Root != "" {
+	if root != "" {
 		// Prepended, not appended: it is a global flag, and putting it before
 		// the subcommand keeps it out of the argument the subcommand parses.
-		full = append([]string{"--work-dir=" + r.Root}, args...)
+		full = append([]string{"--work-dir=" + root}, args...)
 	}
 	cmd := exec.CommandContext(ctx, r.Binary, full...)
 	cmd.Env = r.Env
@@ -187,7 +204,21 @@ func (a *Adapter) run(ctx context.Context, args ...string) (Result, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if root, ok := ctx.Value(pinnedRootKey{}).(string); ok {
+		pinned, ok := runner.(PinnedRunner)
+		if !ok {
+			return Result{}, fmt.Errorf("%w: td runner cannot pin --work-dir to a verified store",
+				protocol.ErrSourceUnavailable)
+		}
+		return pinned.RunPinned(ctx, root, args...)
+	}
 	return runner.Run(ctx, args...)
+}
+
+type pinnedRootKey struct{}
+
+func withPinnedRoot(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, pinnedRootKey{}, root)
 }
 
 // errNotFound reports that td resolved the workspace and does not hold the

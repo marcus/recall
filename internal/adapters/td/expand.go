@@ -21,10 +21,11 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 	if _, _, err := a.session(); err != nil {
 		return recall.ExpandResponse{}, err
 	}
-	ws, err := a.verifiedWorkspace(ctx)
+	pinned, ws, err := a.pinnedWorkspace(ctx)
 	if err != nil {
 		return recall.ExpandResponse{}, err
 	}
+	ctx = pinned
 
 	id, err := ws.parse(req.Locator.Local)
 	if err != nil {
@@ -51,9 +52,6 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 	}
 
 	surrounding := a.expansionContext(ctx, id, req.Detail)
-	if err := a.verifyWorkspaceUnchanged(ctx, ws); err != nil {
-		return recall.ExpandResponse{}, err
-	}
 	content := render(rec, req.Detail, surrounding)
 	truncated, boundary := false, ""
 	if req.Budget > 0 && int64(len(content)) > req.Budget {

@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveBaseDirChecksLocalAssociationBeforeGitRoot(t *testing.T) {
@@ -28,6 +30,38 @@ func TestResolveBaseDirChecksLocalAssociationBeforeGitRoot(t *testing.T) {
 	})
 	if got != target {
 		t.Fatalf("resolved %s, want local association %s before git root %s", got, target, repo)
+	}
+}
+
+func TestCheckPinnableRootRequiresStoreAndNoRedirect(t *testing.T) {
+	root := t.TempDir()
+	todos := filepath.Join(root, todosDir)
+	if err := os.MkdirAll(todos, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(todos, "issues.db")
+	if err := os.WriteFile(db, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{ready: true, runner: ExecRunner{}, timeout: time.Second}
+
+	if err := a.checkPinnableRoot(root); err != nil {
+		t.Fatalf("ordinary td root is not pinnable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, tdRootFile), []byte("/elsewhere\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.checkPinnableRoot(root); err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("root-level redirect was not refused: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, tdRootFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.checkPinnableRoot(root); err == nil || !strings.Contains(err.Error(), "cannot be pinned") {
+		t.Fatalf("root without issues.db was not refused: %v", err)
 	}
 }
 

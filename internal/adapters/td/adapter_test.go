@@ -1,6 +1,7 @@
 package td_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -291,57 +292,91 @@ func TestAuthoritativeInfoRootBindsLocatorsAndFingerprints(t *testing.T) {
 	}
 }
 
-func TestIdentityChangeDuringSearchDiscardsEvidence(t *testing.T) {
+func TestSearchPinsEveryEvidenceReadAcrossAssociationABA(t *testing.T) {
 	first := filepath.Join(t.TempDir(), "api")
 	second := filepath.Join(t.TempDir(), "api")
-	cli := switchingWorkspace(t, first, second)
+	cli := abaWorkspace(t, first, second)
 	a, err := initAdapter(t, cli, first, nil)
 	if err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
 
 	resp, err := search(t, a, "adapter")
-	if err == nil {
-		t.Fatal("search succeeded after td changed databases mid-read")
+	if err != nil {
+		t.Fatalf("search: %v", err)
 	}
-	if !resp.Outcome.Degrades() || len(resp.Candidates) != 0 {
-		t.Fatalf("search outcome = %q with %d candidates, want failed with no evidence",
+	if resp.Outcome != recall.SearchSuccess || len(resp.Candidates) == 0 {
+		t.Fatalf("search outcome = %q with %d candidates, want pinned A evidence",
 			resp.Outcome, len(resp.Candidates))
 	}
-	if !strings.Contains(err.Error(), "evidence discarded") {
-		t.Errorf("error does not explain discarded evidence: %v", err)
+	if strings.Contains(resp.Candidates[0].Title, "ABA B") {
+		t.Fatalf("search emitted B-store evidence under an A-store locator: %+v", resp.Candidates[0])
 	}
-	for _, root := range []string{first, second} {
-		if strings.Contains(fmt.Sprint(resp.Diagnostics), root) || strings.Contains(err.Error(), root) {
-			t.Errorf("failure disclosed absolute root %s: %v / %v", root, err, resp.Diagnostics)
+	if cli.ordinaryInvocations() != 1 {
+		t.Fatalf("%d commands used mutable configured location, want discovery info only",
+			cli.ordinaryInvocations())
+	}
+	for i, root := range cli.pinnedInvocations() {
+		if root != first {
+			t.Errorf("pinned command %d used %s, want original A store %s", i, root, first)
 		}
+	}
+	if len(cli.pinnedInvocations()) < 2 {
+		t.Fatal("pinned info and evidence commands were not both observed")
 	}
 }
 
-func TestIdentityChangeDuringExpandDiscardsEvidence(t *testing.T) {
+func TestExpandPinsEveryEvidenceReadAcrossAssociationABA(t *testing.T) {
 	first := filepath.Join(t.TempDir(), "api")
 	second := filepath.Join(t.TempDir(), "api")
-	cli := switchingWorkspace(t, first, second)
+	cli := abaWorkspace(t, first, second)
 	a, err := initAdapter(t, cli, first, nil)
 	if err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
 
 	resp, err := expand(t, a, "api/"+idAdapter, recall.DetailFull, 0)
-	if err == nil {
-		t.Fatal("expand returned evidence after td changed databases mid-read")
+	if err != nil {
+		t.Fatalf("expand: %v", err)
 	}
-	if resp.Content != "" || resp.Provenance != "" {
-		t.Fatalf("expand leaked raced evidence: %+v", resp)
+	if !strings.Contains(resp.Content, "Adapter interface") {
+		t.Fatalf("expand did not return A-store evidence: %+v", resp)
 	}
-	if !strings.Contains(err.Error(), "evidence discarded") {
-		t.Errorf("error does not explain discarded evidence: %v", err)
+	if cli.ordinaryInvocations() != 1 {
+		t.Fatalf("%d commands used mutable configured location, want discovery info only",
+			cli.ordinaryInvocations())
+	}
+	for i, root := range cli.pinnedInvocations() {
+		if root != first {
+			t.Errorf("pinned command %d used %s, want original A store %s", i, root, first)
+		}
+	}
+	if len(cli.pinnedInvocations()) < 2 {
+		t.Fatal("pinned info and show commands were not both observed")
 	}
 }
 
+func TestSearchFailsClosedWhenRunnerCannotPinWorkDir(t *testing.T) {
+	cli := recordedWorkspace(t)
+	a := newAdapter(t, unpinnedOnly{Runner: cli}, nil)
+
+	resp, err := search(t, a, "adapter")
+	if err == nil {
+		t.Fatal("search used a runner with no --work-dir pin contract")
+	}
+	if len(resp.Candidates) != 0 || !resp.Outcome.Degrades() {
+		t.Fatalf("unpinable search returned evidence: %+v", resp)
+	}
+	if cli.countCalls("list") != 0 || cli.countCalls("search") != 0 {
+		t.Error("evidence commands ran before the runner's pin capability was established")
+	}
+}
+
+type unpinnedOnly struct{ td.Runner }
+
 func TestDiagnosticsAndEvidenceNeverDiscloseWorkspacePaths(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "private-owner", "api")
-	cli := switchingWorkspace(t, root, root)
+	cli := abaWorkspace(t, root, root)
 	a, err := initAdapter(t, cli, root, nil)
 	if err != nil {
 		t.Fatalf("initialize: %v", err)
@@ -368,27 +403,43 @@ func TestDiagnosticsAndEvidenceNeverDiscloseWorkspacePaths(t *testing.T) {
 	}
 }
 
-func switchingWorkspace(t *testing.T, firstRoot, secondRoot string) *fakeCLI {
+// abaWorkspace models a mutable configured association that is A for discovery,
+// B while evidence commands run, then A for a hypothetical final probe.
+// Pinned commands ignore that association and always answer from their explicit
+// root. The tests assert no evidence command reaches the ordinary path at all.
+func abaWorkspace(t *testing.T, firstRoot, secondRoot string) *fakeCLI {
 	t.Helper()
 	base := recordedWorkspace(t)
 	reply := base.reply
-	infoCalls := 0
 	base.reply = func(args []string) (td.Result, error) {
-		if args[0] != "info" {
-			return reply(args)
+		if args[0] == "info" {
+			return workspaceInfoAt(firstRoot), nil
 		}
-		infoCalls++
-		root := firstRoot
-		if infoCalls > 1 {
-			root = secondRoot
+		// This is the B interval. The second ordinary info call below would
+		// report A again, so the old pre/post check accepted this evidence.
+		res, err := reply(args)
+		if err == nil {
+			res.Stdout = bytes.ReplaceAll(res.Stdout,
+				[]byte("Adapter interface"), []byte("ABA B database"))
 		}
-		return ok([]byte(fmt.Sprintf(`{
+		_ = secondRoot // names the mutable association's B store in the test.
+		return res, err
+	}
+	base.pinnedReply = func(root string, args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return workspaceInfoAt(root), nil
+		}
+		return reply(args)
+	}
+	return base
+}
+
+func workspaceInfoAt(root string) td.Result {
+	return ok([]byte(fmt.Sprintf(`{
 			"project":"api",
 			"database":%q,
 			"issues":{"total":5,"open":3,"in_progress":1,"closed":1}
-		}`, filepath.Join(root, ".todos", "issues.db")))), nil
-	}
-	return base
+		}`, filepath.Join(root, ".todos", "issues.db"))))
 }
 
 func TestSameBasenameSeparateDatabasesDoNotShareFingerprints(t *testing.T) {
