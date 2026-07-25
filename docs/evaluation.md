@@ -238,6 +238,16 @@ slack for real movement: the smallest change one case can make to a forty-case
 average is around 1e-3. It exists so a difference in the last bit of a float
 between two architectures is not reported as a loss in retrieval quality.
 
+Comparison applies that rule to every defined overall rate, every case-tag
+group and its macro, and every source-family group and its macro. Any one loss
+makes the comparison unacceptable and `recall eval compare` exits 3; an overall
+gain cannot hide a family-specific loss. Machine-readable deltas carry explicit
+`dimension`, `population`, and `group` fields plus stable qualified keys such as
+`tag:group:documents`, `tag:macro`, `source_family:group:documents`, and
+`source_family:macro`. Thus a tag and a source family with the same display name
+remain different populations. Human regression labels spell out the dimension
+and whether the number is a group or macro for the same reason.
+
 ## Metrics
 
 | Metric | Use |

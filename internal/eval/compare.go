@@ -8,8 +8,16 @@ import (
 
 // Delta is one metric's movement between two runs.
 type Delta struct {
-	Metric    string  `json:"metric"`
-	Group     string  `json:"group,omitempty"`
+	Metric string `json:"metric"`
+
+	// Key is a stable, dimension-qualified population identity. Dimension,
+	// Population, and Group retain its structured form for machines that
+	// should not have to parse it.
+	Key        string `json:"key"`
+	Dimension  string `json:"dimension"`
+	Population string `json:"population"`
+	Group      string `json:"group,omitempty"`
+
 	Baseline  float64 `json:"baseline"`
 	Candidate float64 `json:"candidate"`
 	Change    float64 `json:"change"`
@@ -38,13 +46,15 @@ type Comparison struct {
 	Comparable bool     `json:"comparable"`
 	Blockers   []string `json:"blockers,omitempty"`
 
-	Overall []Delta      `json:"overall"`
-	ByTag   []Delta      `json:"by_tag,omitempty"`
-	Cases   []CaseChange `json:"cases,omitempty"`
+	Overall        []Delta      `json:"overall"`
+	ByTag          []Delta      `json:"by_tag,omitempty"`
+	BySourceFamily []Delta      `json:"by_source_family,omitempty"`
+	Cases          []CaseChange `json:"cases,omitempty"`
 
-	// Regressions names the groups that got worse. A gain in the aggregate that
-	// hides a loss in a group is the failure mode macro averaging exists to
-	// expose, so it is surfaced rather than left to be noticed.
+	// Regressions names every overall, group, or macro population that got
+	// worse. A gain in the aggregate that hides a loss in a group is the
+	// failure mode grouped reporting exists to expose, so it is surfaced
+	// rather than left to be noticed.
 	Regressions []Delta `json:"regressions,omitempty"`
 }
 
@@ -103,8 +113,15 @@ func Compare(baseline, candidate Run, baseScores, candScores []CaseScore) Compar
 			candidate.Environment.OS, candidate.Environment.Arch))
 	}
 
-	c.Overall = ratesDelta("", baseline.Metrics.Overall.Rates, candidate.Metrics.Overall.Rates)
-	c.ByTag = groupDeltas(baseline.Metrics.ByTag, candidate.Metrics.ByTag)
+	c.Overall = ratesDelta(
+		"overall", "overall", "overall", "",
+		baseline.Metrics.Overall.Rates, candidate.Metrics.Overall.Rates)
+	c.ByTag = groupDeltas("tag", baseline.Metrics.ByTag, candidate.Metrics.ByTag)
+	c.BySourceFamily = groupDeltas(
+		"source_family",
+		baseline.Metrics.BySourceFamily,
+		candidate.Metrics.BySourceFamily,
+	)
 
 	// A baseline frozen as a run record on its own carries no per-case detail:
 	// cases.jsonl holds excerpts and never enters the repository. Diffing
@@ -115,24 +132,29 @@ func Compare(baseline, candidate Run, baseScores, candScores []CaseScore) Compar
 		c.Cases = caseChanges(baseScores, candScores)
 	}
 
-	for _, d := range append(append([]Delta{}, c.Overall...), c.ByTag...) {
-		if d.Defined && d.Change < -floatNoise {
-			c.Regressions = append(c.Regressions, d)
+	for _, deltas := range [][]Delta{c.Overall, c.ByTag, c.BySourceFamily} {
+		for _, d := range deltas {
+			if d.Defined && d.Change < -floatNoise {
+				c.Regressions = append(c.Regressions, d)
+			}
 		}
 	}
 	return c
 }
 
-func ratesDelta(group string, base, cand Rates) []Delta {
+func ratesDelta(key, dimension, population, group string, base, cand Rates) []Delta {
 	var out []Delta
 	for _, f := range rateFields() {
 		b, cv := *f.mean(&base), *f.mean(&cand)
 		d := Delta{
-			Metric:    f.name,
-			Group:     group,
-			Baseline:  b.Value,
-			Candidate: cv.Value,
-			Defined:   b.Defined() && cv.Defined(),
+			Metric:     f.name,
+			Key:        key,
+			Dimension:  dimension,
+			Population: population,
+			Group:      group,
+			Baseline:   b.Value,
+			Candidate:  cv.Value,
+			Defined:    b.Defined() && cv.Defined(),
 		}
 		if d.Defined {
 			d.Change = cv.Value - b.Value
@@ -150,7 +172,7 @@ func ratesDelta(group string, base, cand Rates) []Delta {
 	return out
 }
 
-func groupDeltas(base, cand GroupReport) []Delta {
+func groupDeltas(dimension string, base, cand GroupReport) []Delta {
 	var out []Delta
 	names := map[string]bool{}
 	for k := range base.Groups {
@@ -166,8 +188,23 @@ func groupDeltas(base, cand GroupReport) []Delta {
 	sort.Strings(keys)
 
 	for _, name := range keys {
-		out = append(out, ratesDelta(name, base.Groups[name].Rates, cand.Groups[name].Rates)...)
+		out = append(out, ratesDelta(
+			dimension+":group:"+name,
+			dimension,
+			"group",
+			name,
+			base.Groups[name].Rates,
+			cand.Groups[name].Rates,
+		)...)
 	}
+	out = append(out, ratesDelta(
+		dimension+":macro",
+		dimension,
+		"macro",
+		"",
+		base.Macro.Rates,
+		cand.Macro.Rates,
+	)...)
 	return out
 }
 
@@ -259,11 +296,7 @@ func SummarizeComparison(c Comparison) string {
 		b.WriteString("\n## Regressions\n\n")
 		b.WriteString("A gain in the aggregate does not excuse any of these.\n\n")
 		for _, d := range c.Regressions {
-			label := d.Metric
-			if d.Group != "" {
-				label = d.Group + "/" + d.Metric
-			}
-			fmt.Fprintf(&b, "- %s: %+.4f\n", label, d.Change)
+			fmt.Fprintf(&b, "- %s: %+.4f\n", deltaLabel(d), d.Change)
 		}
 	}
 
@@ -274,4 +307,18 @@ func SummarizeComparison(c Comparison) string {
 		}
 	}
 	return b.String()
+}
+
+func deltaLabel(d Delta) string {
+	switch d.Population {
+	case "overall":
+		return d.Metric
+	case "macro":
+		return strings.ReplaceAll(d.Dimension, "_", " ") + " macro/" + d.Metric
+	case "group":
+		return fmt.Sprintf("%s group %q/%s",
+			strings.ReplaceAll(d.Dimension, "_", " "), d.Group, d.Metric)
+	default:
+		return d.Key + "/" + d.Metric
+	}
 }

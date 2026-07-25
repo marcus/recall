@@ -96,6 +96,74 @@ func TestCompareExitsNonZeroWhenAMetricMovedDown(t *testing.T) {
 	}
 }
 
+func sourceFamilyRegressionRun(id string, familyNDCG float64) eval.Run {
+	r := runAt(id, 0.8)
+	stable := eval.Rates{NDCG10: eval.Mean{Value: 0.8, N: 1}}
+	family := eval.Rates{NDCG10: eval.Mean{Value: familyNDCG, N: 1}}
+	r.Metrics.ByTag = eval.GroupReport{
+		Groups: map[string]eval.Metrics{
+			"shared": {Rates: stable},
+		},
+		Macro: eval.Macro{Rates: stable, Groups: 1},
+	}
+	r.Metrics.BySourceFamily = eval.GroupReport{
+		Groups: map[string]eval.Metrics{
+			"shared": {Rates: family},
+		},
+		Macro: eval.Macro{Rates: family, Groups: 1},
+	}
+	return r
+}
+
+// This pair keeps overall and a same-named tag stable while only the source
+// family loses quality. It is the regression the old comparison omitted:
+// rendering looked clean and CI exited zero because BySourceFamily never
+// reached the verdict.
+func TestCompareRejectsHiddenSourceFamilyLoss(t *testing.T) {
+	h := newHarness(t, harnessOptions{userTOML: twoSourceTOML})
+
+	baselineRun := sourceFamilyRegressionRun("baseline", 0.8)
+	currentRun := sourceFamilyRegressionRun("current", 0.7)
+	baseline := writeBaselineFile(t, baselineRun)
+	current := writeRunDir(t, currentRun, []eval.CaseScore{{CaseID: "c1"}})
+
+	code, out, stderr := h.run("eval", "compare", baseline, current)
+	if code != cli.ExitInvalid {
+		t.Fatalf("exit = %d, want %d: source-family loss left CI green\n%s%s",
+			code, cli.ExitInvalid, out, stderr)
+	}
+	for _, want := range []string{
+		"Regressed",
+		`source family group "shared"/ndcg_at_10`,
+		"source family macro/ndcg_at_10",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("human comparison does not identify %q:\n%s", want, out)
+		}
+	}
+
+	code, out, stderr = h.run("eval", "compare", "--json", baseline, current)
+	if code != cli.ExitInvalid {
+		t.Fatalf("JSON exit = %d, want %d: %s%s", code, cli.ExitInvalid, out, stderr)
+	}
+	var got eval.Comparison
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("--json is not valid JSON: %v\n%s", err, out)
+	}
+	if got.Acceptable() {
+		t.Fatal("JSON comparison called the source-family loss acceptable")
+	}
+	if len(got.Regressions) != 2 {
+		t.Fatalf("JSON regressions = %+v, want family group and macro", got.Regressions)
+	}
+	for _, regression := range got.Regressions {
+		if regression.Dimension != "source_family" ||
+			!strings.HasPrefix(regression.Key, "source_family:") {
+			t.Errorf("JSON regression is dimension-ambiguous: %+v", regression)
+		}
+	}
+}
+
 // --json is what a script reads, so it must reach the same verdict as the
 // rendered report. It used to exit 0 whatever it found.
 func TestCompareJSONReachesTheSameVerdict(t *testing.T) {
