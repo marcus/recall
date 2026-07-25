@@ -197,6 +197,9 @@ func (c *Config) mergeAdapters(f sourceFile) error {
 		if raw.Command != nil {
 			def.Command = *raw.Command
 		}
+		if raw.Conformance != nil {
+			def.Conformance = *raw.Conformance
+		}
 		for _, sname := range slices.Sorted(maps.Keys(raw.Secrets)) {
 			def.Secrets[sname] = raw.Secrets[sname].ref()
 		}

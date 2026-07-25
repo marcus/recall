@@ -299,7 +299,11 @@ recorded it. The manifest settles them:
   rather than passing short.
 
 `recall doctor --conformance <adapter>` replays each case and diffs responses,
-ignoring declared-volatile fields (timestamps, latency). Required cases:
+ignoring declared-volatile fields (timestamps, latency). It finds the suite
+through the adapter's registration, which names the directory in
+`conformance`; see [adapter registration](spec.md#adapter-registration). An
+adapter that declares none is reported as unchecked rather than as passing,
+because "verified nothing" must never read as "verified". Required cases:
 
 - Handshake, including a version-range rejection.
 - Search returning ranked candidates with stable locators.

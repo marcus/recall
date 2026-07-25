@@ -103,6 +103,17 @@ func (c *Config) validateAdapter(a AdapterDefinition) error {
 			"command %q must be an absolute path or a bare name resolved on PATH; a relative "+
 				"path would resolve against whatever directory Recall was started in", a.Command))
 	}
+	if a.Builtin && a.Conformance != "" {
+		probs.add(invalidErrorf(a.Origin.File, key+".conformance",
+			"adapter %q is built in and runs no process for a transcript to be replayed against",
+			a.Name))
+	}
+	if a.Conformance != "" && !strings.HasPrefix(a.Conformance, "/") {
+		probs.add(invalidErrorf(a.Origin.File, key+".conformance",
+			"conformance %q must be an absolute path; a relative one would resolve against "+
+				"whatever directory Recall was started in, and a run that checked the wrong "+
+				"suite is worse than one that checked nothing", a.Conformance))
+	}
 	for _, name := range slices.Sorted(maps.Keys(a.Secrets)) {
 		probs.add(validateSecret(a.Origin.File, key+".secrets."+name, a.Secrets[name]))
 	}

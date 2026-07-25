@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "Three references that do not resolve, and the two different facts they represent. A local part that is not an ongoing project id at all is locator_unknown (-32002): this adapter cannot read it. A well-formed id the catalog no longer holds is locator_expired (-32003): the project was removed, or it moved on disk and was recatalogued under the id its new canonical path produces \u2014 under ongoing's own identity rules a different project, and never grounds for returning a nearby one. The third is expired for a third reason worth separating: this source is configured with views = [\"momentum\"], and hnbooks is a real project this instance does not serve. That is the configured views filter working end to end, on the expansion side as well as the search side.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 4
+}

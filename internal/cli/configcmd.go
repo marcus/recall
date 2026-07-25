@@ -116,6 +116,7 @@ func renderExplanation(o *out, e *config.Explanation) {
 		f.text("args", strings.Join(a.Args, " "))
 		f.text("env", mapLine(a.Env))
 		f.text("freshness modes", strings.Join(a.FreshnessModes, ", "))
+		f.text("conformance", a.Conformance)
 		f.text("secrets", mapLine(a.Secrets))
 		o.block("  ", fmt.Sprintf("%s  %s  [%s]", a.Name, f.String(), origin(string(a.Layer), a.Origin)))
 	}

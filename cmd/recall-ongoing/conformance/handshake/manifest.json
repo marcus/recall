@@ -1,0 +1,14 @@
+{
+  "case": "handshake",
+  "description": "A version range the adapter can satisfy: it negotiates 1, declares its manifest, and answers a health probe against a recorded catalog whose last scan finished eight hours before the response was generated. recall/refresh follows and returns the same health, unchanged: this source is live and owns no projection, so there is nothing to bring up to date, and reporting work it did not do would let a caller believe a stale catalog had been rescanned.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at"
+  ],
+  "responses": 3
+}

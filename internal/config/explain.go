@@ -58,6 +58,7 @@ type AdapterView struct {
 	Args           []string          `json:"args,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	FreshnessModes []string          `json:"freshness_modes"`
+	Conformance    string            `json:"conformance,omitempty"`
 	// Secrets are rendered as references, for example "env_var:JIRA_TOKEN".
 	Secrets map[string]string `json:"secrets,omitempty"`
 }
@@ -142,13 +143,14 @@ func newField(value any, o Origin) Field {
 
 func explainAdapter(a AdapterDefinition) AdapterView {
 	v := AdapterView{
-		Name:    a.Name,
-		Builtin: a.Builtin,
-		Layer:   a.Origin.Layer,
-		Origin:  a.Origin.File,
-		Command: a.Command,
-		Args:    a.Args,
-		Env:     a.Env,
+		Name:        a.Name,
+		Builtin:     a.Builtin,
+		Layer:       a.Origin.Layer,
+		Origin:      a.Origin.File,
+		Command:     a.Command,
+		Args:        a.Args,
+		Env:         a.Env,
+		Conformance: a.Conformance,
 	}
 	for _, mode := range a.FreshnessModes {
 		v.FreshnessModes = append(v.FreshnessModes, string(mode))

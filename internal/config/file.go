@@ -37,6 +37,7 @@ type rawAdapter struct {
 	Env            map[string]string    `toml:"env"`
 	Secrets        map[string]rawSecret `toml:"secrets"`
 	FreshnessModes []string             `toml:"freshness_modes"`
+	Conformance    *string              `toml:"conformance"`
 }
 
 type rawSecret struct {

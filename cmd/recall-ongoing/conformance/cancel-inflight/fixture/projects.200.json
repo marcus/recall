@@ -1,0 +1,578 @@
+{
+  "generatedAt": "2026-07-24T12:00:00.000Z",
+  "hiddenCount": 2,
+  "totalCount": 7,
+  "loadError": null,
+  "scan": {
+    "id": "scan_c0ffee00-1111-2222-3333-444455556666",
+    "reason": "cli",
+    "status": "completed",
+    "startedAt": "2026-07-24T04:00:00.000Z",
+    "finishedAt": "2026-07-24T04:05:00.000Z",
+    "discoveredCount": 5,
+    "updatedCount": 5,
+    "errorCount": 1
+  },
+  "projects": [
+    {
+      "id": "project_1111111111111111111111aa",
+      "canonicalPath": "/srv/code/recall",
+      "relativePath": "recall",
+      "name": "recall",
+      "scanRoot": "/srv/code",
+      "isFavorite": true,
+      "isHidden": false,
+      "note": "Agent memory. The retrieval layer everything else asks.",
+      "intent": "invest",
+      "excitement": 5,
+      "strategicImportance": 5,
+      "nextAction": "Ship the ongoing adapter",
+      "reviewAfter": null,
+      "isMissing": false,
+      "firstSeenAt": "2026-06-01T00:00:00.000Z",
+      "lastSeenAt": "2026-07-24T04:01:00.000Z",
+      "updatedAt": "2026-07-24T04:01:00.000Z",
+      "metrics": {
+        "projectId": "project_1111111111111111111111aa",
+        "headSha": "0badc0de0badc0de0badc0de0badc0de0badc0de",
+        "branch": "main",
+        "latestCommitAt": "2026-07-24T03:12:00.000Z",
+        "latestCommitSubject": "feat(eval): recall eval, the first baseline, and the bug it found",
+        "latestCommitShortSha": "0badc0d",
+        "commitCount": 24,
+        "commits7d": 18,
+        "commits30d": 24,
+        "commits90d": 24,
+        "activeDays30d": 6,
+        "activeDays90d": 6,
+        "churnAdded30d": 41000,
+        "churnDeleted30d": 900,
+        "contributorCount": 1,
+        "localAuthorCommitShare30d": 1,
+        "dirtyFiles": 0,
+        "aheadCount": 0,
+        "behindCount": 0,
+        "latestTag": null,
+        "commitsSinceLatestTag": null,
+        "locCode": 31240,
+        "locComment": 9100,
+        "locBlank": 4300,
+        "locFiles": 118,
+        "locTest": 12800,
+        "dominantLanguage": "Go",
+        "locFingerprint": "aaaa",
+        "tdOpenCount": 21,
+        "tdInProgressCount": 1,
+        "tdBlockedCount": 0,
+        "tdReviewCount": 0,
+        "tdTotalNonClosedCount": 22,
+        "tdStaleCount": 0,
+        "githubRepoId": null,
+        "githubOwner": null,
+        "githubName": null,
+        "githubVisibility": null,
+        "githubIsArchived": null,
+        "githubStars": null,
+        "githubForks": null,
+        "githubOpenIssues": null,
+        "githubOpenPrs": null,
+        "githubExternalPrs": null,
+        "githubOldestExternalPrAt": null,
+        "githubMergedPrs30d": null,
+        "githubExternalIssues30d": null,
+        "githubLatestReleaseAt": null,
+        "githubLatestReleaseTag": null,
+        "githubCiState": null,
+        "githubAvailability": "unavailable",
+        "githubTrafficViews": null,
+        "githubTrafficUniqueVisitors": null,
+        "githubTrafficClones": null,
+        "githubTrafficAvailability": "unavailable",
+        "gitScannedAt": "2026-07-24T04:01:00.000Z",
+        "locScannedAt": "2026-07-24T04:01:00.000Z",
+        "tdScannedAt": "2026-07-24T04:01:00.000Z",
+        "githubScannedAt": null,
+        "githubTrafficScannedAt": null
+      },
+      "snapshots": [
+        {
+          "projectId": "project_1111111111111111111111aa",
+          "metric": "loc_code",
+          "capturedOn": "2026-07-20",
+          "value": 24100
+        },
+        {
+          "projectId": "project_1111111111111111111111aa",
+          "metric": "loc_code",
+          "capturedOn": "2026-07-22",
+          "value": 28600
+        },
+        {
+          "projectId": "project_1111111111111111111111aa",
+          "metric": "loc_code",
+          "capturedOn": "2026-07-24",
+          "value": 31240
+        }
+      ],
+      "errors": [],
+      "views": [
+        "momentum"
+      ],
+      "githubTrafficViewsDelta30d": null,
+      "githubTrafficClonesDelta30d": null,
+      "attention": {
+        "attention": {
+          "key": "attention",
+          "member": false,
+          "reasons": []
+        },
+        "rising": {
+          "key": "rising",
+          "member": false,
+          "reasons": []
+        },
+        "quickwin": {
+          "key": "quickwin",
+          "member": false,
+          "reasons": []
+        },
+        "opportunity": {
+          "key": "opportunity",
+          "member": false,
+          "reasons": []
+        },
+        "momentum": {
+          "key": "momentum",
+          "member": true,
+          "reasons": [
+            {
+              "source": "git",
+              "message": "24 commits in 30 days",
+              "input": "commits30d",
+              "value": 24,
+              "comparison": ">=",
+              "threshold": 10
+            },
+            {
+              "source": "git",
+              "message": "Active on 6 days this month",
+              "input": "activeDays30d",
+              "value": 6,
+              "comparison": ">=",
+              "threshold": 5
+            }
+          ]
+        },
+        "dormant": {
+          "key": "dormant",
+          "member": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "id": "project_2222222222222222222222bb",
+      "canonicalPath": "/srv/code/hnbooks",
+      "relativePath": "hnbooks",
+      "name": "hnbooks",
+      "scanRoot": "/srv/code",
+      "isFavorite": false,
+      "isHidden": false,
+      "note": "",
+      "intent": null,
+      "excitement": null,
+      "strategicImportance": null,
+      "nextAction": null,
+      "reviewAfter": null,
+      "isMissing": false,
+      "firstSeenAt": "2025-01-04T00:00:00.000Z",
+      "lastSeenAt": "2026-07-24T04:02:00.000Z",
+      "updatedAt": "2026-07-24T04:02:00.000Z",
+      "metrics": {
+        "projectId": "project_2222222222222222222222bb",
+        "headSha": "feedface00000000000000000000000000000000",
+        "branch": "main",
+        "latestCommitAt": "2026-02-10T09:30:00.000Z",
+        "latestCommitSubject": "chore: bump the scraper user agent",
+        "latestCommitShortSha": "feedfac",
+        "commitCount": 312,
+        "commits7d": 0,
+        "commits30d": 0,
+        "commits90d": 0,
+        "activeDays30d": 0,
+        "activeDays90d": 0,
+        "churnAdded30d": 0,
+        "churnDeleted30d": 0,
+        "contributorCount": 4,
+        "localAuthorCommitShare30d": null,
+        "dirtyFiles": 0,
+        "aheadCount": 0,
+        "behindCount": 0,
+        "latestTag": "v2.1.0",
+        "commitsSinceLatestTag": 14,
+        "locCode": 4200,
+        "locComment": 300,
+        "locBlank": 500,
+        "locFiles": 41,
+        "locTest": 900,
+        "dominantLanguage": "Python",
+        "locFingerprint": "bbbb",
+        "tdOpenCount": null,
+        "tdInProgressCount": null,
+        "tdBlockedCount": null,
+        "tdReviewCount": null,
+        "tdTotalNonClosedCount": null,
+        "tdStaleCount": null,
+        "githubRepoId": "R_hnbooks",
+        "githubOwner": "marcus",
+        "githubName": "hnbooks",
+        "githubVisibility": "public",
+        "githubIsArchived": false,
+        "githubStars": 137,
+        "githubForks": 12,
+        "githubOpenIssues": 3,
+        "githubOpenPrs": 1,
+        "githubDraftPrs": 0,
+        "githubReadyPrs": 1,
+        "githubOwnerPrs": 0,
+        "githubExternalPrs": 1,
+        "githubOldestExternalPrAt": "2026-04-01T00:00:00.000Z",
+        "githubMergedPrs30d": 0,
+        "githubMergedPrs90d": 0,
+        "githubExternalIssues30d": 0,
+        "githubExternalIssues90d": 1,
+        "githubLatestReleaseAt": "2025-11-02T00:00:00.000Z",
+        "githubLatestReleaseTag": "v2.1.0",
+        "githubReleaseDownloads": 2100,
+        "githubCiState": "success",
+        "githubContributorCount": 4,
+        "githubTrafficViews": 410,
+        "githubTrafficUniqueVisitors": 190,
+        "githubTrafficClones": 33,
+        "githubTrafficUniqueCloners": 28,
+        "githubAvailability": "available",
+        "githubTrafficAvailability": "available",
+        "gitScannedAt": "2026-07-24T04:02:00.000Z",
+        "locScannedAt": "2026-07-24T04:02:00.000Z",
+        "tdScannedAt": "2026-07-24T04:02:00.000Z",
+        "githubScannedAt": "2026-07-24T04:02:00.000Z",
+        "githubTrafficScannedAt": "2026-07-24T04:02:00.000Z"
+      },
+      "snapshots": [
+        {
+          "projectId": "project_2222222222222222222222bb",
+          "metric": "github_stars",
+          "capturedOn": "2026-07-20",
+          "value": 136
+        },
+        {
+          "projectId": "project_2222222222222222222222bb",
+          "metric": "github_stars",
+          "capturedOn": "2026-07-24",
+          "value": 137
+        }
+      ],
+      "errors": [],
+      "views": [
+        "attention",
+        "opportunity",
+        "dormant"
+      ],
+      "githubTrafficViewsDelta30d": 4,
+      "githubTrafficClonesDelta30d": 1,
+      "attention": {
+        "attention": {
+          "key": "attention",
+          "member": true,
+          "reasons": [
+            {
+              "source": "github",
+              "message": "Oldest external PR is 114 days old",
+              "input": "githubOldestExternalPrAgeDays",
+              "value": 114,
+              "comparison": ">=",
+              "threshold": 30
+            }
+          ]
+        },
+        "rising": {
+          "key": "rising",
+          "member": false,
+          "reasons": []
+        },
+        "quickwin": {
+          "key": "quickwin",
+          "member": false,
+          "reasons": []
+        },
+        "opportunity": {
+          "key": "opportunity",
+          "member": true,
+          "reasons": [
+            {
+              "source": "git",
+              "message": "Only 0 commits in 30 days",
+              "input": "commits30d",
+              "value": 0,
+              "comparison": "<=",
+              "threshold": 5
+            },
+            {
+              "source": "github",
+              "message": "137 stars show established interest",
+              "input": "githubStars",
+              "value": 137,
+              "comparison": ">=",
+              "threshold": 100
+            },
+            {
+              "source": "github",
+              "message": "1 external PR(s) are open",
+              "input": "githubExternalPrs",
+              "value": 1,
+              "comparison": ">",
+              "threshold": 0
+            }
+          ]
+        },
+        "momentum": {
+          "key": "momentum",
+          "member": false,
+          "reasons": []
+        },
+        "dormant": {
+          "key": "dormant",
+          "member": true,
+          "reasons": [
+            {
+              "source": "git",
+              "message": "No commits in 30 days; latest commit is 164 days old",
+              "input": "latestCommitAgeDays",
+              "value": 164,
+              "comparison": ">=",
+              "threshold": 90
+            },
+            {
+              "source": "github",
+              "message": "No current external PRs, recent external issues, or star growth",
+              "input": "knownDemandSignals",
+              "value": 0,
+              "comparison": "=",
+              "threshold": 0
+            },
+            {
+              "source": "decision",
+              "message": "Project is not marked invest",
+              "input": "intent",
+              "value": null,
+              "comparison": "!=",
+              "threshold": "invest"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "project_3333333333333333333333cc",
+      "canonicalPath": "/srv/code/vellum",
+      "relativePath": "vellum",
+      "name": "vellum",
+      "scanRoot": "/srv/code",
+      "isFavorite": false,
+      "isHidden": false,
+      "note": "Typesetting experiment",
+      "intent": "hibernate",
+      "excitement": null,
+      "strategicImportance": null,
+      "nextAction": null,
+      "reviewAfter": "2026-09-01",
+      "isMissing": true,
+      "firstSeenAt": "2025-08-11T00:00:00.000Z",
+      "lastSeenAt": "2026-07-24T04:03:00.000Z",
+      "updatedAt": "2026-07-24T04:03:00.000Z",
+      "metrics": {
+        "projectId": "project_3333333333333333333333cc",
+        "headSha": null,
+        "branch": null,
+        "latestCommitAt": null,
+        "latestCommitSubject": null,
+        "latestCommitShortSha": null,
+        "commitCount": null,
+        "commits7d": null,
+        "commits30d": null,
+        "commits90d": null,
+        "activeDays30d": null,
+        "activeDays90d": null,
+        "churnAdded30d": null,
+        "churnDeleted30d": null,
+        "contributorCount": null,
+        "localAuthorCommitShare30d": null,
+        "dirtyFiles": null,
+        "aheadCount": null,
+        "behindCount": null,
+        "latestTag": null,
+        "commitsSinceLatestTag": null,
+        "locCode": null,
+        "locComment": null,
+        "locBlank": null,
+        "locFiles": null,
+        "locTest": null,
+        "dominantLanguage": null,
+        "locFingerprint": null,
+        "tdOpenCount": null,
+        "tdInProgressCount": null,
+        "tdBlockedCount": null,
+        "tdReviewCount": null,
+        "tdTotalNonClosedCount": null,
+        "tdStaleCount": null,
+        "githubRepoId": null,
+        "githubOwner": null,
+        "githubName": null,
+        "githubVisibility": null,
+        "githubIsArchived": null,
+        "githubStars": null,
+        "githubForks": null,
+        "githubOpenIssues": null,
+        "githubOpenPrs": null,
+        "githubExternalPrs": null,
+        "githubOldestExternalPrAt": null,
+        "githubMergedPrs30d": null,
+        "githubExternalIssues30d": null,
+        "githubLatestReleaseAt": null,
+        "githubLatestReleaseTag": null,
+        "githubCiState": null,
+        "githubAvailability": "unavailable",
+        "githubTrafficViews": null,
+        "githubTrafficUniqueVisitors": null,
+        "githubTrafficClones": null,
+        "githubTrafficAvailability": "unavailable",
+        "gitScannedAt": null,
+        "locScannedAt": null,
+        "tdScannedAt": null,
+        "githubScannedAt": null,
+        "githubTrafficScannedAt": null
+      },
+      "snapshots": [],
+      "errors": [
+        {
+          "projectId": "project_3333333333333333333333cc",
+          "collector": "git",
+          "message": "Repository directory could not be opened",
+          "occurredAt": "2026-07-24T04:03:00.000Z",
+          "resolvedAt": null
+        }
+      ],
+      "views": [
+        "attention"
+      ],
+      "githubTrafficViewsDelta30d": null,
+      "githubTrafficClonesDelta30d": null,
+      "attention": {
+        "attention": {
+          "key": "attention",
+          "member": true,
+          "reasons": [
+            {
+              "source": "catalog",
+              "message": "Repository is missing from disk",
+              "input": "isMissing",
+              "value": true,
+              "comparison": "=",
+              "threshold": true
+            },
+            {
+              "source": "catalog",
+              "message": "1 collector warning needs inspection",
+              "input": "unresolvedCollectorErrors",
+              "value": 1,
+              "comparison": ">",
+              "threshold": 0
+            }
+          ]
+        },
+        "rising": {
+          "key": "rising",
+          "member": false,
+          "reasons": []
+        },
+        "quickwin": {
+          "key": "quickwin",
+          "member": false,
+          "reasons": []
+        },
+        "opportunity": {
+          "key": "opportunity",
+          "member": false,
+          "reasons": []
+        },
+        "momentum": {
+          "key": "momentum",
+          "member": false,
+          "reasons": []
+        },
+        "dormant": {
+          "key": "dormant",
+          "member": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "id": "project_4444444444444444444444dd",
+      "canonicalPath": "/srv/code/atlas",
+      "relativePath": "atlas",
+      "name": "atlas",
+      "scanRoot": "/srv/code",
+      "isFavorite": false,
+      "isHidden": false,
+      "note": "",
+      "intent": null,
+      "excitement": null,
+      "strategicImportance": null,
+      "nextAction": null,
+      "reviewAfter": null,
+      "isMissing": false,
+      "firstSeenAt": "2026-07-24T04:04:00.000Z",
+      "lastSeenAt": "2026-07-24T04:04:00.000Z",
+      "updatedAt": "2026-07-24T04:04:00.000Z",
+      "metrics": null,
+      "snapshots": [],
+      "errors": [],
+      "views": [],
+      "githubTrafficViewsDelta30d": null,
+      "githubTrafficClonesDelta30d": null,
+      "attention": {
+        "attention": {
+          "key": "attention",
+          "member": false,
+          "reasons": []
+        },
+        "rising": {
+          "key": "rising",
+          "member": false,
+          "reasons": []
+        },
+        "quickwin": {
+          "key": "quickwin",
+          "member": false,
+          "reasons": []
+        },
+        "opportunity": {
+          "key": "opportunity",
+          "member": false,
+          "reasons": []
+        },
+        "momentum": {
+          "key": "momentum",
+          "member": false,
+          "reasons": []
+        },
+        "dormant": {
+          "key": "dormant",
+          "member": false,
+          "reasons": []
+        }
+      }
+    }
+  ]
+}
