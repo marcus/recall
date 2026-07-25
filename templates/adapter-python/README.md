@@ -88,6 +88,7 @@ never a claim about it. After changing behavior:
 python3 conformance.py record          # rewrites every response.jsonl
 git diff conformance/                  # read this. every line is a decision
 python3 conformance.py verify
+python3 -m unittest -v test_recall_notes.py
 ```
 
 `record` refuses a case whose run produced a different number of frames than
@@ -104,8 +105,9 @@ Keep, and change only with a reason you can write down:
 
 - `store_identity` naming the store you **opened**, hashed. Two instances of one
   adapter reporting one value is a configuration error nothing else can see.
-- `content_fingerprint` over the record's own identity and content, and over
-  nothing about where this instance found it.
+- `content_fingerprint` over every material record field — title, heading,
+  tags, date, sensitivity, aliases, body, and lineage — and over nothing about
+  where this instance found it.
 - `source_record_id` being the record, while `candidate_id` is the hit. Several
   sections of one note are several candidates and one piece of evidence.
 - Every path that returns `partial`, and every diagnostic that says why. There
@@ -113,6 +115,10 @@ Keep, and change only with a reason you can write down:
   could not be applied, and a source that could not be reached at all.
 - The refusal to derive an event time from a file's mtime.
 - `one_line` and `safe_text` on every string that leaves the process.
+- Byte limits that include the UTF-8 ellipsis, rather than appending it after
+  the budget has already been spent.
+- A durable checkpoint publication pointer for immutable digest-bound index
+  generations; a failed checkpoint keeps the prior generation answering.
 - The `--version` flag and the stderr-only logging.
 
 Throw away: the note format, the header keys, the section splitting, the field

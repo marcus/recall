@@ -229,6 +229,12 @@ the store identity are precisely what two instances over one store disagree
 about; a fingerprint built on any of them differs for the same record and
 defeats its own purpose.
 
+"Content" means every field that can change the evidence or its interpretation,
+not the body alone. The template binds title, heading, tags, date, sensitivity,
+aliases, body, and `derived_from` lineage into each fingerprint. Its source
+watermark independently hashes the raw source bytes, so a header-only edit and
+an unreadable record changing while it remains unreadable both move freshness.
+
 ### `source_record_id` is the record, not the hit
 
 `candidate_id` identifies this hit. `source_record_id` identifies the *record*.
@@ -311,12 +317,16 @@ The obligations, in the order they matter (full list in
 - **The index is a rebuildable projection, never the source of truth.** Deleting
   Recall's state directory changes latency, never results.
 - **Build into a new generation and publish atomically**, only after the source
-  boundary completes. The template builds `build-N.sqlite` and `os.replace`s it
-  over `index.sqlite`. A build that fails leaves the previous generation
-  published, readable, and answering.
-- **Checkpoint after, never before.** Records durable, then the file that names
-  them. A checkpoint that names a generation the reader cannot open is worse
-  than no checkpoint.
+  boundary completes. The template makes an immutable
+  `index-gen-N-<digest>.sqlite` durable, then atomically replaces
+  `checkpoint.json`, which is the publication pointer. A build or checkpoint
+  failure leaves the previous generation published, readable, and answering.
+- **Checkpoint after records are durable, and make it the publication
+  boundary.** A checkpoint that names a generation the reader cannot open is
+  worse than no checkpoint; an index made visible before its checkpoint is also
+  unsafe, because a crash can make the next process reuse that generation
+  identity for different content. The template binds the full content digest
+  into both the immutable filename and generation id.
 - **Report `index_generation`, `index_watermark`, and `index_config`.**
   `index_config` identifies the retrieval configuration — analyzer, tokenizer,
   scoring parameters — and exists because `index_model` covers only embeddings.
@@ -345,6 +355,9 @@ Four timestamps, never collapsed into one:
 `confirmed_at` is for. In an adapter where one scan does both they are the same
 instant, and they are still reported separately, because for a source with an
 incremental boundary they are not.
+
+Omit `confirmed_at` on every candidate from a partial snapshot. The record was
+observed, but an incomplete scan did not confirm the declared source boundary.
 
 Do not derive an event time from a file's mtime. An mtime is a property of this
 checkout, not of the record: the same corpus indexed on two machines would carry
@@ -402,8 +415,9 @@ source stored it. Sanitize at the edge of your own process:
 - **Single-line fields** — title, headings, provenance, every string in metadata
   — collapse to one line. A newline in a title forges a section header in
   evidence a model reads.
-- **Multi-line evidence** keeps its newlines and loses everything else: C0 and C1
-  controls carry ANSI colour and cursor movement that a terminal obeys; bidi
+- **Multi-line evidence** keeps normalized LF newlines and loses everything
+  else: CR is cursor movement, not a safe line break; C0 and C1 controls carry
+  ANSI colour and cursor movement that a terminal obeys; bidi
   overrides and isolates reorder what a reader sees without changing what a
   program matched; U+2028 and U+2029 are line breaks that most whitespace
   splitters do not recognize.
@@ -515,6 +529,10 @@ Then **read the diff**. A re-recording nobody read is a test that now asserts
 whatever the code happens to do. The recorder refuses a case whose run produced a
 different number of frames than the manifest declares, so adding a request means
 updating the manifest deliberately rather than discovering the change later.
+The template recorder also masks declared volatile fields at write time, matching
+Recall's canonical `conformance.Redact`; committed transcripts therefore contain
+the contract they assert, not the recording machine's clock or path-derived
+identity.
 
 ### `volatile`, and how little of it you need
 

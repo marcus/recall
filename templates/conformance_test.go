@@ -17,9 +17,12 @@ package templates_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/marcus/recall/internal/conformance"
@@ -78,4 +81,74 @@ func TestPythonTemplateConformance(t *testing.T) {
 			t.Errorf("%s", res.Report())
 		}
 	}
+}
+
+func TestPythonTemplateSelfTests(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skipf("python3 is not on PATH, so the Python self-tests were not run: %v", err)
+	}
+	cmd := exec.Command(python, "-m", "unittest", "-v", "test_recall_notes.py")
+	cmd.Dir = pythonTemplate
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("template self-tests: %v\n%s", err, out)
+	}
+}
+
+func TestPythonTemplateTranscriptsAreRedactedAndPortable(t *testing.T) {
+	root := filepath.Join(pythonTemplate, "conformance")
+	suite, err := conformance.LoadSuite(root)
+	if err != nil {
+		t.Fatalf("load suite: %v", err)
+	}
+	for _, transcript := range suite {
+		t.Run(transcript.Manifest.Case, func(t *testing.T) {
+			redacted := conformance.Redact(
+				transcript.Recorded, transcript.Manifest.Volatile,
+			)
+			for i := range transcript.Recorded {
+				var recordedValue, redactedValue any
+				if err := json.Unmarshal(transcript.Recorded[i], &recordedValue); err != nil {
+					t.Fatalf("response %d: parse recording: %v", i+1, err)
+				}
+				if err := json.Unmarshal(redacted[i], &redactedValue); err != nil {
+					t.Fatalf("response %d: parse canonical redaction: %v", i+1, err)
+				}
+				if !reflect.DeepEqual(recordedValue, redactedValue) {
+					t.Errorf(
+						"response %d is not canonically redacted; record with the template recorder",
+						i+1,
+					)
+				}
+				if leaked := absoluteString(recordedValue); leaked != "" {
+					t.Errorf("response %d leaks absolute machine path %q", i+1, leaked)
+				}
+			}
+		})
+	}
+}
+
+func absoluteString(value any) string {
+	switch value := value.(type) {
+	case string:
+		if filepath.IsAbs(value) ||
+			(len(value) >= 3 && value[1] == ':' &&
+				(value[2] == '\\' || value[2] == '/')) ||
+			strings.HasPrefix(value, `\\`) {
+			return value
+		}
+	case []any:
+		for _, item := range value {
+			if found := absoluteString(item); found != "" {
+				return found
+			}
+		}
+	case map[string]any:
+		for _, item := range value {
+			if found := absoluteString(item); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }

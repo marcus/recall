@@ -68,7 +68,10 @@ PROTOCOL_MAX = 1
 # scoring change silently moves ranking with nothing in the generation
 # recording it, and an evaluation comparing two generations would credit the
 # difference to whatever else was under test.
-INDEX_CONFIG = "notes/1 tokenizer=ident-runs scoring=field-weighted-coverage"
+INDEX_CONFIG = (
+    "notes/2 tokenizer=ident-runs scoring=field-weighted-coverage "
+    "fingerprint=material-v2 publication=checkpoint-pointer"
+)
 
 # Defaults for the settings block below.
 DEFAULT_MAX_CANDIDATES = 50
@@ -78,8 +81,9 @@ DEFAULT_MAX_NOTES = 5000
 # payload; the locator is how a caller gets the rest.
 EXCERPT_BYTES = 240
 
-# The two files this adapter writes, both inside the handshake's workdir.
-INDEX_FILE = "index.sqlite"
+# The checkpoint is the publication pointer. Index generations are immutable
+# files whose names bind the sequence number to the full corpus digest.
+INDEX_PREFIX = "index-gen-"
 CHECKPOINT_FILE = "checkpoint.json"
 
 # Recall error codes, from docs/adapter-protocol.md. The JSON-RPC codes below
@@ -157,7 +161,14 @@ _LINE_SEPARATORS = ("\u2028", "\u2029")
 
 
 def safe_text(s: str) -> str:
-    """Strip control characters from multi-line evidence, keeping tabs and newlines."""
+    """Strip prohibited controls, keeping tabs and normalized newlines.
+
+    CR is normalized explicitly before the C0 pass. Leaving it in a string is
+    dangerous even when a terminal happens to render it as a line break: CR
+    returns the cursor to column zero and lets later text overwrite what a
+    reader just saw.
+    """
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
     for sep in _LINE_SEPARATORS:
         s = s.replace(sep, "\n")
     return _CONTROL.sub("", s)
@@ -169,16 +180,22 @@ def one_line(s: str) -> str:
 
 
 def clip(s: str, limit: int) -> str:
-    """Bound a preview at a character boundary, marking that it was cut."""
-    if len(s.encode("utf-8")) <= limit:
+    """Bound a preview in bytes, including the ellipsis that marks a cut."""
+    limit = max(0, limit)
+    raw = s.encode("utf-8")
+    if len(raw) <= limit:
         return s
-    out = s.encode("utf-8")[:limit].decode("utf-8", "ignore").rstrip()
-    return out + "…"
+    marker = "…"
+    marker_bytes = marker.encode("utf-8")
+    if limit < len(marker_bytes):
+        return raw[:limit].decode("utf-8", "ignore")
+    out = raw[: limit - len(marker_bytes)].decode("utf-8", "ignore").rstrip()
+    return out + marker
 
 
 def clip_bytes(s: str, limit: int) -> str:
     """Cut at a UTF-8 boundary so a truncated expansion is still text."""
-    return s.encode("utf-8")[:limit].decode("utf-8", "ignore")
+    return s.encode("utf-8")[: max(0, limit)].decode("utf-8", "ignore")
 
 
 def rfc3339(when: float) -> str:
@@ -280,6 +297,14 @@ def parse_note(path: str, text: str) -> dict:
     # an exact hit on every note anyone ever tagged `policy`, and
     # exact_identifier would stop meaning "you named this record".
     aliases = [a.strip().lower() for a in header.get("aliases", "").split(",") if a.strip()]
+    derived_from = [
+        one_line(locator)
+        for locator in header.get("derived_from", "").split(",")
+        if locator.strip()
+    ]
+    for locator in derived_from:
+        if ":" not in locator or locator.startswith(":") or locator.endswith(":"):
+            raise ParseError("derived_from %r is not <source_id>:<local>" % locator)
 
     return {
         "id": note_id,
@@ -287,6 +312,7 @@ def parse_note(path: str, text: str) -> dict:
         "title": title,
         "tags": tags,
         "aliases": aliases,
+        "derived_from": derived_from,
         "sensitivity": sensitivity,
         "event_epoch": event_epoch,
         "event_time": rfc3339(event_epoch),
@@ -322,7 +348,7 @@ def split_sections(body: str) -> list[dict]:
     return sections
 
 
-def fingerprint(note_id: str, ordinal: int, text: str) -> str:
+def fingerprint(record: dict, ordinal: int, section: dict) -> str:
     """A normalized content hash for one section.
 
     It is advisory and it is what makes a duplicate configuration harmless
@@ -334,11 +360,25 @@ def fingerprint(note_id: str, ordinal: int, text: str) -> str:
     instances over one store disagree about, and a fingerprint built on any of
     them would differ for the same note and defeat itself.
     """
-    digest = hashlib.sha256()
-    digest.update(note_id.encode("utf-8"))
-    digest.update(b"\x00%d\x00" % ordinal)
-    digest.update(" ".join(text.split()).encode("utf-8"))
-    return "sha256:" + digest.hexdigest()[:16]
+    material = {
+        "aliases": sorted(record["aliases"]),
+        "body": section["text"],
+        "candidate_ordinal": ordinal,
+        "date": record["event_time"],
+        "derived_from": sorted(record["derived_from"]),
+        "file": record["file"],
+        "heading": section["heading"],
+        "note_id": record["id"],
+        "record_sections": record["sections"],
+        "sections": len(record["sections"]),
+        "sensitivity": record["sensitivity"],
+        "tags": sorted(record["tags"]),
+        "title": record["title"],
+    }
+    encoded = json.dumps(
+        material, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 # --------------------------------------------------------------------------
@@ -482,11 +522,10 @@ def store_identity(notes_dir: str) -> str:
 # --------------------------------------------------------------------------
 # The index
 #
-# The index is a rebuildable projection and never the source of truth. It is
-# built into a new file and published by rename, so a failed build leaves the
-# previous generation readable rather than a half-written one; the checkpoint
-# is written only after that rename, so a checkpoint never names a generation
-# the reader cannot open.
+# The index is a rebuildable projection and never the source of truth. Each
+# generation is built into a new immutable file and made durable. The checkpoint
+# is then atomically replaced as the sole publication pointer, so failed builds,
+# failed checkpoints, and crashes all leave the previous generation readable.
 # --------------------------------------------------------------------------
 
 SCHEMA = """
@@ -503,6 +542,7 @@ CREATE TABLE section (
   event_epoch  REAL NOT NULL,
   event_time   TEXT NOT NULL,
   sensitivity  TEXT NOT NULL,
+  derived_from TEXT NOT NULL,
   fingerprint  TEXT NOT NULL
 );
 CREATE TABLE term (
@@ -522,7 +562,20 @@ CREATE INDEX ident_lookup ON ident(ident);
 class Snapshot:
     """One published generation: what it holds, and how complete it is."""
 
-    def __init__(self, generation, built_at, notes, sections, failed, truncated, unreadable, digest, latest):
+    def __init__(
+        self,
+        generation,
+        built_at,
+        notes,
+        sections,
+        failed,
+        truncated,
+        unreadable,
+        digest,
+        latest,
+        signature,
+        index_file,
+    ):
         self.generation = generation
         self.built_at = built_at
         self.notes = notes
@@ -532,6 +585,8 @@ class Snapshot:
         self.unreadable = unreadable
         self.digest = digest
         self.latest = latest
+        self.signature = signature
+        self.index_file = index_file
 
     @property
     def coverage(self) -> str:
@@ -558,10 +613,13 @@ class Snapshot:
         )
 
     def generation_id(self) -> str:
-        return "gen-%d" % self.generation
+        # The digest is part of the identity. If a process dies after staging
+        # generation N+1 but before publishing its checkpoint, a restart may
+        # choose N+1 again; changed content still cannot reuse the old identity.
+        return "gen-%d-%s" % (self.generation, self.digest)
 
 
-def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool]:
+def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool, str]:
     """Read the corpus. Returns records, the files that failed, and truncation.
 
     A directory that cannot be listed is source_unavailable and never an empty
@@ -584,11 +642,16 @@ def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool]:
     truncated = len(names) > max_notes
     records: list[dict] = []
     unreadable: list[str] = []
+    source_digest = hashlib.sha256()
+    for name in names:
+        source_digest.update(b"name\x00" + name.encode("utf-8") + b"\x00")
     for name in names[:max_notes]:
         path = os.path.join(notes_dir, name)
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                text = handle.read()
+            with open(path, "rb") as handle:
+                raw = handle.read()
+            source_digest.update(b"content\x00" + raw + b"\x00")
+            text = raw.decode("utf-8")
             records.append(parse_note(path, text))
         except (OSError, UnicodeDecodeError, ParseError) as exc:
             # One bad note must not take the corpus down, and it must not
@@ -596,12 +659,12 @@ def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool]:
             # coverage that results says the index is partial.
             log("skipping %s: %s" % (name, exc))
             unreadable.append(name)
-    return records, unreadable, truncated
+    return records, unreadable, truncated, source_digest.hexdigest()
 
 
 def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snapshot:
-    """Build a generation and publish it atomically."""
-    records, unreadable, truncated = scan(notes_dir, max_notes)
+    """Build one durable immutable generation, not yet published."""
+    records, unreadable, truncated, source_digest = scan(notes_dir, max_notes)
 
     tmp = os.path.join(workdir, "build-%d.sqlite" % generation)
     if os.path.exists(tmp):
@@ -610,15 +673,13 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
     try:
         conn.executescript(SCHEMA)
         rows, terms, idents = [], [], []
-        digest = hashlib.sha256()
         latest = 0.0
         sections = 0
         for record in sorted(records, key=lambda r: r["id"]):
             latest = max(latest, record["event_epoch"])
             for ordinal, section in enumerate(record["sections"]):
                 candidate_id = "%s#%d" % (record["id"], ordinal)
-                print_fp = fingerprint(record["id"], ordinal, section["text"])
-                digest.update((candidate_id + " " + print_fp).encode("utf-8"))
+                print_fp = fingerprint(record, ordinal, section)
                 sections += 1
                 rows.append(
                     (
@@ -634,6 +695,7 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
                         record["event_epoch"],
                         record["event_time"],
                         record["sensitivity"],
+                        json.dumps(record["derived_from"], separators=(",", ":")),
                         print_fp,
                     )
                 )
@@ -643,7 +705,7 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
                     idents.append((ident, candidate_id))
 
         conn.executemany(
-            "INSERT INTO section VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+            "INSERT INTO section VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
         )
         conn.executemany("INSERT INTO term VALUES (?,?,?)", terms)
         conn.executemany("INSERT INTO ident VALUES (?,?)", idents)
@@ -651,12 +713,14 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
     finally:
         conn.close()
 
-    # Publication. os.replace is atomic on POSIX and on Windows, so a reader
-    # either opens the previous generation or this one and never a partial
-    # file. A build that raised before this line leaves the previous generation
-    # published and answering, which is what the spec's "a failed build leaves
-    # the previous generation readable" means in practice.
-    os.replace(tmp, os.path.join(workdir, INDEX_FILE))
+    # Make the SQLite bytes durable before the checkpoint is allowed to name
+    # them. The final file is immutable and still private at this point: the
+    # checkpoint below is the publication pointer.
+    with open(tmp, "rb") as handle:
+        os.fsync(handle.fileno())
+    index_file = "%s%d-%s.sqlite" % (INDEX_PREFIX, generation, source_digest)
+    os.replace(tmp, os.path.join(workdir, index_file))
+    fsync_directory(workdir)
 
     return Snapshot(
         generation=generation,
@@ -666,8 +730,10 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
         failed=len(unreadable),
         truncated=truncated,
         unreadable=unreadable,
-        digest=digest.hexdigest()[:16],
+        digest=source_digest,
         latest=latest,
+        signature=corpus_signature(notes_dir, max_notes),
+        index_file=index_file,
     )
 
 
@@ -702,27 +768,81 @@ def load_checkpoint(workdir: str) -> dict:
         return {}
 
 
+def snapshot_from_checkpoint(workdir: str, data: dict) -> Snapshot | None:
+    """Reopen only a checkpoint that names its exact immutable generation."""
+    try:
+        generation = int(data["generation"])
+        digest = str(data["digest"])
+        index_file = str(data["index_file"])
+        expected = "%s%d-%s.sqlite" % (INDEX_PREFIX, generation, digest)
+        if index_file != expected or os.path.basename(index_file) != index_file:
+            return None
+        if not os.path.isfile(os.path.join(workdir, index_file)):
+            return None
+        return Snapshot(
+            generation=generation,
+            built_at=parse_time(data["built_at"]),
+            notes=int(data["notes"]),
+            sections=int(data["sections"]),
+            failed=int(data["failed"]),
+            truncated=bool(data["truncated"]),
+            unreadable=list(data["unreadable"]),
+            digest=digest,
+            latest=float(data["latest"]),
+            signature=str(data["signature"]),
+            index_file=index_file,
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def fsync_directory(path: str):
+    """Durably record renames on platforms that permit directory fsync."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def save_checkpoint(workdir: str, snap: Snapshot) -> bool:
-    """Record the boundary, after the generation it names is published."""
+    """Atomically publish a generation after both files are durable."""
     payload = {
         "generation": snap.generation,
         "built_at": rfc3339(snap.built_at),
         "watermark": snap.watermark(),
         "notes": snap.notes,
+        "sections": snap.sections,
         "failed": snap.failed,
+        "truncated": snap.truncated,
+        "unreadable": snap.unreadable,
         "coverage": snap.coverage,
+        "digest": snap.digest,
+        "latest": snap.latest,
+        "signature": snap.signature,
+        "index_file": snap.index_file,
     }
+    path = os.path.join(workdir, CHECKPOINT_FILE)
+    temporary = path + ".tmp"
     try:
-        path = os.path.join(workdir, CHECKPOINT_FILE)
-        with open(path + ".tmp", "w", encoding="utf-8") as handle:
+        with open(temporary, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, sort_keys=True)
-        os.replace(path + ".tmp", path)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        fsync_directory(workdir)
         return True
     except OSError as exc:
-        # A generation that cannot be checkpointed still answers correctly; it
-        # only loses the ability to tell the next process what it consumed. The
-        # health report says so rather than hiding it.
+        # The staged immutable index is not published without this pointer.
         log("checkpoint unwritable: %s" % exc)
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
         return False
 
 
@@ -798,6 +918,7 @@ class Adapter:
         self.snapshot: Snapshot | None = None
         self.signature = ""
         self.checkpoint_ok = True
+        self.refresh_failure = ""
 
     # -- handshake ---------------------------------------------------------
 
@@ -830,7 +951,7 @@ class Adapter:
                 "nowhere else it may write",
             )
 
-        prior = load_checkpoint(workdir)
+        prior = snapshot_from_checkpoint(workdir, load_checkpoint(workdir))
         with self.lock:
             if self.closed:
                 raise ProtocolError(SOURCE_UNAVAILABLE, "adapter is closed")
@@ -838,12 +959,13 @@ class Adapter:
             self.workdir = workdir
             self.notes_dir = notes_dir
             self.settings = settings
-            # Generations continue from the last published one, so an id never
-            # names two different builds of this workdir.
-            self.generation = int(prior.get("generation", 0))
-            self.snapshot = None
-            self.signature = ""
+            # Only the durable checkpoint publishes a generation. A staged
+            # immutable index with no checkpoint is intentionally invisible.
+            self.generation = prior.generation if prior is not None else 0
+            self.snapshot = prior
+            self.signature = prior.signature if prior is not None else ""
             self.checkpoint_ok = True
+            self.refresh_failure = ""
             self.ready = True
 
         return {
@@ -892,13 +1014,35 @@ class Adapter:
             if previous is not None and not full and fresh == signature:
                 return previous
 
-            snap = build(workdir, notes_dir, generation + 1, settings["max_notes"])
-            ok = save_checkpoint(workdir, snap)
+            try:
+                snap = build(workdir, notes_dir, generation + 1, settings["max_notes"])
+            except ProtocolError as exc:
+                with self.lock:
+                    self.refresh_failure = exc.message
+                if previous is not None:
+                    return previous
+                raise
+            except (OSError, sqlite3.Error) as exc:
+                message = "generation build failed: %s" % exc
+                with self.lock:
+                    self.refresh_failure = message
+                if previous is not None:
+                    return previous
+                raise ProtocolError(SOURCE_UNAVAILABLE, message) from exc
+            if not save_checkpoint(workdir, snap):
+                message = "checkpoint publication failed; previous generation retained"
+                with self.lock:
+                    self.checkpoint_ok = False
+                    self.refresh_failure = message
+                if previous is not None:
+                    return previous
+                raise ProtocolError(SOURCE_UNAVAILABLE, message)
             with self.lock:
                 self.snapshot = snap
                 self.generation = snap.generation
-                self.signature = fresh
-                self.checkpoint_ok = ok
+                self.signature = snap.signature
+                self.checkpoint_ok = True
+                self.refresh_failure = ""
             return snap
 
     # -- health ------------------------------------------------------------
@@ -927,7 +1071,9 @@ class Adapter:
 
     def health_of(self, snap: Snapshot) -> dict:
         with self.lock:
-            checkpoint_ok, notes_dir = self.checkpoint_ok, self.notes_dir
+            checkpoint_ok = self.checkpoint_ok
+            refresh_failure = self.refresh_failure
+            notes_dir = self.notes_dir
         diagnostics = {
             "notes_dir": os.path.basename(notes_dir),
             "store_identity": store_identity(notes_dir),
@@ -938,10 +1084,10 @@ class Adapter:
         if snap.truncated:
             diagnostics["listing_truncated"] = True
         if not checkpoint_ok:
-            # The workdir is the one place this adapter may write. Losing it
-            # does not corrupt an answer, but the next process starts with no
-            # record of what this one published.
             diagnostics["checkpoint_unwritable"] = True
+            status = "degraded"
+        if refresh_failure:
+            diagnostics["refresh_failure"] = one_line(refresh_failure)
             status = "degraded"
         if snap.coverage != "complete":
             # Partial coverage is degraded, not healthy. No freshness policy
@@ -1027,7 +1173,7 @@ class Adapter:
             # is a success with no candidates rather than a partial answer.
             where.append("0")
 
-        rows, scores, exact = self.query(terms, where, args)
+        rows, scores, exact = self.query(snap, terms, where, args)
         cancel.check()
 
         hits = []
@@ -1098,9 +1244,9 @@ class Adapter:
             "outcome": outcome,
         }
 
-    def query(self, terms, where, args):
+    def query(self, snap: Snapshot, terms, where, args):
         """Run one search against the published index, read-only."""
-        conn = self.open_index()
+        conn = self.open_index(snap)
         try:
             conn.row_factory = sqlite3.Row
             clause = (" AND " + " AND ".join(where)) if where else ""
@@ -1144,7 +1290,7 @@ class Adapter:
         finally:
             conn.close()
 
-    def open_index(self) -> sqlite3.Connection:
+    def open_index(self, snap: Snapshot) -> sqlite3.Connection:
         """Open the published generation read-only.
 
         Read-only is the default the spec asks for, and it is also what makes a
@@ -1153,7 +1299,7 @@ class Adapter:
         a database being mutated underneath it.
         """
         with self.lock:
-            path = os.path.join(self.workdir, INDEX_FILE)
+            path = os.path.join(self.workdir, snap.index_file)
         try:
             return sqlite3.connect("file:%s?mode=ro" % path, uri=True)
         except sqlite3.Error as exc:
@@ -1188,7 +1334,7 @@ class Adapter:
             # Omitted rather than sent empty. A key that is always present and
             # sometimes meaningless teaches a consumer to ignore it.
             metadata["heading"] = one_line(row["heading"])
-        return {
+        candidate = {
             "candidate_id": row["candidate_id"],
             # One note is one record however many sections it has. Corroboration
             # collapses on this value.
@@ -1202,13 +1348,8 @@ class Adapter:
             "local_rank": rank,
             "local_score": round(hit["score"], 6),
             "match_signals": signals,
-            # observed_at is when this index read the note; confirmed_at is when
-            # a complete pass over the corpus last confirmed it present. They
-            # are the same instant here because one scan does both, and they are
-            # still reported separately because for a source with an incremental
-            # boundary they are not.
+            # observed_at is when this index read the note.
             "observed_at": rfc3339(snap.built_at),
-            "confirmed_at": rfc3339(snap.built_at),
             "event_time": row["event_time"],
             "source_revision": snap.generation_id(),
             # May raise the source's floor, never lower it.
@@ -1216,6 +1357,15 @@ class Adapter:
             "metadata": metadata,
             "content_fingerprint": row["fingerprint"],
         }
+        derived_from = json.loads(row["derived_from"])
+        if derived_from:
+            candidate["derived_from"] = [one_line(locator) for locator in derived_from]
+        # A partial pass observed this record, but it did not confirm the whole
+        # source boundary. Claiming confirmed_at there would turn an incomplete
+        # snapshot into false absence evidence for everything it missed.
+        if snap.coverage == "complete":
+            candidate["confirmed_at"] = rfc3339(snap.built_at)
+        return candidate
 
     # -- expand ------------------------------------------------------------
 
@@ -1237,7 +1387,7 @@ class Adapter:
         snap = self.current()
         cancel.check()
 
-        conn = self.open_index()
+        conn = self.open_index(snap)
         try:
             conn.row_factory = sqlite3.Row
             row = conn.execute(

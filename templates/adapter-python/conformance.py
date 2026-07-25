@@ -231,9 +231,23 @@ def run_case(case_dir: str, record: bool) -> bool:
 
     path = os.path.join(case_dir, "response.jsonl")
     if record:
+        # Persist what the suite actually asserts, not the recording machine's
+        # wall clock or path-derived identity. This mirrors Recall's canonical
+        # conformance.Redact: the same volatile pointers are masked before a
+        # transcript is committed and before replay comparison.
+        volatile = manifest.get("volatile") or []
         with open(path, "w", encoding="utf-8") as handle:
             for line in got:
-                handle.write(line + "\n")
+                frame = normalize(line, volatile)
+                handle.write(
+                    json.dumps(
+                        frame,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
         print("%-20s recorded %d responses" % (name, len(got)))
         return True
 
