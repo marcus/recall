@@ -24,6 +24,7 @@ Dispatch the operator commands to that long-lived core:
 ```sh
 recall query --server http://127.0.0.1:8765 "what did we decide?"
 recall expand --server http://127.0.0.1:8765 notes:decision-14
+recall refresh --server http://127.0.0.1:8765 --source notes
 recall sources --server http://127.0.0.1:8765
 recall doctor --server http://127.0.0.1:8765
 ```
@@ -34,6 +35,7 @@ Every endpoint is under `/v1`:
 |---|---|---|
 | `POST` | `/v1/query` | `recall.QueryResponse` |
 | `POST` | `/v1/expand` | `recall.ExpandResponse` |
+| `POST` | `/v1/refresh` | `recall.RefreshResponse` |
 | `GET` | `/v1/sources` | the CLI source listing |
 | `GET` | `/v1/doctor` | the CLI diagnosis |
 | `GET` | `/v1/version` | build, API version, and served profile |
@@ -43,6 +45,13 @@ Complete and abstained responses use 200, degraded responses use 206, and a
 typed response in which every source failed uses 503. The 503 body is still a
 query result, not a transport error: its source outcomes are the evidence that
 nothing managed to search.
+
+Refresh responses use the same severity mapping: 200 when every attempted
+source refreshed, 206 when usable state remains but a source failed or stayed
+degraded, and 503 when no target produced usable state. Those non-200 bodies
+remain typed refresh results with per-source status and post-refresh health.
+Omitting `source_id` targets every eligible checkpoint-capable source in the
+served profile; naming one targets exactly that source.
 
 Requests carrying an `Origin` header are refused, body-carrying requests must
 be JSON, and the server emits no CORS headers. These checks keep a web page from
@@ -75,12 +84,14 @@ a different profile from the one whose adapter pool is already open.
 ## MCP
 
 `recall mcp --profile work` runs a Model Context Protocol server over stdio. It
-exposes three tools:
+exposes four tools:
 
 - `recall_query` — typed query results with locators, explanations, source
   outcomes, outcome, and coverage.
 - `recall_expand` — evidence behind one locator, with provenance and
   truncation.
+- `recall_refresh` — refresh one source or all eligible checkpoint-capable
+  sources, with typed per-source outcomes and post-refresh health.
 - `recall_sources` — configured source capabilities, health, and freshness.
 
 Tool results carry both a compact text block and `structuredContent`. The

@@ -811,6 +811,7 @@ concise human output.
 ```text
 recall query      search and fuse configured sources
 recall expand     retrieve evidence from a locator
+recall refresh    update one or all eligible checkpoint-capable sources
 recall sources    list source instances and capabilities
 recall config     explain resolved configuration and its origins
 recall doctor     validate config, trust boundary, access, health, freshness
@@ -829,7 +830,7 @@ query.
 ### MCP
 
 An adapter from agent hosts to Recall, not an internal boundary. Exposes query,
-expand, and source-status tools, preserving locators and diagnostics rather
+expand, refresh, and source-status tools, preserving locators and diagnostics rather
 than flattening results into unstructured text. Recall may separately consume
 an upstream MCP server through a source adapter; the two roles are independent.
 

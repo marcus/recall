@@ -415,7 +415,7 @@ func TestDoctorReportsWhatASourceIsActuallyServing(t *testing.T) {
 	if got := checkStatus(t, d, "health"); got != cli.CheckPass {
 		t.Errorf("health = %q; the source answered its probe, so liveness passed", got)
 	}
-	for _, want := range []string{"coverage partial", "7 of 9 records indexed", "base_prior"} {
+	for _, want := range []string{"coverage partial", "7 of 9 records indexed", "base_prior", "recall refresh --source docs"} {
 		contains(t, stdout, want,
 			"the report has to say what is missing and how much authority the source carries")
 	}

@@ -27,17 +27,24 @@ type fake struct {
 	needsHandshake bool
 	initialized    bool
 
-	manifest    recall.Manifest
-	health      recall.Health
-	healthErr   error
-	candidates  []recall.Candidate
-	outcome     recall.SearchOutcome
-	searchErr   error
-	delay       time.Duration
-	evidence    recall.ExpandResponse
-	expandErr   error
-	searchCalls int
-	healthCalls int
+	manifest         recall.Manifest
+	health           recall.Health
+	healthErr        error
+	candidates       []recall.Candidate
+	outcome          recall.SearchOutcome
+	searchErr        error
+	delay            time.Duration
+	evidence         recall.ExpandResponse
+	expandErr        error
+	initializeErr    error
+	refreshHealth    recall.Health
+	refreshErr       error
+	refreshWait      bool
+	refreshCalls     int
+	refreshFull      bool
+	refreshCancelled bool
+	searchCalls      int
+	healthCalls      int
 
 	// prepared opts this fake into adapter.PreparedSearcher without making
 	// every app test stop exercising the ordinary adapter contract.
@@ -58,7 +65,7 @@ type fake struct {
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
 	f.initialized = true
-	return f.manifest, nil
+	return f.manifest, f.initializeErr
 }
 
 func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
@@ -110,7 +117,20 @@ func (f *fake) Health(context.Context) (recall.Health, error) {
 	return h, nil
 }
 
-func (f *fake) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+func (f *fake) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	f.refreshCalls++
+	f.refreshFull = p.Full
+	if f.refreshWait {
+		<-ctx.Done()
+		f.refreshCancelled = true
+		return recall.Health{}, ctx.Err()
+	}
+	if f.refreshErr != nil {
+		return f.refreshHealth, f.refreshErr
+	}
+	if f.refreshHealth.Status != "" {
+		return f.refreshHealth, nil
+	}
 	return f.Health(ctx)
 }
 
@@ -305,6 +325,92 @@ func reportFor(t *testing.T, resp recall.QueryResponse, id string) recall.Source
 	}
 	t.Fatalf("no outcome reported for %q; a source that did not answer must still be visible", id)
 	return recall.SourceReport{}
+}
+
+func checkpointManifest() recall.Manifest {
+	m := manifest(recall.RecordDocument)
+	m.Capabilities = append(m.Capabilities, recall.CapCheckpoint)
+	return m
+}
+
+func TestRefreshAllReportsMixedSourceOutcomesAndKeepsProfileOrder(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].manifest = checkpointManifest()
+		f["fakedocs"].refreshHealth = recall.Health{
+			Status: recall.HealthHealthy, Coverage: recall.IndexComplete,
+			IndexGeneration: "generation-2",
+		}
+		f["faketasks"].manifest = checkpointManifest()
+		f["faketasks"].refreshErr = errors.New("adapter unavailable")
+	})
+
+	resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{Profile: "work", Full: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.RefreshDegraded {
+		t.Fatalf("outcome = %s, want degraded", resp.Outcome)
+	}
+	if len(resp.Sources) != 3 {
+		t.Fatalf("sources = %d, want every profile member reported", len(resp.Sources))
+	}
+	if got := []string{resp.Sources[0].SourceID, resp.Sources[1].SourceID, resp.Sources[2].SourceID}; strings.Join(got, ",") != "docs,tasks,vault" {
+		t.Fatalf("source order = %v, want profile order", got)
+	}
+	if resp.Sources[0].Status != recall.RefreshSourceRefreshed ||
+		resp.Sources[0].Health == nil || resp.Sources[0].Health.IndexGeneration != "generation-2" {
+		t.Errorf("docs outcome = %+v", resp.Sources[0])
+	}
+	if !h.fakes["fakedocs"].refreshFull {
+		t.Error("full refresh flag did not reach adapter")
+	}
+	if resp.Sources[1].Status != recall.RefreshSourceFailed ||
+		resp.Sources[1].Reason != recall.RefreshOperationFailed {
+		t.Errorf("tasks outcome = %+v", resp.Sources[1])
+	}
+	if resp.Sources[2].Status != recall.RefreshSourceSkipped ||
+		resp.Sources[2].Reason != recall.RefreshDenied {
+		t.Errorf("vault outcome = %+v", resp.Sources[2])
+	}
+}
+
+func TestRefreshTargetRejectsUnsupportedAndUnknownSourcesSemantically(t *testing.T) {
+	h := newHarness(t, nil)
+	for _, sourceID := range []string{"tasks", "missing"} {
+		resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: sourceID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Outcome != recall.RefreshFailed || len(resp.Sources) != 1 {
+			t.Fatalf("%s response = %+v", sourceID, resp)
+		}
+		wantReason := recall.RefreshCheckpointUnsupported
+		if sourceID == "missing" {
+			wantReason = recall.RefreshSourceNotConfigured
+		}
+		if resp.Sources[0].Reason != wantReason {
+			t.Errorf("%s reason = %s, want %s", sourceID, resp.Sources[0].Reason, wantReason)
+		}
+	}
+}
+
+func TestRefreshCancellationReachesAdapterAndIsTyped(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].manifest = checkpointManifest()
+		f["fakedocs"].refreshWait = true
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	resp, err := h.app.Refresh(ctx, recall.RefreshRequest{SourceID: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.fakes["fakedocs"].refreshCancelled {
+		t.Fatal("cancelled context did not reach adapter refresh")
+	}
+	if resp.Outcome != recall.RefreshFailed || resp.Sources[0].Reason != recall.RefreshCancelled {
+		t.Fatalf("response = %+v, want typed cancelled failure", resp)
+	}
 }
 
 // A source classified above the profile ceiling is never asked at all.

@@ -79,6 +79,7 @@ recall doctor           # config validity, trust boundary, health, freshness
 recall query "what did we decide about ranking"
 recall query "…" --json
 recall expand <locator> --detail full
+recall refresh [--source <source-id>]  # publish fresh adapter-owned indexes
 recall sources          # instances, capabilities, health, freshness
 recall config explain   # resolved configuration and where each value came from
 recall eval run --pack eval/packs/smoke

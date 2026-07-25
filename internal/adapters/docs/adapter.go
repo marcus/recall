@@ -164,7 +164,7 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 		// from the filesystem, and pretending otherwise would answer a
 		// historical question from current state.
 		AsOfSupport:     recall.AsOfFilter,
-		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
+		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand, recall.CapCheckpoint},
 		FreshnessPolicy: freshnessPolicy,
 		Sensitivity:     recall.SensitivityInternal,
 		SettingsSchema:  settingsSchema(),

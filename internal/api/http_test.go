@@ -18,17 +18,20 @@ import (
 type stubCore struct {
 	profile string
 
-	query      recall.QueryResponse
-	queryErr   error
-	queryFunc  func(context.Context, recall.QueryRequest) (recall.QueryResponse, error)
-	expand     recall.ExpandResponse
-	expandErr  error
-	sources    Listing
-	sourcesErr error
-	doctor     Listing
-	doctorErr  error
-	lastQuery  recall.QueryRequest
-	lastExpand recall.ExpandRequest
+	query       recall.QueryResponse
+	queryErr    error
+	queryFunc   func(context.Context, recall.QueryRequest) (recall.QueryResponse, error)
+	expand      recall.ExpandResponse
+	expandErr   error
+	refresh     recall.RefreshResponse
+	refreshErr  error
+	sources     Listing
+	sourcesErr  error
+	doctor      Listing
+	doctorErr   error
+	lastQuery   recall.QueryRequest
+	lastExpand  recall.ExpandRequest
+	lastRefresh recall.RefreshRequest
 }
 
 func (s *stubCore) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryResponse, error) {
@@ -42,6 +45,11 @@ func (s *stubCore) Query(ctx context.Context, req recall.QueryRequest) (recall.Q
 func (s *stubCore) Expand(_ context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
 	s.lastExpand = req
 	return s.expand, s.expandErr
+}
+
+func (s *stubCore) Refresh(_ context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error) {
+	s.lastRefresh = req
+	return s.refresh, s.refreshErr
 }
 
 func (s *stubCore) Sources(context.Context) (Listing, error) { return s.sources, s.sourcesErr }
@@ -87,6 +95,13 @@ func TestHTTPClientPreservesTypedSurfaceResults(t *testing.T) {
 	wantExpand := recall.ExpandResponse{
 		Content: "evidence", Provenance: "notes.md#L1-2", SourceRevision: "abc123",
 	}
+	wantRefresh := recall.RefreshResponse{
+		Outcome: recall.RefreshDegraded,
+		Sources: []recall.RefreshSourceOutcome{{
+			SourceID: "notes", Status: recall.RefreshSourceDegraded, Reason: recall.RefreshUnhealthy,
+			Health: &recall.Health{Status: recall.HealthDegraded, Coverage: recall.IndexPartial},
+		}},
+	}
 	wantSources := map[string]any{
 		"profile": "work",
 		"sources": []any{map[string]any{"source_id": "notes", "health": "healthy"}},
@@ -94,6 +109,7 @@ func TestHTTPClientPreservesTypedSurfaceResults(t *testing.T) {
 	core := &stubCore{
 		query:   wantQuery,
 		expand:  wantExpand,
+		refresh: wantRefresh,
 		sources: Listing{Payload: wantSources, Status: StatusOK},
 		doctor:  Listing{Payload: map[string]any{"status": "degraded"}, Status: StatusDegraded},
 	}
@@ -122,6 +138,15 @@ func TestHTTPClientPreservesTypedSurfaceResults(t *testing.T) {
 		t.Fatalf("server did not apply expand default: %+v", core.lastExpand)
 	}
 
+	gotRefresh, err := client.Refresh(t.Context(), recall.RefreshRequest{SourceID: " notes ", Full: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSameJSON(t, gotRefresh, wantRefresh)
+	if core.lastRefresh.SourceID != "notes" || !core.lastRefresh.Full || core.lastRefresh.Profile != "work" {
+		t.Fatalf("server did not normalize refresh: %+v", core.lastRefresh)
+	}
+
 	gotSources, err := client.Sources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -139,6 +164,92 @@ func TestHTTPClientPreservesTypedSurfaceResults(t *testing.T) {
 		t.Fatalf("doctor status = %q", gotDoctor.Status)
 	}
 	assertSameJSON(t, gotDoctor.Payload, core.doctor.Payload)
+}
+
+func TestRefreshHTTPIsAuthenticatedStrictAndKeepsFailedResultTyped(t *testing.T) {
+	want := recall.RefreshResponse{
+		Outcome: recall.RefreshFailed,
+		Sources: []recall.RefreshSourceOutcome{{
+			SourceID: "docs", Status: recall.RefreshSourceFailed, Reason: recall.RefreshOperationFailed,
+		}},
+	}
+	server := httptest.NewServer(NewHandler(ServerOptions{
+		Core: &stubCore{refresh: want}, BearerToken: "secret",
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/refresh",
+		strings.NewReader(`{"source_id":"docs"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated refresh status = %d", resp.StatusCode)
+	}
+
+	client := NewClient(ClientOptions{BaseURL: server.URL, BearerToken: "secret"})
+	got, err := client.Refresh(t.Context(), recall.RefreshRequest{SourceID: "docs"})
+	if err != nil {
+		t.Fatalf("semantic failed result became transport error: %v", err)
+	}
+	assertSameJSON(t, got, want)
+
+	req, err = http.NewRequest(http.MethodPost, server.URL+"/v1/refresh",
+		strings.NewReader(`{"source_id":"docs","surprise":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown refresh field status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestRefreshHTTPMapsSemanticOutcomesWithoutLosingTypedBody(t *testing.T) {
+	for _, tc := range []struct {
+		outcome recall.RefreshOutcome
+		status  int
+	}{
+		{recall.RefreshSucceeded, http.StatusOK},
+		{recall.RefreshDegraded, http.StatusPartialContent},
+		{recall.RefreshFailed, http.StatusServiceUnavailable},
+	} {
+		t.Run(string(tc.outcome), func(t *testing.T) {
+			want := recall.RefreshResponse{Outcome: tc.outcome, Sources: []recall.RefreshSourceOutcome{}}
+			server := httptest.NewServer(NewHandler(ServerOptions{Core: &stubCore{refresh: want}}))
+			defer server.Close()
+			req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/refresh", strings.NewReader(`{}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.status || resp.Header.Get(HeaderOutcome) != string(tc.outcome) {
+				t.Fatalf("status/header = %d/%q, want %d/%q",
+					resp.StatusCode, resp.Header.Get(HeaderOutcome), tc.status, tc.outcome)
+			}
+			var got recall.RefreshResponse
+			if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			assertSameJSON(t, got, want)
+		})
+	}
 }
 
 func TestFailedQueryIsTypedResultNotTransportError(t *testing.T) {

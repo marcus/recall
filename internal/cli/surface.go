@@ -31,6 +31,13 @@ func (s *surfaceCore) Expand(ctx context.Context, req recall.ExpandRequest) (rec
 	return s.rt.app.Expand(ctx, req, s.rt.profile)
 }
 
+func (s *surfaceCore) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error) {
+	if req.Profile == "" {
+		req.Profile = s.rt.profile
+	}
+	return s.rt.app.Refresh(ctx, req)
+}
+
 func (s *surfaceCore) Sources(ctx context.Context) (api.Listing, error) {
 	listing, err := s.rt.listSources(ctx)
 	if err != nil {

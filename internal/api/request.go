@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
@@ -157,6 +158,22 @@ func normalizeExpand(req *recall.ExpandRequest) *Problem {
 	}
 	if req.Budget < 0 {
 		return &Problem{CodeBadRequest, "budget must not be negative"}
+	}
+	return nil
+}
+
+// normalizeRefresh binds maintenance to this surface's single profile. An
+// empty source id deliberately means all eligible checkpoint sources.
+func normalizeRefresh(req *recall.RefreshRequest, profile string) *Problem {
+	if p := checkProfile(req.Profile, profile); p != nil {
+		return p
+	}
+	req.Profile = profile
+	if req.SourceID != "" {
+		req.SourceID = strings.TrimSpace(req.SourceID)
+		if req.SourceID == "" {
+			return &Problem{CodeBadRequest, "source_id must not be blank; omit it to refresh every eligible checkpoint source"}
+		}
 	}
 	return nil
 }

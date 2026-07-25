@@ -21,6 +21,7 @@ type transportCore struct {
 	expand  recall.ExpandResponse
 	sources api.Listing
 	doctor  api.Listing
+	refresh recall.RefreshResponse
 }
 
 func (c *transportCore) Query(context.Context, recall.QueryRequest) (recall.QueryResponse, error) {
@@ -32,6 +33,9 @@ func (c *transportCore) Expand(context.Context, recall.ExpandRequest) (recall.Ex
 func (c *transportCore) Sources(context.Context) (api.Listing, error) { return c.sources, nil }
 func (c *transportCore) Doctor(context.Context) (api.Listing, error)  { return c.doctor, nil }
 func (c *transportCore) Profile() string                              { return "work" }
+func (c *transportCore) Refresh(context.Context, recall.RefreshRequest) (recall.RefreshResponse, error) {
+	return c.refresh, nil
+}
 
 func TestCLIInProcessAndAgainstServeAreIdentical(t *testing.T) {
 	core := &transportCore{
@@ -62,6 +66,13 @@ func TestCLIInProcessAndAgainstServeAreIdentical(t *testing.T) {
 			"status": "degraded", "profile": "work", "checks": []any{},
 			"failed_checks": 0, "degraded_checks": 1,
 		}},
+		refresh: recall.RefreshResponse{
+			Outcome: recall.RefreshSucceeded,
+			Sources: []recall.RefreshSourceOutcome{{
+				SourceID: "notes", Status: recall.RefreshSourceRefreshed,
+				Health: &recall.Health{Status: recall.HealthHealthy, Coverage: recall.IndexComplete, IndexGeneration: "gen-2"},
+			}},
+		},
 	}
 	server := httptest.NewServer(api.NewHandler(api.ServerOptions{Core: core, BearerToken: "secret"}))
 	defer server.Close()
@@ -74,6 +85,7 @@ func TestCLIInProcessAndAgainstServeAreIdentical(t *testing.T) {
 		{"expand", []string{"expand", "--json", "--profile", "work", "notes:record"}},
 		{"sources", []string{"sources", "--json", "--profile", "work"}},
 		{"doctor", []string{"doctor", "--json", "--profile", "work"}},
+		{"refresh", []string{"refresh", "--json", "--profile", "work", "--source", "notes", "--full"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,6 +126,26 @@ func TestQueryJSONWriteErrorTakesPrecedenceOverSemanticExit(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Fatal("JSON write error was not reported")
+	}
+}
+
+func TestRefreshCLIUsesSemanticExitCodes(t *testing.T) {
+	for _, tc := range []struct {
+		outcome recall.RefreshOutcome
+		exit    int
+	}{
+		{recall.RefreshSucceeded, cli.ExitOK},
+		{recall.RefreshDegraded, cli.ExitDegraded},
+		{recall.RefreshFailed, cli.ExitFailed},
+	} {
+		t.Run(string(tc.outcome), func(t *testing.T) {
+			code, stdout, stderr := runSurfaceCLI(t, &transportCore{refresh: recall.RefreshResponse{
+				Outcome: tc.outcome, Sources: []recall.RefreshSourceOutcome{},
+			}}, nil, "refresh", "--json")
+			if code != tc.exit || stderr != "" || !strings.Contains(stdout, `"outcome": "`+string(tc.outcome)+`"`) {
+				t.Fatalf("code/stdout/stderr = %d/%q/%q, want %d and typed outcome", code, stdout, stderr, tc.exit)
+			}
+		})
 	}
 }
 

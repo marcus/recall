@@ -26,6 +26,11 @@ type Core interface {
 	// A locator this core cannot serve is an error, never empty content.
 	Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error)
 
+	// Refresh updates one checkpoint-capable source, or every eligible one in
+	// the served profile. The response carries semantic success even when the
+	// operation itself ran but one source failed.
+	Refresh(ctx context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error)
+
 	// Sources lists the configured source instances with their capabilities,
 	// health, and freshness evidence.
 	Sources(ctx context.Context) (Listing, error)

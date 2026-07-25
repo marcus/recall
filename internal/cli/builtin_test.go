@@ -57,6 +57,75 @@ never compared or normalized onto a shared scale.
 	}
 }
 
+func TestDocumentCorpusStaleRefreshesToHealthyNewGenerationEndToEnd(t *testing.T) {
+	corpus := t.TempDir()
+	doc := filepath.Join(corpus, "decision.md")
+	write(t, doc, "# Decision\n\nUse rank fusion.\n")
+	h := newHarness(t, harnessOptions{
+		userTOML: strings.ReplaceAll(builtinDocsTOML, "CORPUS", corpus),
+	})
+
+	code, stdout, stderr := h.run("sources", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("initial sources exit = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var before cli.SourceListing
+	if err := json.Unmarshal([]byte(stdout), &before); err != nil {
+		t.Fatal(err)
+	}
+	oldHealth := before.Sources[0].Health
+	if oldHealth == nil || oldHealth.Status != recall.HealthHealthy {
+		t.Fatalf("initial health = %+v", oldHealth)
+	}
+
+	write(t, doc, "# Decision\n\nUse rank fusion and preserve provenance.\n")
+	code, stdout, stderr = h.run("sources", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("stale sources exit = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var stale cli.SourceListing
+	if err := json.Unmarshal([]byte(stdout), &stale); err != nil {
+		t.Fatal(err)
+	}
+	staleHealth := stale.Sources[0].Health
+	if staleHealth == nil || staleHealth.IndexWatermark == staleHealth.SourceWatermark ||
+		staleHealth.Status != recall.HealthDegraded {
+		t.Fatalf("edited corpus health = %+v, want visible stale generation", staleHealth)
+	}
+
+	code, stdout, stderr = h.run("refresh", "--source", "docs", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("refresh exit = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var refreshed recall.RefreshResponse
+	if err := json.Unmarshal([]byte(stdout), &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Outcome != recall.RefreshSucceeded || len(refreshed.Sources) != 1 ||
+		refreshed.Sources[0].Health == nil {
+		t.Fatalf("refresh response = %+v", refreshed)
+	}
+	newHealth := refreshed.Sources[0].Health
+	if newHealth.Status != recall.HealthHealthy ||
+		newHealth.IndexWatermark != newHealth.SourceWatermark ||
+		newHealth.IndexGeneration == oldHealth.IndexGeneration {
+		t.Fatalf("post-refresh health = %+v; old generation = %s", newHealth, oldHealth.IndexGeneration)
+	}
+
+	code, stdout, stderr = h.run("sources", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("healthy sources exit = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var after cli.SourceListing
+	if err := json.Unmarshal([]byte(stdout), &after); err != nil {
+		t.Fatal(err)
+	}
+	if got := after.Sources[0].Health; got == nil || got.Status != recall.HealthHealthy ||
+		got.IndexGeneration != newHealth.IndexGeneration {
+		t.Fatalf("persisted health = %+v, want refreshed generation %s", got, newHealth.IndexGeneration)
+	}
+}
+
 func TestTwoClaraStoresUseOneBuiltInWithoutChangingProfileSyntax(t *testing.T) {
 	corpus := t.TempDir()
 	write(t, filepath.Join(corpus, "signals.jsonl"),

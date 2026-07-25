@@ -79,6 +79,7 @@ func NewHandler(opt ServerOptions) *Handler {
 
 	h.mux.HandleFunc("POST /"+Version+"/query", h.handleQuery)
 	h.mux.HandleFunc("POST /"+Version+"/expand", h.handleExpand)
+	h.mux.HandleFunc("POST /"+Version+"/refresh", h.handleRefresh)
 	h.mux.HandleFunc("GET /"+Version+"/sources", h.handleSources)
 	h.mux.HandleFunc("GET /"+Version+"/doctor", h.handleDoctor)
 	h.mux.HandleFunc("GET /"+Version+"/version", h.handleVersion)
@@ -175,6 +176,38 @@ func (h *Handler) handleExpand(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	var req recall.RefreshRequest
+	if problem := decode(r, &req); problem != nil {
+		writeProblem(w, http.StatusBadRequest, *problem)
+		return
+	}
+	if problem := normalizeRefresh(&req, h.core.Profile()); problem != nil {
+		writeProblem(w, requestStatus(*problem), *problem)
+		return
+	}
+	resp, err := h.core.Refresh(r.Context(), req)
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError,
+			Problem{CodeInternal, "the refresh could not be planned: " + err.Error()})
+		return
+	}
+	status := refreshStatus(resp.Outcome)
+	w.Header().Set(HeaderOutcome, string(resp.Outcome))
+	writeJSON(w, HTTPStatus(status), resp)
+}
+
+func refreshStatus(outcome recall.RefreshOutcome) Status {
+	switch outcome {
+	case recall.RefreshSucceeded:
+		return StatusOK
+	case recall.RefreshDegraded:
+		return StatusDegraded
+	default:
+		return StatusFailed
+	}
+}
+
 func (h *Handler) handleSources(w http.ResponseWriter, r *http.Request) {
 	listing, err := h.core.Sources(r.Context())
 	writeListing(w, listing, err)
@@ -233,7 +266,7 @@ func (h *Handler) handleUnknown(w http.ResponseWriter, r *http.Request) {
 // Endpoints lists every path this API serves, so a 404 can tell a caller what
 // it could have asked for instead of only what it could not.
 func Endpoints() []string {
-	names := []string{"query", "expand", "sources", "doctor", "version"}
+	names := []string{"query", "expand", "refresh", "sources", "doctor", "version"}
 	out := make([]string, 0, len(names))
 	for _, name := range names {
 		out = append(out, "/"+Version+"/"+name)
@@ -243,7 +276,7 @@ func Endpoints() []string {
 
 func methodsFor(path string) (string, bool) {
 	switch path {
-	case "/" + Version + "/query", "/" + Version + "/expand":
+	case "/" + Version + "/query", "/" + Version + "/expand", "/" + Version + "/refresh":
 		return http.MethodPost, true
 	case "/" + Version + "/sources", "/" + Version + "/doctor", "/" + Version + "/version":
 		return http.MethodGet, true

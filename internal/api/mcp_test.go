@@ -18,14 +18,22 @@ import (
 	"github.com/marcus/recall/internal/recall"
 )
 
-func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
+func TestMCPReturnsTheSameTypedQueryExpandAndRefreshResults(t *testing.T) {
 	wantQuery := sampleQueryResponse()
 	wantExpand := recall.ExpandResponse{
 		Content: "the evidence", Provenance: "notes.md#L1-2", SourceRevision: "abc123",
 	}
+	wantRefresh := recall.RefreshResponse{
+		Outcome: recall.RefreshSucceeded,
+		Sources: []recall.RefreshSourceOutcome{{
+			SourceID: "notes", Status: recall.RefreshSourceRefreshed,
+			Health: &recall.Health{Status: recall.HealthHealthy, Coverage: recall.IndexComplete, IndexGeneration: "gen-2"},
+		}},
+	}
 	core := &stubCore{
 		query:   wantQuery,
 		expand:  wantExpand,
+		refresh: wantRefresh,
 		sources: Listing{Payload: map[string]any{"profile": "work", "sources": []any{}}, Status: StatusOK},
 	}
 	responses := runMCP(t, core,
@@ -35,6 +43,7 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"decision","limit":7,"sources":["notes"],"record_types":["document"],"project":"recall","entities":["Marcus"],"since":"2026-07-01T00:00:00Z","until":"2026-07-25T00:00:00Z","as_of":"2026-07-24T12:00:00Z","budget_tokens":900,"budget_ms":750}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"recall_expand","arguments":{"locator":"notes:record-1#L1-2"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"recall_sources","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"recall_refresh","arguments":{"source_id":"notes","full":true}}}`,
 	)
 
 	var initialized struct {
@@ -49,7 +58,7 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 		Tools []Tool `json:"tools"`
 	}
 	decodeResult(t, responses["2"], &listed)
-	if len(listed.Tools) != 3 {
+	if len(listed.Tools) != 4 {
 		t.Fatalf("tools/list returned %d tools", len(listed.Tools))
 	}
 
@@ -80,6 +89,49 @@ func TestMCPReturnsTheSameTypedQueryAndExpandResults(t *testing.T) {
 	var sources callToolResult
 	decodeResult(t, responses["5"], &sources)
 	assertSameJSON(t, sources.StructuredContent, core.sources.Payload)
+
+	var refresh callToolResult
+	decodeResult(t, responses["6"], &refresh)
+	if refresh.IsError {
+		t.Fatalf("successful refresh marked error: %+v", refresh)
+	}
+	assertSameJSON(t, refresh.StructuredContent, wantRefresh)
+	if core.lastRefresh.SourceID != "notes" || !core.lastRefresh.Full {
+		t.Fatalf("MCP refresh lost request fields: %+v", core.lastRefresh)
+	}
+}
+
+func TestMCPRefreshRejectsUnknownArgumentsStrictly(t *testing.T) {
+	responses := runMCP(t, &stubCore{},
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_refresh","arguments":{"source":"docs"}}}`,
+	)
+	var got callToolResult
+	decodeResult(t, responses["2"], &got)
+	if !got.IsError || !strings.Contains(got.Content[0].Text, "unknown field") {
+		t.Fatalf("unknown refresh argument not refused: %+v", got)
+	}
+}
+
+func TestMCPFailedRefreshKeepsTypedOutcomeAndSetsToolError(t *testing.T) {
+	want := recall.RefreshResponse{
+		Outcome: recall.RefreshFailed,
+		Sources: []recall.RefreshSourceOutcome{{
+			SourceID: "docs", Status: recall.RefreshSourceFailed, Reason: recall.RefreshOperationFailed,
+		}},
+	}
+	responses := runMCP(t, &stubCore{refresh: want},
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_refresh","arguments":{"source_id":"docs"}}}`,
+	)
+	var got callToolResult
+	decodeResult(t, responses["2"], &got)
+	if !got.IsError {
+		t.Fatal("failed refresh was presented as a successful tool call")
+	}
+	assertSameJSON(t, got.StructuredContent, want)
 }
 
 func TestMCPFailedOutcomeCannotLookLikeEmptySuccess(t *testing.T) {

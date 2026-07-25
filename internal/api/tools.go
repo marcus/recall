@@ -38,12 +38,13 @@ type Tool struct {
 const (
 	ToolQuery   = "recall_query"
 	ToolExpand  = "recall_expand"
+	ToolRefresh = "recall_refresh"
 	ToolSources = "recall_sources"
 )
 
 // toolSet is the whole surface an agent host sees.
 //
-// Three tools, not five. `recall doctor` and `recall config explain` are
+// Four tools. `recall doctor` and `recall config explain` are
 // deliberately absent: they answer an operator's question about whether this
 // installation is set up correctly, which is not a question an agent can act
 // on, and every extra tool in a set makes the model's choice among the rest
@@ -65,6 +66,13 @@ func toolSet() []Tool {
 			Description:  expandToolDescription,
 			InputSchema:  json.RawMessage(expandInputSchema),
 			OutputSchema: json.RawMessage(expandOutputSchema),
+		},
+		{
+			Name:         ToolRefresh,
+			Title:        "Refresh stale indexed sources",
+			Description:  refreshToolDescription,
+			InputSchema:  json.RawMessage(refreshInputSchema),
+			OutputSchema: json.RawMessage(refreshOutputSchema),
 		},
 		{
 			Name:        ToolSources,
@@ -113,6 +121,52 @@ const sourcesToolDescription = `List every configured source with its capabiliti
 Use it when a query came back with coverage=degraded or outcome=failed and you need to tell the user which source could not answer, or when the user asks what Recall can actually see.
 
 Do NOT call it before a query, or routinely. It probes every source in the profile, which costs a round trip each, and recall_query already reports per-source outcomes for the query you actually ran.`
+
+const refreshToolDescription = `Update adapter-owned indexes after source material changed.
+
+Use it when recall_sources or a degraded query reports a checkpoint-capable source as stale, or when the user explicitly asks to refresh Recall. Pass source_id to update one source; omit it to update every eligible checkpoint-capable source in the active profile.
+
+This maintenance writes new adapter-owned index generations. Do NOT call it speculatively before ordinary queries, and do not retry a failed refresh without reading its per-source reason and health.
+
+Read outcome and every source status. refreshed means all eligible targets published healthy state. degraded means at least one usable target refreshed but another failed or remained degraded. failed means no target produced usable state. A skipped non-checkpoint source in an all-source request is informational, not a failure.`
+
+const refreshInputSchema = `{
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One source id exactly as recall_sources reports it. Omit to refresh every eligible checkpoint-capable source."
+    },
+    "full": {
+      "type": "boolean",
+      "description": "Request a complete rebuild rather than an incremental pass."
+    }
+  },
+  "additionalProperties": false
+}`
+
+const refreshOutputSchema = `{
+  "type": "object",
+  "properties": {
+    "outcome": {"type": "string", "enum": ["refreshed", "degraded", "failed"]},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {"type": "string"},
+          "source_uid": {"type": "string"},
+          "status": {"type": "string", "enum": ["refreshed", "degraded", "failed", "skipped"]},
+          "reason": {"type": "string"},
+          "health": {"type": "object"}
+        },
+        "required": ["source_id", "status"]
+      }
+    }
+  },
+  "required": ["outcome", "sources"]
+}`
 
 // The schemas below are hand-written JSON Schema rather than generated from Go
 // types. They are read by a model as much as by a validator, so the field
@@ -305,6 +359,8 @@ func (s *mcpServer) call(ctx context.Context, params json.RawMessage) (any, *mcp
 		return s.callQuery(ctx, p.Arguments)
 	case ToolExpand:
 		return s.callExpand(ctx, p.Arguments)
+	case ToolRefresh:
+		return s.callRefresh(ctx, p.Arguments)
 	case ToolSources:
 		return s.callSources(ctx, p.Arguments)
 	default:
@@ -313,6 +369,49 @@ func (s *mcpServer) call(ctx context.Context, params json.RawMessage) (any, *mcp
 		// would invite it to keep trying.
 		return nil, &mcpError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name}
 	}
+}
+
+type refreshArgs struct {
+	SourceID string `json:"source_id"`
+	Full     bool   `json:"full"`
+}
+
+func (s *mcpServer) callRefresh(ctx context.Context, raw json.RawMessage) (any, *mcpError) {
+	var args refreshArgs
+	if err := decodeArgs(raw, &args); err != nil {
+		return toolFailure("%s", err.Error())
+	}
+	req := recall.RefreshRequest{SourceID: args.SourceID, Full: args.Full}
+	if problem := normalizeRefresh(&req, s.core.Profile()); problem != nil {
+		return toolFailure("%s", problem.Message)
+	}
+	resp, err := s.core.Refresh(ctx, req)
+	if err != nil {
+		return toolFailure("the refresh could not be planned: %v", err)
+	}
+	return callToolResult{
+		Content:           toolText("%s", renderRefreshText(resp)),
+		StructuredContent: resp,
+		IsError:           resp.Outcome == recall.RefreshFailed,
+	}, nil
+}
+
+func renderRefreshText(resp recall.RefreshResponse) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "refresh %s", resp.Outcome)
+	for _, source := range resp.Sources {
+		fmt.Fprintf(&b, "\n%s: %s", source.SourceID, source.Status)
+		if source.Reason != "" {
+			fmt.Fprintf(&b, " (%s)", source.Reason)
+		}
+		if source.Health != nil {
+			fmt.Fprintf(&b, "; health %s, coverage %s", source.Health.Status, source.Health.Coverage)
+			if source.Health.IndexGeneration != "" {
+				fmt.Fprintf(&b, ", generation %s", source.Health.IndexGeneration)
+			}
+		}
+	}
+	return b.String()
 }
 
 type queryArgs struct {

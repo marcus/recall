@@ -112,6 +112,25 @@ func (c *Client) Expand(ctx context.Context, req recall.ExpandRequest) (recall.E
 	return out, nil
 }
 
+// Refresh updates adapter-owned indexes through a running server.
+func (c *Client) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error) {
+	if req.Profile == "" {
+		req.Profile = c.profile
+	}
+	resp, body, err := c.do(ctx, http.MethodPost, "/refresh", req)
+	if err != nil {
+		return recall.RefreshResponse{}, err
+	}
+	if resp.Header.Get(HeaderOutcome) == "" {
+		return recall.RefreshResponse{}, problemFrom(resp, body)
+	}
+	var out recall.RefreshResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return recall.RefreshResponse{}, fmt.Errorf("decoding refresh response: %w", err)
+	}
+	return out, nil
+}
+
 // Sources lists the configured sources as the server reports them.
 func (c *Client) Sources(ctx context.Context) (Listing, error) { return c.listing(ctx, "/sources") }
 

@@ -635,8 +635,8 @@ func servingCheck(sources []*config.SourceInstance, healths map[string]recall.He
 		problems = append(problems, Problem{
 			SourceID: s.ID,
 			Message: fmt.Sprintf("%s (base_prior %g); it answers, so a query will use it, and the answer "+
-				"will be drawn from less than this source holds",
-				strings.Join(found, ", "), s.BasePrior),
+				"will be drawn from less than this source holds; run recall refresh --source %s",
+				strings.Join(found, ", "), s.BasePrior, s.ID),
 		})
 	}
 

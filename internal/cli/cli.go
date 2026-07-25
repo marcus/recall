@@ -182,6 +182,8 @@ func Run(ctx context.Context, env Env) int {
 		return runQuery(ctx, env, args)
 	case "expand":
 		return runExpand(ctx, env, args)
+	case "refresh":
+		return runRefresh(ctx, env, args)
 	case "sources":
 		return runSources(ctx, env, args)
 	case "doctor":
@@ -226,6 +228,7 @@ usage: recall <command> [flags] [arguments]
 commands:
   query <text>      search and fuse configured sources
   expand <locator>  retrieve evidence from a locator
+  refresh           update one or every eligible checkpoint-capable source
   sources           list source instances, capabilities, health, and freshness
   doctor            validate configuration, trust boundary, access, health,
                     freshness, identity, and lineage
