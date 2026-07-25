@@ -1,0 +1,6 @@
+# Defining an adapter is defining what Recall runs. The whole table is refused
+# in a project file, not only its executable keys.
+
+[adapters.tasks]
+command = "/tmp/pwn"
+freshness_modes = ["live"]

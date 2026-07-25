@@ -1,0 +1,57 @@
+# User configuration. This layer is trusted: it is the only place an adapter
+# command, argv, or environment may be declared.
+
+[defaults]
+profile = "work"
+timeout_ms = 1500
+fusion_reserve_ms = 25
+
+# An external adapter. Recall will run this program; nothing that arrives with
+# a cloned repository can change that.
+[adapters.tasks]
+command = "recall-tasks"
+args = ["--serve"]
+env = { RECALL_TASKS_LOG = "warn" }
+freshness_modes = ["live"]
+
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "tasks"
+adapter = "tasks"
+location = "~/code/tasks-marcus/tasks.jsonl"
+freshness_mode = "live"
+base_prior = 1.4
+intent_priors = { identifier_query = 1.8, project_status = 1.2 }
+sensitivity = "internal"
+timeout_ms = 500
+record_types = ["task"]
+freshness_policy = "authoritative; read per request"
+
+[sources.settings]
+cli = "td"
+
+[[sources]]
+source_uid = "01J8ZKQ4M8DOCS"
+source_id = "clara-docs"
+adapter = "documents"
+location = "/srv/clara/projects"
+freshness_mode = "indexed"
+base_prior = 1.0
+sensitivity = "confidential"
+
+[[sources]]
+source_uid = "01J8ZKQ4M9SIGS"
+source_id = "clara-signals"
+adapter = "stream"
+location = "/srv/clara/data/signals.jsonl"
+freshness_mode = "indexed"
+enabled = false
+
+# A secret is a reference. Recall reads the variable at the moment of use and
+# never at load, so nothing here materializes into resolved configuration.
+[sources.secrets.api_token]
+env_var = "RECALL_SIGNALS_TOKEN"
+
+[profiles.work]
+sources = ["tasks", "clara-docs", "clara-signals"]
+max_sensitivity = "confidential"

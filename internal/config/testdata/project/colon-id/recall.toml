@@ -1,0 +1,8 @@
+# ":" separates the source from the adapter-local part of a locator, so a name
+# containing one makes every locator it prints ambiguous.
+
+[[sources]]
+source_uid = "01J8ZKQ4MCCOLON"
+source_id = "repo:notes"
+adapter = "documents"
+freshness_mode = "indexed"

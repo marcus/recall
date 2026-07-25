@@ -1,0 +1,8 @@
+# A new source claiming an identity the user layer already assigned. Two
+# sources sharing a uid would collapse into one lineage namespace.
+
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "repo-notes"
+adapter = "documents"
+freshness_mode = "indexed"

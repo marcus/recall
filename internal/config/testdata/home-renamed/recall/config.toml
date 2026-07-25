@@ -1,0 +1,32 @@
+# The same machine after `recall config rename tasks work-items`. Every
+# source_uid is byte-identical to home/recall/config.toml; only the display
+# names moved. Persisted locators and evaluation judgments key on the uid, so
+# nothing they refer to may move with the rename.
+
+[defaults]
+profile = "work"
+timeout_ms = 1500
+
+[adapters.tasks]
+command = "recall-tasks"
+args = ["--serve"]
+freshness_modes = ["live"]
+
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "work-items"
+adapter = "tasks"
+location = "/srv/tasks/tasks.jsonl"
+freshness_mode = "live"
+base_prior = 1.4
+
+[[sources]]
+source_uid = "01J8ZKQ4M8DOCS"
+source_id = "project-docs"
+adapter = "documents"
+location = "/srv/clara/projects"
+freshness_mode = "indexed"
+
+[profiles.work]
+sources = ["work-items", "project-docs"]
+max_sensitivity = "confidential"

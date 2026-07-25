@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/empty.json",
+  "title": "Empty payload",
+  "description": "Used by recall/shutdown, which carries no arguments and returns no data.",
+  "type": ["object", "null"],
+  "additionalProperties": false
+}

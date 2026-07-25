@@ -1,0 +1,10 @@
+# adapters.d registers adapters and nothing else. It is user-level, so a
+# command here is as trusted as one in config.toml.
+
+[adapters.stream]
+command = "/usr/local/bin/recall-stream"
+args = ["--protocol", "1"]
+freshness_modes = ["indexed", "hybrid"]
+
+[adapters.stream.secrets.bearer]
+env_var = "RECALL_STREAM_TOKEN"

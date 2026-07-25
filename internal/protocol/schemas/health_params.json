@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/health_params.json",
+  "title": "recall/health params",
+  "description": "Every request carries a deadline, a probe included.",
+  "type": "object",
+  "required": ["deadline"],
+  "additionalProperties": false,
+  "properties": {
+    "deadline": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

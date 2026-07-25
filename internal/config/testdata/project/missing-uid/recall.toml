@@ -1,0 +1,7 @@
+# A new source with no immutable identity. Nothing may generate one during a
+# load: a uid is minted once, deliberately, when a source is added.
+
+[[sources]]
+source_id = "repo-notes"
+adapter = "documents"
+freshness_mode = "indexed"

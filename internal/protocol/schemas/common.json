@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/common.json",
+  "title": "Shared definitions for the Recall adapter protocol",
+  "$defs": {
+    "timestamp": {
+      "description": "RFC 3339 instant.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "locator": {
+      "description": "Display-form locator, <source_id>:<local>. Only the owning adapter interprets the local part.",
+      "type": "string",
+      "pattern": "^[^:]+:.+$"
+    },
+    "core_attached": {
+      "description": "Identity is assigned at Recall's boundary. An adapter may leave the field out or leave it empty; it may never name itself.",
+      "const": ""
+    },
+    "sensitivity": {
+      "description": "Ordered classification. A candidate may raise its source's floor, never lower it.",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "record_type": {
+      "description": "Open set: adapters may declare types the core has never seen.",
+      "type": "string",
+      "minLength": 1
+    },
+    "query_mode": {
+      "enum": ["exact", "lexical", "semantic", "structured", "temporal"]
+    },
+    "freshness_mode": {
+      "enum": ["live", "indexed", "hybrid"]
+    },
+    "as_of_support": {
+      "enum": ["none", "filter", "snapshot"]
+    },
+    "capability": {
+      "enum": ["search", "expand", "enumerate", "checkpoint", "context_expansion"]
+    },
+    "match_signal": {
+      "enum": ["exact_identifier", "lexical", "semantic", "field", "alias"]
+    },
+    "detail_level": {
+      "enum": ["summary", "excerpt", "full", "context"]
+    },
+    "search_outcome": {
+      "description": "An unreachable source reports unavailable, denied, failed, or timeout. It never reports success with no candidates.",
+      "enum": ["success", "partial", "unavailable", "denied", "failed", "timeout", "skipped"]
+    },
+    "health_status": {
+      "enum": ["healthy", "degraded", "unavailable", "denied"]
+    },
+    "index_coverage": {
+      "enum": ["complete", "partial", "unknown"]
+    },
+    "diagnostics": {
+      "description": "Safe operational detail. A denied source must not leak record existence here.",
+      "type": ["object", "null"]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

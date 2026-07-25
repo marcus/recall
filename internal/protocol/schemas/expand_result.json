@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/expand_result.json",
+  "title": "recall/expand result",
+  "description": "Evidence with the provenance needed to trust it. A changed source fails with locator_expired; it never returns a different revision.",
+  "type": "object",
+  "required": ["content", "truncated"],
+  "additionalProperties": false,
+  "properties": {
+    "content": { "type": "string" },
+    "source_revision": { "type": "string" },
+    "truncated": { "type": "boolean" },
+    "truncation_boundary": {
+      "description": "Which limit applied, so a budget cut is distinguishable from a source-side limit.",
+      "type": "string"
+    },
+    "provenance": { "type": "string" }
+  }
+}

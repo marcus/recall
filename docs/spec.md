@@ -297,18 +297,48 @@ output (`recall config explain`, `recall sources --json`) is JSON.
 
 Two layers, deterministic merge, project over user:
 
-- **User configuration** (`$XDG_CONFIG_HOME/recall/config.toml`) is the only
-  place an adapter **command** may be declared. It is trusted.
+- **User configuration** (`$XDG_CONFIG_HOME/recall/config.toml` and
+  `adapters.d/`) is the only place an adapter **command** may be declared. It is
+  trusted.
 - **Project configuration** (`recall.toml` in a project) may reference adapters
-  by name and supply locations, scopes, priors, and adapter settings. It may
-  never introduce an executable path, argv, or environment for a subprocess.
+  by name and supply locations, scopes, priors, record types, timeouts, and
+  adapter settings. It may never introduce an executable path, argv, or
+  environment for a subprocess.
 
 This boundary exists because a project configuration travels with a cloned
-repository. Loading a project file must never be able to execute
-attacker-chosen code. `recall doctor` fails loudly when a project file declares
-a command.
+repository. Loading one must never be able to execute attacker-chosen code, and
+must never let the repository redirect an existing source. The project layer
+therefore also may not:
+
+- Reassign the `source_uid` of a source the user layer defined. Identity
+  reassignment is how a cloned repository would make its own data answer as a
+  trusted source.
+- Repoint a source at a different adapter.
+- Move a sensitivity floor or a profile ceiling in the permissive direction.
+  Invariant 4 forbids an adapter lowering a floor; a project file is no more
+  trusted than an adapter.
+
+Executable keys are rejected by name anywhere in a project document, including
+inside the adapter-owned `settings` table, which is otherwise the natural place
+to hide one. Secret references use `env_var` rather than `env` so the scan can
+stay blunt. `recall doctor` fails loudly on every rule above.
 
 Recall never discovers and runs programs found in a source directory.
+
+### Adapter Registration
+
+A user-level adapter record declares what the core needs before any adapter
+process exists. Configuration is validated at load time, when no manifest has
+been exchanged, so the record must restate the parts validation depends on:
+
+```text
+command                 executable, user layer only
+args, env               argv and environment, user layer only
+freshness_modes         modes this adapter can serve
+```
+
+A manifest that contradicts its registration fails the handshake. A source that
+omits `freshness_mode` inherits it only when the adapter supports exactly one.
 
 ### Source Instance
 
@@ -331,10 +361,17 @@ settings            adapter-owned, schema-validated
 Relative paths in a project file resolve from that file. Secrets are references
 to environment variables or an OS keychain and never appear in resolved output.
 
-Priors and intent adjustments use validated ranges, appear in every score
-explanation, and are evaluation parameters. A prior expresses expected
-authority for a query class. It does not calibrate a source's native score.
-Configuration must not become an unbounded scoring language.
+An `intent_priors` entry is the prior **in force** for its query class, not a
+delta applied to `base_prior`. Both are validated against the same `[0.5, 2.0]`
+range, which is what makes them comparable and bounded; a delta sharing that
+range would be a different quantity wearing the same units. The explanation
+reports `intent` as the derived difference, so a reader sees what the rule
+changed as well as where it landed.
+
+Priors appear in every score explanation and are evaluation parameters. A prior
+expresses expected authority for a query class. It does not calibrate a
+source's native score. Configuration must not become an unbounded scoring
+language.
 
 ### Permissions
 

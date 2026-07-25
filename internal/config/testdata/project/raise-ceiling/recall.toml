@@ -1,0 +1,4 @@
+# A profile ceiling may only move down in the project layer.
+
+[profiles.work]
+max_sensitivity = "restricted"

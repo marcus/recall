@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/manifest.json",
+  "title": "recall/initialize result",
+  "description": "What the adapter can do. Identity, priors, and policy come from configuration; nothing here names a source_uid.",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "adapter_id",
+    "display_name",
+    "record_types",
+    "query_modes",
+    "freshness_modes",
+    "as_of_support",
+    "capabilities",
+    "sensitivity"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "minimum": 1 },
+    "adapter_id": { "type": "string", "minLength": 1 },
+    "display_name": { "type": "string", "minLength": 1 },
+    "record_types": {
+      "type": ["array", "null"],
+      "items": { "$ref": "common.json#/$defs/record_type" }
+    },
+    "query_modes": {
+      "type": ["array", "null"],
+      "items": { "$ref": "common.json#/$defs/query_mode" }
+    },
+    "freshness_modes": {
+      "type": ["array", "null"],
+      "items": { "$ref": "common.json#/$defs/freshness_mode" }
+    },
+    "as_of_support": { "$ref": "common.json#/$defs/as_of_support" },
+    "derives_from": {
+      "description": "source_uid this source projects wholesale. The fallback lineage edge, used when record-level references are unavailable.",
+      "type": "string"
+    },
+    "capabilities": {
+      "type": ["array", "null"],
+      "items": { "$ref": "common.json#/$defs/capability" }
+    },
+    "max_concurrency": {
+      "description": "In-flight request limit. Absent or zero means unbounded.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "freshness_policy": { "type": "string" },
+    "sensitivity": { "$ref": "common.json#/$defs/sensitivity" },
+    "settings_schema": { "type": ["object", "null"] }
+  }
+}

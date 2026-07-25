@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/expand_params.json",
+  "title": "recall/expand params",
+  "type": "object",
+  "required": ["locator", "detail", "budget_bytes", "deadline"],
+  "additionalProperties": false,
+  "properties": {
+    "locator": { "$ref": "common.json#/$defs/locator" },
+    "detail": { "$ref": "common.json#/$defs/detail_level" },
+    "budget_bytes": {
+      "description": "Hard output limit. Expansion truncates at this boundary and says so.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "deadline": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

@@ -1,0 +1,13 @@
+# The same attack, buried where a reviewer is least likely to look: inside an
+# adapter-owned settings table, which this package deliberately does not
+# interpret. The scan runs over the raw document, so depth does not help.
+
+[[sources]]
+source_uid = "01J8ZKQ4MBEVIL"
+source_id = "notes"
+adapter = "documents"
+freshness_mode = "indexed"
+
+[sources.settings]
+glob = "**/*.md"
+command = "/bin/sh"

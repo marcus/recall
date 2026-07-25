@@ -27,25 +27,25 @@ func TestConfigRejectsOutOfRangeValues(t *testing.T) {
 		"prior not a number": {
 			Sources: sources(ranking.SourceConfig{SourceID: "tasks", BasePrior: math.NaN()}),
 		},
-		"intent adjustment leaves the range": {
+		"intent prior leaves the range": {
 			Sources: sources(ranking.SourceConfig{
 				SourceID:     "tasks",
 				BasePrior:    1.8,
-				IntentPriors: []ranking.IntentPrior{{Rule: "boost", QueryClass: "task", Adjustment: 0.5}},
+				IntentPriors: []ranking.IntentPrior{{Rule: "boost", QueryClass: "task", Effective: 3.0}},
 			}),
 		},
-		"intent adjustment names no rule": {
+		"intent prior names no rule": {
 			Sources: sources(ranking.SourceConfig{
 				SourceID:     "tasks",
 				BasePrior:    1,
-				IntentPriors: []ranking.IntentPrior{{QueryClass: "task", Adjustment: 0.5}},
+				IntentPriors: []ranking.IntentPrior{{QueryClass: "task", Effective: 1.5}},
 			}),
 		},
-		"intent adjustment names no query class": {
+		"intent prior names no query class": {
 			Sources: sources(ranking.SourceConfig{
 				SourceID:     "tasks",
 				BasePrior:    1,
-				IntentPriors: []ranking.IntentPrior{{Rule: "boost", Adjustment: 0.5}},
+				IntentPriors: []ranking.IntentPrior{{Rule: "boost", Effective: 1.5}},
 			}),
 		},
 		"two rules for one query class": {
@@ -53,8 +53,8 @@ func TestConfigRejectsOutOfRangeValues(t *testing.T) {
 				SourceID:  "tasks",
 				BasePrior: 1,
 				IntentPriors: []ranking.IntentPrior{
-					{Rule: "first", QueryClass: "task", Adjustment: 0.2},
-					{Rule: "second", QueryClass: "task", Adjustment: 0.3},
+					{Rule: "first", QueryClass: "task", Effective: 1.2},
+					{Rule: "second", QueryClass: "task", Effective: 1.3},
 				},
 			}),
 		},

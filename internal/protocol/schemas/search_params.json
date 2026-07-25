@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/search_params.json",
+  "title": "recall/search params",
+  "description": "The query text is passed as given. The core synthesizes no variants: term expansion, stemming, and synonyms are source-local concerns.",
+  "type": "object",
+  "required": ["query", "filters", "limit", "deadline"],
+  "additionalProperties": false,
+  "properties": {
+    "query": { "type": "string" },
+    "context": {
+      "description": "Bounded prior message texts. Honored only when the manifest declares context_expansion.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_types": {
+          "type": ["array", "null"],
+          "items": { "$ref": "common.json#/$defs/record_type" }
+        },
+        "since": { "$ref": "common.json#/$defs/timestamp" },
+        "until": { "$ref": "common.json#/$defs/timestamp" },
+        "entities": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "project": { "type": "string" }
+      }
+    },
+    "as_of": { "$ref": "common.json#/$defs/timestamp" },
+    "limit": { "type": "integer", "minimum": 0 },
+    "deadline": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

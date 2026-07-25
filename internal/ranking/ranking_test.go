@@ -2,6 +2,7 @@ package ranking_test
 
 import (
 	"errors"
+	"math"
 	"math/rand/v2"
 	"reflect"
 	"testing"
@@ -437,10 +438,10 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 		c.CorroborationCap = 1.5
 		c.Sources["uid-tasks"] = ranking.SourceConfig{
 			SourceID:  "tasks",
-			BasePrior: 1.2,
+			BasePrior: 1.0,
 			IntentPriors: []ranking.IntentPrior{
-				{Rule: "work_items_for_task_queries", QueryClass: "task", Adjustment: 0.5},
-				{Rule: "work_items_for_people", QueryClass: "person", Adjustment: -0.4},
+				{Rule: "work_items_for_task_queries", QueryClass: "task", Effective: 1.5},
+				{Rule: "work_items_for_people", QueryClass: "person", Effective: 0.6},
 			},
 		}
 	})
@@ -463,15 +464,15 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 	if e.RankConstant != 40 {
 		t.Errorf("rank constant = %v, want the configured 40", e.RankConstant)
 	}
-	if e.Prior.Base != 1.2 {
-		t.Errorf("base prior = %v, want 1.2", e.Prior.Base)
+	if e.Prior.Base != 1.0 {
+		t.Errorf("base prior = %v, want 1.0", e.Prior.Base)
 	}
 	if e.Prior.Intent != 0.5 || e.Prior.Rule != "work_items_for_task_queries" {
 		t.Errorf("intent = %v by rule %q, want 0.5 by work_items_for_task_queries",
 			e.Prior.Intent, e.Prior.Rule)
 	}
-	if e.Prior.Effective != 1.7 {
-		t.Errorf("effective prior = %v, want 1.7", e.Prior.Effective)
+	if e.Prior.Effective != 1.5 {
+		t.Errorf("effective prior = %v, want the class prior 1.5", e.Prior.Effective)
 	}
 	if e.LineageRoot != "uid-tasks:td-1" {
 		t.Errorf("lineage root = %q", e.LineageRoot)
@@ -483,12 +484,19 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 		t.Error("exact promotion not explained")
 	}
 	// The arithmetic the explanation claims must be the arithmetic that ran.
-	want := 1.7/(40+3) + 1.0/(40+1)
+	want := 1.5/(40+3) + 1.0/(40+1)
 	if e.Corroboration.CapApplied {
-		want = 1.5 * 1.7 / (40 + 3)
+		want = 1.5 * 1.5 / (40 + 3)
 	}
-	if got.Score != want || e.Score != got.Score {
-		t.Errorf("score = %v (explained as %v), want %v", got.Score, e.Score, want)
+	// A tolerance, not equality: this is a sum, and the order the terms are
+	// associated in is an implementation detail worth one ULP. Equality is
+	// still the right assertion where the arithmetic must be identical rather
+	// than equivalent, as in the duplicate-lineage test.
+	if math.Abs(got.Score-want) > 1e-12 {
+		t.Errorf("score = %v, want %v", got.Score, want)
+	}
+	if e.Score != got.Score {
+		t.Errorf("explanation claims %v but the result scored %v", e.Score, got.Score)
 	}
 }
 
@@ -499,7 +507,7 @@ func TestIntentPriorOnlyAppliesToItsQueryClass(t *testing.T) {
 		c.Sources["uid-tasks"] = ranking.SourceConfig{
 			SourceID:     "tasks",
 			BasePrior:    1,
-			IntentPriors: []ranking.IntentPrior{{Rule: "people_queries", QueryClass: "person", Adjustment: 0.8}},
+			IntentPriors: []ranking.IntentPrior{{Rule: "people_queries", QueryClass: "person", Effective: 1.8}},
 		}
 	})
 

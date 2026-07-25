@@ -90,9 +90,9 @@ type IntentPrior struct {
 	// QueryClass is the request's declared class this rule answers to.
 	QueryClass string
 
-	// Adjustment is added to the base prior. The sum must stay in
+	// Effective replaces the base prior for this query class. It must stay in
 	// [MinPrior, MaxPrior].
-	Adjustment float64
+	Effective float64
 }
 
 // withDefaults fills unset constants and copies the source map so a later
@@ -161,9 +161,9 @@ func (sc SourceConfig) validate(uid recall.SourceUID) error {
 		case seen[ip.QueryClass]:
 			return fmt.Errorf("%w: source %q has two intent priors for query class %q",
 				ErrConfig, uid, ip.QueryClass)
-		case !inPriorRange(sc.BasePrior + ip.Adjustment):
+		case !inPriorRange(ip.Effective):
 			return fmt.Errorf("%w: source %q rule %q gives effective prior %v, want [%v, %v]",
-				ErrConfig, uid, ip.Rule, sc.BasePrior+ip.Adjustment, MinPrior, MaxPrior)
+				ErrConfig, uid, ip.Rule, ip.Effective, MinPrior, MaxPrior)
 		}
 		seen[ip.QueryClass] = true
 	}
@@ -187,9 +187,12 @@ func (c Config) prior(uid recall.SourceUID, class string) (recall.PriorExplanati
 		if ip.QueryClass != class {
 			continue
 		}
-		p.Intent = ip.Adjustment
+		// The configured number is the prior in force for this class; Intent
+		// is the derived delta, reported so an explanation shows what the rule
+		// changed rather than only where it landed.
+		p.Effective = ip.Effective
+		p.Intent = ip.Effective - sc.BasePrior
 		p.Rule = ip.Rule
-		p.Effective = sc.BasePrior + ip.Adjustment
 		break
 	}
 	return p, nil

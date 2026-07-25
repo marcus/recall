@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/initialize_params.json",
+  "title": "recall/initialize params",
+  "description": "Version range plus a writable workdir. Negotiation happens once, here.",
+  "type": "object",
+  "required": ["protocol_version_min", "protocol_version_max", "workdir"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version_min": { "type": "integer", "minimum": 1 },
+    "protocol_version_max": { "type": "integer", "minimum": 1 },
+    "workdir": {
+      "description": "Writable directory under Recall's state directory. An adapter writes indexes and checkpoints only here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "location": {
+      "description": "Configured path, endpoint, or connection reference for this source instance.",
+      "type": "string"
+    },
+    "settings": {
+      "description": "Adapter-owned settings, shaped by the manifest's settings_schema.",
+      "type": ["object", "null"]
+    }
+  }
+}

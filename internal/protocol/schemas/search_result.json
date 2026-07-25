@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/search_result.json",
+  "title": "recall/search result",
+  "description": "Outcome is mandatory. A source that could not answer says so here rather than returning an empty candidate list.",
+  "type": "object",
+  "required": ["candidates", "outcome"],
+  "additionalProperties": false,
+  "properties": {
+    "candidates": {
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "diagnostics": { "$ref": "common.json#/$defs/diagnostics" },
+    "source_watermark": { "type": "string" },
+    "outcome": { "$ref": "common.json#/$defs/search_outcome" }
+  },
+  "$defs": {
+    "candidate": {
+      "description": "A pointer, not a payload: title and excerpt are bounded previews and the locator is how the caller gets more.",
+      "type": "object",
+      "required": [
+        "candidate_id",
+        "source_record_id",
+        "locator",
+        "record_type",
+        "title",
+        "local_rank",
+        "sensitivity"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "source_uid": { "$ref": "common.json#/$defs/core_attached" },
+        "source_id": { "$ref": "common.json#/$defs/core_attached" },
+        "source_record_id": { "type": "string", "minLength": 1 },
+        "locator": { "$ref": "common.json#/$defs/locator" },
+        "derived_from": {
+          "description": "Upstream records this candidate projects. The primary lineage edge.",
+          "type": ["array", "null"],
+          "items": { "$ref": "common.json#/$defs/locator" }
+        },
+        "record_type": { "$ref": "common.json#/$defs/record_type" },
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "local_rank": {
+          "description": "One-based position in this source's own result list. The only mandatory relevance signal.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "local_score": {
+          "description": "Native score, diagnostic only. Never compared across sources.",
+          "type": "number"
+        },
+        "match_signals": {
+          "type": ["array", "null"],
+          "items": { "$ref": "common.json#/$defs/match_signal" }
+        },
+        "observed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "confirmed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "event_time": { "$ref": "common.json#/$defs/timestamp" },
+        "valid_from": { "$ref": "common.json#/$defs/timestamp" },
+        "valid_to": { "$ref": "common.json#/$defs/timestamp" },
+        "source_revision": { "type": "string" },
+        "sensitivity": { "$ref": "common.json#/$defs/sensitivity" },
+        "metadata": { "type": ["object", "null"] },
+        "content_fingerprint": { "type": "string" }
+      }
+    }
+  }
+}

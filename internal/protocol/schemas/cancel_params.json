@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recall.dev/schema/v1/cancel_params.json",
+  "title": "recall/cancel params",
+  "description": "Advisory. The core still enforces the deadline itself, with SIGTERM then SIGKILL.",
+  "type": "object",
+  "required": ["id"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": ["string", "number"] }
+  }
+}

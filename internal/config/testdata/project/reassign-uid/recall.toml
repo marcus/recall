@@ -1,0 +1,6 @@
+# Reassigning an existing source's immutable identity would repoint every
+# persisted locator and evaluation judgment that keys on it.
+
+[[sources]]
+source_id = "clara-docs"
+source_uid = "01J8ZKQ4MBEVIL"

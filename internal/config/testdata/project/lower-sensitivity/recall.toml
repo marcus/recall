@@ -1,0 +1,6 @@
+# Sensitivity is a floor. Lowering one would widen what a profile ceiling
+# admits, granting access from a file that arrived with a clone.
+
+[[sources]]
+source_id = "clara-docs"
+sensitivity = "public"
