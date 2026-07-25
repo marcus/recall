@@ -87,7 +87,10 @@ func TestConformance(t *testing.T) {
 				t.Fatalf("replay: %v", err)
 			}
 			if *rerecord {
-				record(t, tr.Dir, res.Responses)
+				// Redacted, not verbatim: a transcript must not commit the
+				// recording machine's clock or paths under fields nothing
+				// compares.
+				record(t, tr.Dir, conformance.Redact(res.Responses, res.Volatile))
 				return
 			}
 			if !res.OK() {

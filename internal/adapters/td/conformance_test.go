@@ -64,7 +64,11 @@ func TestConformance(t *testing.T) {
 	for _, res := range results {
 		if *rerecord {
 			path := filepath.Join(res.Dir, "response.jsonl")
-			body := bytes.Join(append(res.Responses, nil), []byte("\n"))
+			// Redacted, not verbatim: the fields this case declares volatile
+			// hold a wall clock and absolute paths naming whoever recorded it,
+			// and committing those puts a machine's home directory in the tree
+			// under a value nothing compares.
+			body := bytes.Join(append(conformance.Redact(res.Responses, res.Volatile), nil), []byte("\n"))
 			if err := os.WriteFile(path, body, 0o600); err != nil {
 				t.Fatalf("write %s: %v", path, err)
 			}

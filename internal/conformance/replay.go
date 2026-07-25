@@ -183,6 +183,11 @@ type Result struct {
 	// Responses are the frames the adapter wrote, in the order it wrote them.
 	Responses [][]byte
 
+	// Volatile is the case's declared-volatile pointer list, carried here so a
+	// recorder can mask them with [Redact] before committing a transcript
+	// rather than writing a machine's clock and home directory into the tree.
+	Volatile []string
+
 	// Stderr is the adapter's free-form logging, captured for the report and
 	// never parsed.
 	Stderr string
@@ -291,7 +296,7 @@ func Replay(ctx context.Context, tr *Transcript, target Target, opts Options) (*
 		defer proc.Stop()
 	}
 
-	res := &Result{Case: tr.Manifest.Case, Dir: tr.Dir}
+	res := &Result{Case: tr.Manifest.Case, Dir: tr.Dir, Volatile: tr.Manifest.Volatile}
 	res.Responses, res.Stopped = drive(ctx, requests, proc, opts)
 	if proc.Stderr != nil {
 		res.Stderr = proc.Stderr()

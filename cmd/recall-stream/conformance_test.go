@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marcus/recall/internal/conformance"
 )
 
 // The conformance suite drives the real binary in a real process.
@@ -120,7 +122,10 @@ func runCase(t *testing.T, dir string) {
 	}
 	path := filepath.Join(dir, "response.jsonl")
 	if *rerecord {
-		if err := os.WriteFile(path, bytes.Join(append(got, nil), []byte("\n")), 0o644); err != nil {
+		// Redacted, not verbatim: a transcript must not commit the recording
+		// machine's clock or paths under fields nothing compares.
+		body := bytes.Join(append(conformance.Redact(got, man.Volatile), nil), []byte("\n"))
+		if err := os.WriteFile(path, body, 0o644); err != nil {
 			t.Fatalf("write %s: %v", path, err)
 		}
 		t.Logf("recorded %d responses into %s", len(got), path)

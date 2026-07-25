@@ -130,6 +130,51 @@ func Compare(name string, want, got [][]byte, volatile []string) []Difference {
 	return out
 }
 
+// Redact masks a case's declared-volatile fields for RECORDING.
+//
+// A transcript is committed, read in review, and diffed by people. A recorder
+// that wrote frames verbatim put whatever the recording machine happened to
+// hold into the repository: wall-clock timestamps, and worse, absolute paths
+// naming the home directory of whoever ran it. Because [Compare] masks those
+// same fields on both sides, such a transcript replays correctly everywhere and
+// the leak stays invisible until somebody opens the file — which is exactly the
+// kind of defect a recorded transcript exists to prevent, committed by the tool
+// that records them.
+//
+// Masking at record time makes the committed bytes say what the check actually
+// asserts: this field is not compared. A frame that cannot be parsed is passed
+// through unchanged, because a recorder is not the place to start rejecting an
+// adapter's output — the replay that follows is.
+func Redact(frames [][]byte, volatile []string) [][]byte {
+	pointers := make([]pointer, 0, len(volatile))
+	for _, raw := range volatile {
+		p, err := parsePointer(raw)
+		if err != nil {
+			continue
+		}
+		pointers = append(pointers, p)
+	}
+	if len(pointers) == 0 {
+		return frames
+	}
+
+	out := make([][]byte, 0, len(frames))
+	for _, frame := range frames {
+		masked, err := decodeFrame(frame, pointers)
+		if err != nil {
+			out = append(out, frame)
+			continue
+		}
+		encoded, err := json.Marshal(masked)
+		if err != nil {
+			out = append(out, frame)
+			continue
+		}
+		out = append(out, encoded)
+	}
+	return out
+}
+
 // decodeFrame parses one frame and masks its volatile fields.
 //
 // Numbers are kept as [json.Number] rather than float64: an id or a byte offset
