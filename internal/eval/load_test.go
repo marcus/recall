@@ -191,6 +191,22 @@ func TestLoadRejectsAnUnknownField(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsAThresholdNoGateReads(t *testing.T) {
+	manifest := strings.Replace(
+		manifestJSON,
+		`"thresholds": {"abstention_accuracy": 0.9}`,
+		`"thresholds": {"abstention_accuracy": 0.9, "ndcg_at_10": 0.8}`,
+		1,
+	)
+	_, err := eval.LoadPack(writePack(t, map[string]string{eval.PackFile: manifest}))
+	if err == nil {
+		t.Fatal("accepted ndcg_at_10 in thresholds even though no absolute gate reads it")
+	}
+	if !strings.Contains(err.Error(), "ndcg_at_10") {
+		t.Errorf("error does not name the unsupported threshold: %v", err)
+	}
+}
+
 // Blank lines are how a hand-edited JSONL file separates groups of records.
 // They are not records.
 func TestBlankLinesAreNotRecords(t *testing.T) {

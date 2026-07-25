@@ -45,7 +45,16 @@ var (
 	// ErrInvalidBehavior means an expected behavior outside answer, clarify,
 	// abstain.
 	ErrInvalidBehavior = errors.New("unknown expected_behavior")
+
+	// ErrUnsupportedThreshold means a manifest declared a gate threshold that
+	// this evaluator never consults.
+	ErrUnsupportedThreshold = errors.New("unsupported threshold")
 )
+
+var supportedThresholds = map[string]bool{
+	"exact_identifier_success_at_1": true,
+	"abstention_accuracy":           true,
+}
 
 // Validate checks a pack's manifest, cases, and judgments against each other.
 //
@@ -63,6 +72,12 @@ func Validate(pack *Pack, cases []Case, judgments []Judgment) error {
 	if pack.SchemaVersion != SchemaVersion {
 		problems = append(problems, fmt.Errorf("pack %q: %w %d, this build implements %d",
 			pack.PackID, ErrUnsupportedSchema, pack.SchemaVersion, SchemaVersion))
+	}
+	for name := range pack.Thresholds {
+		if !supportedThresholds[name] {
+			problems = append(problems, fmt.Errorf("pack %q: %w %q",
+				pack.PackID, ErrUnsupportedThreshold, name))
+		}
 	}
 
 	known := make(map[string]bool, len(cases))

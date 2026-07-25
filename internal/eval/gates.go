@@ -16,6 +16,7 @@ const (
 	GateExactIdentifier = "exact_identifier_success"
 	GateAbstention      = "abstention_accuracy"
 	GateLatency         = "p95_latency"
+	GateAssertions      = "declared_assertions"
 	GateRunIntegrity    = "run_integrity"
 )
 
@@ -44,16 +45,28 @@ func EvaluateGates(pack *Pack, scores []CaseScore, report Report, integrity []st
 		"failure, denial, timeout, and partial coverage must be reported as they happened"))
 	gates = append(gates, rateGate(GateCoverage, report.Overall.CoverageAccuracy, 1.0,
 		"degraded coverage must be reported when and only when it is true"))
+	exactThreshold, exactDeclared := pack.Thresholds["exact_identifier_success_at_1"]
 	gates = append(gates, thresholdGate(GateExactIdentifier, exactSuccess(scores),
-		pack.Thresholds["exact_identifier_success_at_1"],
+		exactThreshold, exactDeclared,
 		"an identifier query must put its record first"))
+	abstentionThreshold, abstentionDeclared := pack.Thresholds["abstention_accuracy"]
 	gates = append(gates, thresholdGate(GateAbstention, report.Overall.AbstentionAccuracy,
-		pack.Thresholds["abstention_accuracy"],
+		abstentionThreshold, abstentionDeclared,
 		"answering when it should abstain, or abstaining when it should answer"))
 	gates = append(gates, latencyGate(pack, report))
+	gates = append(gates, countGate(GateAssertions, countAssertionViolations(scores),
+		"declared case assertion violation(s)"))
 	gates = append(gates, integrityGate(integrity))
 
 	return gates
+}
+
+func countAssertionViolations(scores []CaseScore) int {
+	n := 0
+	for _, score := range scores {
+		n += len(score.AssertionViolations)
+	}
+	return n
 }
 
 // sensitivityLeaks counts every candidate that crossed a ceiling a case stated.
@@ -140,7 +153,7 @@ func rateGate(name string, got Mean, want float64, detail string) Gate {
 }
 
 // thresholdGate holds a rate to a bar the pack states.
-func thresholdGate(name string, got Mean, want float64, detail string) Gate {
+func thresholdGate(name string, got Mean, want float64, declared bool, detail string) Gate {
 	g := Gate{Name: name}
 	if !got.Defined() {
 		g.Status = GateSkipped
@@ -149,7 +162,7 @@ func thresholdGate(name string, got Mean, want float64, detail string) Gate {
 	}
 	observed := got.Value
 	g.Observed = &observed
-	if want == 0 {
+	if !declared {
 		// The pack states no bar. On a first run there is no baseline to
 		// regress against either, so this records the number that will become
 		// the bar rather than passing a test nobody wrote.

@@ -78,8 +78,18 @@
     "thresholds": {
       "type": "object",
       "description": "Absolute gate thresholds recorded in the pack. On the first run there is no baseline, so these are absolute; afterwards they become regression bounds derived from measured distributions.",
-      "additionalProperties": {
-        "type": "number"
+      "additionalProperties": false,
+      "properties": {
+        "exact_identifier_success_at_1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "abstention_accuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "sensitivity_ceiling": {

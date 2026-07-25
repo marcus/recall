@@ -39,6 +39,10 @@ type Expansion struct {
 	// Revision is the source revision the expansion landed on. Resolving to the
 	// right record at the wrong revision is a locator failure, not a near miss.
 	Revision string `json:"source_revision,omitempty"`
+
+	// Bytes is the size of the expanded content, not its JSON envelope. Case
+	// byte ceilings use the same unit as ExpandRequest.Budget.
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // Provenance is one returned candidate's claimed origin beside the fixture's
@@ -92,6 +96,11 @@ type CaseResult struct {
 	// SourceOutcomes is what each source reported for this case.
 	SourceOutcomes map[recall.SourceUID]recall.SearchOutcome `json:"source_outcomes,omitempty"`
 
+	// ReturnedSources is the set of immutable source identities that actually
+	// contributed candidates. Source outcomes alone are insufficient: a source
+	// may report success while contributing no evidence.
+	ReturnedSources []recall.SourceUID `json:"returned_source_uids,omitempty"`
+
 	Expansions []Expansion  `json:"expansions,omitempty"`
 	Provenance []Provenance `json:"provenance,omitempty"`
 
@@ -121,6 +130,11 @@ type CaseScore struct {
 	LocatorSuccess        Value `json:"locator_success"`
 	ProvenanceAccuracy    Value `json:"provenance_accuracy"`
 	SourceOutcomeAccuracy Value `json:"source_outcome_accuracy"`
+
+	// AssertionViolations names every declared source, lineage, latency, or
+	// expansion assertion the observed result violated. They feed a hard gate:
+	// a case-level contract is never diluted into an aggregate.
+	AssertionViolations []string `json:"assertion_violations,omitempty"`
 
 	// SensitivityViolations is carried onto the score because it is a gate
 	// input, and a gate must not have to re-read raw results to decide.
@@ -300,6 +314,7 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 	s.LocatorSuccess = locatorSuccess(c, r)
 	s.ProvenanceAccuracy = provenanceAccuracy(r)
 	s.SourceOutcomeAccuracy = sourceOutcomeAccuracy(c, r)
+	s.AssertionViolations = caseAssertionViolations(c, r)
 
 	return s
 }
@@ -372,6 +387,67 @@ func sourceOutcomeAccuracy(c Case, r CaseResult) Value {
 		}
 	}
 	return defined(float64(good) / float64(len(expected)))
+}
+
+// caseAssertionViolations evaluates the case fields whose contract is categorical
+// or case-local rather than an aggregate ranking metric. Each declared field
+// reaches this function; a failed assertion is recorded by name and later
+// invalidates the run.
+func caseAssertionViolations(c Case, r CaseResult) []string {
+	if c.Assertions == nil {
+		return nil
+	}
+	a := c.Assertions
+	var failures []string
+
+	sources := make(map[recall.SourceUID]bool, len(r.ReturnedSources))
+	for _, uid := range r.ReturnedSources {
+		sources[uid] = true
+	}
+	for _, uid := range a.RequiredSources {
+		if !sources[uid] {
+			failures = append(failures, fmt.Sprintf("required_sources: missing %s", uid))
+		}
+	}
+	for _, uid := range a.ForbiddenSources {
+		if sources[uid] {
+			failures = append(failures, fmt.Sprintf("forbidden_sources: returned %s", uid))
+		}
+	}
+
+	if a.MaxLatencyMS > 0 && r.Latency > time.Duration(a.MaxLatencyMS)*time.Millisecond {
+		failures = append(failures, fmt.Sprintf(
+			"max_latency_ms: %s exceeded %dms", r.Latency, a.MaxLatencyMS))
+	}
+	if a.MaxExpansionBytes > 0 {
+		for _, expansion := range r.Expansions {
+			if expansion.Bytes > a.MaxExpansionBytes {
+				failures = append(failures, fmt.Sprintf(
+					"max_expansion_bytes: %s returned %d bytes over %d",
+					expansion.Locator.Local, expansion.Bytes, a.MaxExpansionBytes))
+			}
+		}
+	}
+
+	ranked := make(RootSet, len(r.Ranked))
+	for _, root := range r.Ranked {
+		ranked[root] = true
+	}
+	for _, root := range a.SuppressedLineages {
+		if ranked[root] {
+			failures = append(failures, fmt.Sprintf(
+				"suppressed_lineages: returned %s", root))
+		}
+	}
+	for _, root := range a.VisibleLineages {
+		if !ranked[root] {
+			failures = append(failures, fmt.Sprintf(
+				"visible_lineages: missing %s", root))
+		}
+	}
+
+	sort.Strings(failures)
+	return failures
 }
 
 // Scores computes one CaseScore per result.

@@ -172,7 +172,7 @@ func fullPack() eval.Pack {
 		Transcripts:        "transcripts",
 		NetworkAccess:      false,
 		Budgets:            &eval.Budgets{P95LatencyMS: 250, ModelCalls: 0, Tokens: 0, ExternalRequests: 0},
-		Thresholds:         map[string]float64{"abstention_accuracy": 0.9, "exact_success_at_1": 0.95},
+		Thresholds:         map[string]float64{"abstention_accuracy": 0.9, "exact_identifier_success_at_1": 0.95},
 		SensitivityCeiling: &ceiling,
 	}
 }

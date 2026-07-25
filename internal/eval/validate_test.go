@@ -166,3 +166,14 @@ func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateRejectsUnsupportedThresholds(t *testing.T) {
+	pack := goodPack()
+	pack.Thresholds = map[string]float64{"ndcg_at_10": 0.9}
+
+	err := eval.Validate(pack, []eval.Case{goodCase("a")},
+		[]eval.Judgment{goodJudgment("a", "uid:1")})
+	if !errors.Is(err, eval.ErrUnsupportedThreshold) {
+		t.Fatalf("err = %v, want ErrUnsupportedThreshold", err)
+	}
+}

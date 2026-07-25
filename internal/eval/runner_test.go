@@ -16,18 +16,22 @@ import (
 // engine is a scriptable stand-in for the application layer, keyed by query so
 // one engine can serve a whole pack.
 type engine struct {
-	responses map[string]recall.QueryResponse
-	queryErr  map[string]error
-	expandErr map[string]error
-	asOfSeen  map[string]*time.Time
+	responses     map[string]recall.QueryResponse
+	queryErr      map[string]error
+	expandErr     map[string]error
+	expandContent map[string]string
+	expandBudget  map[string]int64
+	asOfSeen      map[string]*time.Time
 }
 
 func newEngine() *engine {
 	return &engine{
-		responses: map[string]recall.QueryResponse{},
-		queryErr:  map[string]error{},
-		expandErr: map[string]error{},
-		asOfSeen:  map[string]*time.Time{},
+		responses:     map[string]recall.QueryResponse{},
+		queryErr:      map[string]error{},
+		expandErr:     map[string]error{},
+		expandContent: map[string]string{},
+		expandBudget:  map[string]int64{},
+		asOfSeen:      map[string]*time.Time{},
 	}
 }
 
@@ -40,10 +44,15 @@ func (e *engine) Query(_ context.Context, req recall.QueryRequest) (recall.Query
 }
 
 func (e *engine) Expand(_ context.Context, req recall.ExpandRequest, _ string) (recall.ExpandResponse, error) {
+	e.expandBudget[req.Locator.Local] = req.Budget
 	if err := e.expandErr[req.Locator.Local]; err != nil {
 		return recall.ExpandResponse{}, err
 	}
-	return recall.ExpandResponse{Content: "evidence", SourceRevision: "rev-1"}, nil
+	content := e.expandContent[req.Locator.Local]
+	if content == "" {
+		content = "evidence"
+	}
+	return recall.ExpandResponse{Content: content, SourceRevision: "rev-1"}, nil
 }
 
 // answered builds a response with one result per lineage root.
@@ -206,6 +215,30 @@ func TestLocatorResolutionIsMeasured(t *testing.T) {
 	}
 }
 
+func TestRunnerRecordsSourceAndExpansionAssertionInputs(t *testing.T) {
+	e := newEngine()
+	e.responses["q"] = answered("uid-docs:a.md")
+	e.expandContent["a.md"] = "four"
+
+	r := eval.NewRunner(e, packFor(t, minimalPack), eval.RunOptions{})
+	got, err := r.Run(context.Background(), []eval.Case{{
+		CaseID: "c1", Query: "q", ExpectedBehavior: eval.BehaviorAnswer,
+		Assertions: &eval.Assertions{MaxExpansionBytes: 8},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[0].ReturnedSources) != 1 || got[0].ReturnedSources[0] != "uid-docs" {
+		t.Errorf("returned sources = %v, want uid-docs", got[0].ReturnedSources)
+	}
+	if e.expandBudget["a.md"] != 8 {
+		t.Errorf("expand budget = %d, want the case ceiling 8", e.expandBudget["a.md"])
+	}
+	if len(got[0].Expansions) != 1 || got[0].Expansions[0].Bytes != 4 {
+		t.Errorf("expansions = %+v, want 4 content bytes", got[0].Expansions)
+	}
+}
+
 // A pack measuring a live endpoint is measuring something that changes
 // underneath it, and its numbers are not comparable between runs.
 func TestRunRefusesUndeclaredNetworkAccess(t *testing.T) {
@@ -350,6 +383,92 @@ func TestStatedThresholdIsEnforced(t *testing.T) {
 	gates := eval.EvaluateGates(pack, scores, eval.ReportOf(scores), nil)
 	if eval.Valid(gates) {
 		t.Error("an identifier query that did not put its record first was accepted")
+	}
+}
+
+func TestDeclaredZeroThresholdIsStillAThreshold(t *testing.T) {
+	pack := packFor(t, `{
+  "schema_version": 1, "pack_id": "test", "version": "1",
+  "cases": "cases.jsonl", "judgments": "judgments.jsonl",
+  "thresholds": {"exact_identifier_success_at_1": 0}
+}`)
+	scores := []eval.CaseScore{
+		score("x", []string{eval.ExactTag}, func(s *eval.CaseScore) {
+			s.MRR10 = eval.Value{V: 1, OK: true}
+		}),
+	}
+
+	for _, gate := range eval.EvaluateGates(pack, scores, eval.ReportOf(scores), nil) {
+		if gate.Name == eval.GateExactIdentifier && gate.Status == eval.GateSkipped {
+			t.Error("a declared zero threshold was treated as an absent threshold")
+		}
+	}
+}
+
+func TestEveryDeclaredCaseAssertionCanFailTheRun(t *testing.T) {
+	tests := []struct {
+		name       string
+		assertions eval.Assertions
+		result     eval.CaseResult
+		wantField  string
+	}{
+		{
+			name:       "required source missing",
+			assertions: eval.Assertions{RequiredSources: []recall.SourceUID{"uid-required"}},
+			result:     eval.CaseResult{},
+			wantField:  "required_sources",
+		},
+		{
+			name:       "forbidden source returned",
+			assertions: eval.Assertions{ForbiddenSources: []recall.SourceUID{"uid-forbidden"}},
+			result:     eval.CaseResult{ReturnedSources: []recall.SourceUID{"uid-forbidden"}},
+			wantField:  "forbidden_sources",
+		},
+		{
+			name:       "latency exceeded",
+			assertions: eval.Assertions{MaxLatencyMS: 5},
+			result:     eval.CaseResult{Latency: 6 * time.Millisecond},
+			wantField:  "max_latency_ms",
+		},
+		{
+			name:       "expansion exceeded",
+			assertions: eval.Assertions{MaxExpansionBytes: 8},
+			result: eval.CaseResult{Expansions: []eval.Expansion{{
+				Locator: recall.Locator{Local: "large"}, Bytes: 9,
+			}}},
+			wantField: "max_expansion_bytes",
+		},
+		{
+			name:       "suppressed lineage returned",
+			assertions: eval.Assertions{SuppressedLineages: []recall.LineageRoot{"uid:hidden"}},
+			result:     eval.CaseResult{Ranked: []recall.LineageRoot{"uid:hidden"}},
+			wantField:  "suppressed_lineages",
+		},
+		{
+			name:       "visible lineage missing",
+			assertions: eval.Assertions{VisibleLineages: []recall.LineageRoot{"uid:visible"}},
+			result:     eval.CaseResult{},
+			wantField:  "visible_lineages",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := goodCase("case")
+			c.Assertions = &tc.assertions
+			score := eval.Score(c, nil, tc.result)
+			if len(score.AssertionViolations) != 1 ||
+				!strings.Contains(score.AssertionViolations[0], tc.wantField) {
+				t.Fatalf("violations = %v, want one %s failure",
+					score.AssertionViolations, tc.wantField)
+			}
+			gates := eval.EvaluateGates(
+				goodPack(), []eval.CaseScore{score},
+				eval.ReportOf([]eval.CaseScore{score}), nil)
+			if eval.Valid(gates) {
+				t.Fatal("a declared assertion failed but the run remained valid")
+			}
+		})
 	}
 }
 

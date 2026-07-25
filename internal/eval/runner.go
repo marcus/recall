@@ -172,6 +172,7 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		}
 	}
 	result.SourceFamilies = familiesOf(resp)
+	result.ReturnedSources = returnedSourcesOf(resp)
 	result.SensitivityViolations = ceilingViolations(c, resp)
 	result.Expansions = r.checkExpansions(ctx, c, resp)
 	return result, nil
@@ -285,6 +286,32 @@ func familiesOf(resp recall.QueryResponse) []string {
 	return out
 }
 
+// returnedSourcesOf names immutable source identities that contributed
+// candidates. A primary is included even when a synthetic or older adapter
+// omitted member candidates; members are included so fused evidence keeps all
+// of its contributing sources.
+func returnedSourcesOf(resp recall.QueryResponse) []recall.SourceUID {
+	seen := map[recall.SourceUID]bool{}
+	for _, res := range resp.Results {
+		if res.Primary.SourceUID != "" {
+			seen[res.Primary.SourceUID] = true
+		}
+		for _, member := range res.Members {
+			for _, candidate := range member.Candidates {
+				if candidate.SourceUID != "" {
+					seen[candidate.SourceUID] = true
+				}
+			}
+		}
+	}
+	out := make([]recall.SourceUID, 0, len(seen))
+	for uid := range seen {
+		out = append(out, uid)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
 // checkExpansions proves the references a run returned are live.
 //
 // A ranking that returns unusable locators has not retrieved anything, however
@@ -292,6 +319,10 @@ func familiesOf(resp recall.QueryResponse) []string {
 // diagnostic.
 func (r *Runner) checkExpansions(ctx context.Context, c Case, resp recall.QueryResponse) []Expansion {
 	var out []Expansion
+	var budget int64
+	if c.Assertions != nil {
+		budget = c.Assertions.MaxExpansionBytes
+	}
 	for _, res := range resp.Results {
 		loc := res.Primary.Locator
 		exp := Expansion{
@@ -301,10 +332,12 @@ func (r *Runner) checkExpansions(ctx context.Context, c Case, resp recall.QueryR
 		got, err := r.engine.Expand(ctx, recall.ExpandRequest{
 			Locator: loc,
 			Detail:  r.opt.ExpandDetail,
+			Budget:  budget,
 		}, c.Profile)
 		if err == nil {
 			exp.Root = res.Explanation.LineageRoot
 			exp.Revision = got.SourceRevision
+			exp.Bytes = int64(len(got.Content))
 		}
 		out = append(out, exp)
 	}
