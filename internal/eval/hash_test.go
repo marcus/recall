@@ -213,6 +213,31 @@ func TestContentHashRejectsUnsafeOrMissingFixtureTrees(t *testing.T) {
 		}
 	})
 
+	t.Run("nested fixture root through intermediate symlink", func(t *testing.T) {
+		pack, cases, judgments, dir := fixturePack(t, nil, nil)
+		outside := t.TempDir()
+		if err := os.Mkdir(filepath.Join(outside, "docs"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(outside, "docs", "external.md"), []byte("outside\n"), 0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "fixtures")); err != nil {
+			t.Skipf("cannot create symlink on this platform: %v", err)
+		}
+		pack.Sources = "fixtures/docs"
+
+		_, err := eval.ContentHash(pack, cases, judgments)
+		if !errors.Is(err, eval.ErrUnsafeFixtureTree) {
+			t.Fatalf("err = %v, want ErrUnsafeFixtureTree", err)
+		}
+		if err != nil && !strings.Contains(err.Error(), "fixtures") {
+			t.Errorf("error does not name the intermediate component: %v", err)
+		}
+	})
+
 	t.Run("path traversal", func(t *testing.T) {
 		pack, cases, judgments, _ := fixturePack(t, nil, nil)
 		pack.Sources = "../outside"

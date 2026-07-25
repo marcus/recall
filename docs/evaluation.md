@@ -101,10 +101,13 @@ and slash-normalized relative path of every regular file in declared `sources/`
 and `transcripts/` trees. Files are sorted before hashing. File mode, ownership,
 mtime, and empty directories are ignored; they do not survive a portable copy
 and do not affect an adapter. A missing declared tree is an error. Symlinks and
-other non-regular entries are rejected rather than followed, so fixture
-identity cannot escape the pack or depend on platform traversal behavior. An
-omitted tree contributes no fixture entries; that absence remains represented
-by the manifest field itself.
+other non-regular entries are rejected rather than followed, including a
+symlink in any intermediate component between the pack root and a nested
+fixture root. Each file's full component path is revalidated immediately before
+an opened-handle identity check and read. Fixture identity therefore cannot
+escape the pack or depend on platform traversal behavior. An omitted tree
+contributes no fixture entries; that absence remains represented by the
+manifest field itself.
 
 ## Cases And Judgments
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -125,6 +126,9 @@ func fixtureTreeDigest(pack *Pack, domain, rel string) ([sha256.Size]byte, error
 	if err != nil {
 		return zero, fmt.Errorf("hash %s fixtures: %w", domain, err)
 	}
+	if _, err := validateFixturePath(pack, domain, root, true); err != nil {
+		return zero, fmt.Errorf("hash %s fixtures at %q: %w", domain, rel, err)
+	}
 
 	var files []fixtureFile
 	seen := map[string]bool{}
@@ -139,13 +143,9 @@ func fixtureTreeDigest(pack *Pack, domain, rel string) ([sha256.Size]byte, error
 		if entry.IsDir() {
 			return nil
 		}
-		info, err := entry.Info()
+		info, err := validateFixturePath(pack, domain, path, false)
 		if err != nil {
 			return err
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%w: %s contains non-regular entry %q",
-				ErrUnsafeFixtureTree, domain, path)
 		}
 
 		relative, err := filepath.Rel(root, path)
@@ -163,15 +163,41 @@ func fixtureTreeDigest(pack *Pack, domain, rel string) ([sha256.Size]byte, error
 		}
 		seen[relative] = true
 
-		body, err := os.ReadFile(path)
+		// Open once and read through that handle. Comparing it to the Lstat
+		// result catches a final component replaced between validation and
+		// open; validating every component just above catches an intermediate
+		// directory replaced by a symlink before this read.
+		file, err := os.Open(path)
 		if err != nil {
 			return err
+		}
+		opened, statErr := file.Stat()
+		if statErr != nil {
+			_ = file.Close()
+			return statErr
+		}
+		if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+			_ = file.Close()
+			return fmt.Errorf("%w: %s entry %q changed while hashing",
+				ErrUnsafeFixtureTree, domain, path)
+		}
+		body, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
 		}
 		files = append(files, fixtureFile{path: relative, body: body})
 		return nil
 	})
 	if err != nil {
 		return zero, fmt.Errorf("hash %s fixtures at %q: %w", domain, rel, err)
+	}
+	if _, err := validateFixturePath(pack, domain, root, true); err != nil {
+		return zero, fmt.Errorf("hash %s fixtures at %q changed while hashing: %w",
+			domain, rel, err)
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
 
@@ -182,6 +208,68 @@ func fixtureTreeDigest(pack *Pack, domain, rel string) ([sha256.Size]byte, error
 		writeHashFrame(h, file.body)
 	}
 	return [sha256.Size]byte(h.Sum(nil)), nil
+}
+
+// validateFixturePath rejects symlinks in every lexical component between the
+// pack root and path. WalkDir does not follow symlinks it encounters below its
+// root, but it necessarily resolves components leading to that root first; an
+// intermediate symlink would otherwise make an external directory look like an
+// ordinary declared fixture tree.
+//
+// Callers re-run this immediately before opening each file. That is not an
+// atomic filesystem snapshot, which portable Go cannot provide, but pairing it
+// with an opened-handle identity check avoids relying on a single, stale
+// pre-walk check.
+func validateFixturePath(
+	pack *Pack,
+	domain string,
+	path string,
+	wantDir bool,
+) (fs.FileInfo, error) {
+	relative, err := filepath.Rel(pack.dir, path)
+	if err != nil {
+		return nil, err
+	}
+	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("%w: %s path %q escapes the pack",
+			ErrUnsafeFixtureTree, domain, path)
+	}
+
+	current := pack.dir
+	parts := []string{"."}
+	if relative != "." {
+		parts = strings.Split(relative, string(filepath.Separator))
+	}
+	var info fs.FileInfo
+	for i, part := range parts {
+		if part != "." {
+			current = filepath.Join(current, part)
+		}
+		info, err = os.Lstat(current)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%w: %s path %q contains symlink component %q",
+				ErrUnsafeFixtureTree, domain, path, current)
+		}
+		last := i == len(parts)-1
+		if !last && !info.IsDir() {
+			return nil, fmt.Errorf("%w: %s path %q has non-directory component %q",
+				ErrUnsafeFixtureTree, domain, path, current)
+		}
+	}
+
+	if wantDir {
+		if !info.IsDir() {
+			return nil, fmt.Errorf("%w: %s root %q is not a directory",
+				ErrUnsafeFixtureTree, domain, path)
+		}
+	} else if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s contains non-regular entry %q",
+			ErrUnsafeFixtureTree, domain, path)
+	}
+	return info, nil
 }
 
 // writeHashFrame length-prefixes every value so path and content boundaries
