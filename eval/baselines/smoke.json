@@ -7,7 +7,7 @@
   "pack": {
     "pack_id": "smoke",
     "version": "0.1.0",
-    "content_hash": "sha256:bef9c9dd34f9cdf746a55b511065b3b8237510ff6d44d6a40cbda0ba102b67c5"
+    "content_hash": "sha256:032a58803889e1241a93795a46c8f4ec0f6df7dadbac7b12ec02a8fd323fc225"
   },
   "environment": {
     "recall_commit": "60bcad6",

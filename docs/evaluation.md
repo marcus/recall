@@ -90,10 +90,21 @@ recall eval run --pack eval/packs/smoke --output "$d"
 cp "$d/run.json" eval/baselines/smoke.json
 ```
 
-Changing the pack changes its content hash, and a baseline naming a different
-hash is not comparable at all. A test asserts the committed baseline names the
-committed pack, so a pack edit that forgets this step fails in `make test`
-rather than surfacing in CI as a phantom ranking regression.
+Changing any measured pack input changes its content hash, and a baseline
+naming a different hash is not comparable at all. A test asserts the committed
+smoke baseline names the committed smoke pack, so a pack edit that forgets the
+refresh step fails in `make test` rather than surfacing in CI as a phantom
+ranking regression.
+
+The hash covers the parsed manifest, cases, and judgments, plus the raw bytes
+and slash-normalized relative path of every regular file in declared `sources/`
+and `transcripts/` trees. Files are sorted before hashing. File mode, ownership,
+mtime, and empty directories are ignored; they do not survive a portable copy
+and do not affect an adapter. A missing declared tree is an error. Symlinks and
+other non-regular entries are rejected rather than followed, so fixture
+identity cannot escape the pack or depend on platform traversal behavior. An
+omitted tree contributes no fixture entries; that absence remains represented
+by the manifest field itself.
 
 ## Cases And Judgments
 

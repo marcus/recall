@@ -121,31 +121,37 @@ func TestCompareJSONReachesTheSameVerdict(t *testing.T) {
 // committed beside it. A pack edited without refreshing the baseline makes
 // every later comparison meaningless, and the loud failure belongs here rather
 // than in CI, where it would read as a ranking regression.
-func TestCommittedBaselineMatchesTheCommittedPack(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "eval", "baselines", "smoke.json"))
-	if err != nil {
-		t.Fatalf("the baseline docs/evaluation.md documents is missing: %v", err)
-	}
-	var base eval.Run
-	if err := json.Unmarshal(raw, &base); err != nil {
-		t.Fatalf("the baseline is not a run record: %v", err)
-	}
-	if base.Status != eval.StatusPass {
-		t.Errorf("status = %q: a baseline that failed a gate is not evidence", base.Status)
-	}
+func TestCommittedBaselinesMatchTheCommittedPacks(t *testing.T) {
+	for _, name := range []string{"smoke", "dev"} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("..", "..", "eval", "baselines", name+".json"))
+			if err != nil {
+				t.Fatalf("the baseline docs/evaluation.md documents is missing: %v", err)
+			}
+			var base eval.Run
+			if err := json.Unmarshal(raw, &base); err != nil {
+				t.Fatalf("the baseline is not a run record: %v", err)
+			}
+			if base.Status != eval.StatusPass {
+				t.Errorf("status = %q: a baseline that failed a gate is not evidence", base.Status)
+			}
 
-	pack, cases, judgments, err := loadPackForTest(filepath.Join("..", "..", "eval", "packs", "smoke"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hash, err := eval.ContentHash(pack, cases, judgments)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if base.Pack.ContentHash != hash {
-		t.Errorf("baseline names pack content %s, pack is %s — refresh the baseline "+
-			"with `recall eval run --pack eval/packs/smoke --output $d && "+
-			"cp $d/run.json eval/baselines/smoke.json`", base.Pack.ContentHash, hash)
+			pack, cases, judgments, err := loadPackForTest(
+				filepath.Join("..", "..", "eval", "packs", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			hash, err := eval.ContentHash(pack, cases, judgments)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if base.Pack.ContentHash != hash {
+				t.Errorf("baseline names pack content %s, pack is %s — refresh the baseline "+
+					"with `recall eval run --pack eval/packs/%s --output $d && "+
+					"cp $d/run.json eval/baselines/%s.json`",
+					base.Pack.ContentHash, hash, name, name)
+			}
+		})
 	}
 }
 
