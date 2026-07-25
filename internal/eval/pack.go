@@ -50,6 +50,12 @@ type Pack struct {
 	// different statements.
 	SensitivityCeiling *recall.Sensitivity `json:"sensitivity_ceiling,omitempty"`
 
+	// Baseline records where the thresholds came from. A threshold with no
+	// record of when it was measured, and on what, is folklore — and the first
+	// question anyone asks of a failing gate is whether the bar was ever
+	// justified.
+	Baseline *Baseline `json:"baseline,omitempty"`
+
 	// dir is where the manifest was read from. It is not part of the pack's
 	// content: a pack moved to another path is the same pack.
 	dir string
@@ -57,6 +63,12 @@ type Pack struct {
 
 // Dir reports the directory the pack was loaded from.
 func (p *Pack) Dir() string { return p.dir }
+
+// Baseline is the provenance of a pack's thresholds.
+type Baseline struct {
+	Recorded string `json:"recorded"`
+	Note     string `json:"note,omitempty"`
+}
 
 // Budgets bounds one run. A run exceeding any of these is invalid, not slow.
 type Budgets struct {

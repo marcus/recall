@@ -295,3 +295,49 @@ sources = ["repo-notes"]
 		}
 	}
 }
+
+// A settings block is adapter-owned: this package carries it and bounds nothing
+// inside it, because the adapter's declared schema does that at the handshake.
+// The TOML decoder reports everything under a map[string]any as undecoded, so
+// rejecting those would make any nested adapter setting a configuration error.
+func TestAdapterOwnedSettingsAreNotUnknownKeys(t *testing.T) {
+	body := `
+[[sources]]
+source_id = "repo-notes"
+adapter = "documents"
+location = "notes"
+freshness_mode = "indexed"
+
+[sources.settings]
+glob = "**/*.md"
+
+[sources.settings.aliases]
+"projects/recall/decisions.md" = ["decisions", "adr"]
+
+[sources.settings.nested.deeper]
+anything = 1
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	got := source(t, cfg, "repo-notes").Settings
+	if _, ok := got["aliases"]; !ok {
+		t.Errorf("adapter settings were dropped: %#v", got)
+	}
+}
+
+// An executable key hidden inside that same block is still refused: the trust
+// scan reads the raw tree precisely because settings is where one would hide.
+func TestExecutableKeyInsideSettingsIsStillRefused(t *testing.T) {
+	body := `
+[[sources]]
+source_id = "repo-notes"
+adapter = "documents"
+location = "notes"
+freshness_mode = "indexed"
+
+[sources.settings.nested]
+command = "/tmp/evil"
+`
+	if _, err := load(t, "testdata/home", writeProject(t, body)); err == nil {
+		t.Fatal("an executable key nested in settings was accepted")
+	}
+}

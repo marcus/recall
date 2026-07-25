@@ -39,16 +39,19 @@ func (a *Adapter) Expand(_ context.Context, req recall.ExpandRequest) (recall.Ex
 		return recall.ExpandResponse{}, err
 	}
 
-	rec, ok := snap.byID[id]
-	switch {
-	case !ok:
-		// An append-only stream does not lose records. One that is gone means
-		// the file was rewritten, which is exactly an incompatible change.
+	rec, ok := snap.byID[req.Locator.Local]
+	if !ok {
+		// The record identity is (schema, id), so a miss here is either a
+		// record the stream no longer holds — an append-only stream does not
+		// lose records, so the file was rewritten — or a reference minted
+		// against a shape this record has moved on from. Both are the same
+		// incompatible change from the caller's side.
+		if other, exists := anyShape(snap, id); exists {
+			return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired,
+				"%s is now schema v%d, the locator names v%d", id, other.schema, schema)
+		}
 		return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired,
 			"%s holds no record %s", snap.generation(), id)
-	case rec.schema != schema:
-		return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired,
-			"%s is now schema v%d, the locator names v%d", id, rec.schema, schema)
 	}
 
 	content := render(rec, req.Detail, a.episode(snap, rec, req.Detail))
@@ -164,4 +167,16 @@ func clipBytes(s string, limit int) string {
 		cut--
 	}
 	return s[:cut]
+}
+
+// anyShape finds a record with this id under any schema version, so a locator
+// that named a shape the record has moved on from can say so rather than
+// reporting the record missing.
+func anyShape(snap *snapshot, id string) (record, bool) {
+	for _, r := range snap.records {
+		if r.id == id {
+			return r, true
+		}
+	}
+	return record{}, false
 }

@@ -178,3 +178,27 @@ func dirty(e Environment) string {
 	}
 	return ""
 }
+
+// ReadCaseScores reads the per-case scores back out of a run's cases.jsonl.
+//
+// A comparison needs them: an aggregate says how much moved, and only the
+// per-case detail says what moved, which is the form a reviewer can check
+// against the change under test.
+func ReadCaseScores(path string) ([]CaseScore, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var out []CaseScore
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var rec caseRecord
+		if err := dec.Decode(&rec); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		out = append(out, rec.Score)
+	}
+	return out, nil
+}

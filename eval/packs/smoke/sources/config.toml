@@ -74,6 +74,13 @@ timeout_ms = 400
 record_types = ["task"]
 freshness_policy = "live: every search reads the recorded CLI transcript"
 
+[sources.settings]
+# No process is ever spawned: every invocation is answered from the
+# recording beside this file, so the adapter under test is the parser,
+# the identifier matching, and the ranking, over a source that cannot
+# change underneath a benchmark.
+replay = "."
+
 [[sources]]
 source_uid = "01SMOKESIGNALS"
 source_id = "signals"

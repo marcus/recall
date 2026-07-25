@@ -199,29 +199,49 @@ func positions(res recall.Result) []recall.LineageRoot {
 	return out
 }
 
+// provenanceOf checks that each candidate named where it really came from.
+//
+// The comparison is per member, against that member's own lineage root. An
+// earlier version compared every candidate against the cluster's primary root,
+// which marked every correctly fused multi-record cluster as a provenance
+// failure — the metric punished exactly the behavior the system exists to
+// produce, and read 0.65 on a run where nothing was wrong.
+//
+// The source is checked against the source encoded in the candidate's own
+// locator rather than against its lineage root: a projection legitimately sits
+// under an upstream record's root, so a mismatch there is lineage working, not
+// a candidate lying about itself.
 func provenanceOf(res recall.Result) []Provenance {
 	var out []Provenance
 	for _, m := range res.Members {
 		for _, c := range m.Candidates {
 			out = append(out, Provenance{
 				ClaimedSource: c.SourceUID,
-				ActualSource:  sourceOfRoot(m.LineageRoot, c.SourceUID),
-				ClaimedRoot:   res.Explanation.LineageRoot,
-				ActualRoot:    m.LineageRoot,
+				ActualSource:  sourceOfLocator(c, c.SourceUID),
+				ClaimedRoot:   m.LineageRoot,
+				ActualRoot:    resolvedRoot(m.LineageRoot),
 			})
 		}
 	}
 	return out
 }
 
-// sourceOfRoot recovers the source a lineage root belongs to, falling back to
-// the claim when the root does not parse.
-func sourceOfRoot(root recall.LineageRoot, fallback recall.SourceUID) recall.SourceUID {
-	loc, err := root.Locator()
-	if err != nil {
-		return fallback
+// sourceOfLocator recovers the source a candidate's own locator names.
+func sourceOfLocator(c recall.Candidate, fallback recall.SourceUID) recall.SourceUID {
+	if c.Locator.SourceUID != "" {
+		return c.Locator.SourceUID
 	}
-	return loc.SourceUID
+	return fallback
+}
+
+// resolvedRoot returns the root when it is well formed, and nothing when it is
+// not: a root that does not parse cannot be resolved back to a record, which is
+// the failure this metric is for.
+func resolvedRoot(root recall.LineageRoot) recall.LineageRoot {
+	if _, err := root.Locator(); err != nil {
+		return ""
+	}
+	return root
 }
 
 // ceilingViolations counts returned candidates above the ceiling the case

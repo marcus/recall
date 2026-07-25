@@ -34,3 +34,11 @@ check: build test lint
 
 clean:
 	rm -rf $(BIN) coverage.out
+
+# eval runs the committed smoke pack through the same application layer the CLI
+# uses. It is a separate target from `check` because it builds two binaries and
+# spawns one; CI runs both.
+.PHONY: eval
+eval: build
+	$(GO) build -ldflags '$(LDFLAGS)' -o $(BIN)/recall-stream ./cmd/recall-stream
+	PATH="$(PWD)/$(BIN):$$PATH" $(BIN)/recall eval run --pack eval/packs/smoke

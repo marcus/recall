@@ -72,7 +72,11 @@ type Adapter struct {
 func Builtins() []Adapter {
 	return []Adapter{
 		{
-			Name:           "docs",
+			// "documents" rather than "docs": the name appears in every
+			// user's configuration and in every evaluation pack, and it names
+			// the source class the spec defines. The package is docs; the
+			// configured adapter is documents.
+			Name:           "documents",
 			FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
 			New:            func() adapter.Adapter { return docs.New() },
 		},
@@ -141,6 +145,8 @@ func Run(ctx context.Context, env Env) int {
 		return runDoctor(ctx, env, args)
 	case "config":
 		return runConfig(ctx, env, args)
+	case "eval":
+		return evalCmd(ctx, env, args)
 	case "version", "--version":
 		_, err := fmt.Fprintf(env.Stdout, "recall %s (%s)\n", buildinfo.Version, buildinfo.Commit)
 		return report(env, err)
@@ -177,6 +183,7 @@ commands:
   doctor            validate configuration, trust boundary, access, health,
                     freshness, identity, and lineage
   config explain    print the resolved configuration and each value's origin
+  eval              validate, run, compare, and report an evaluation pack
   version           print the build identity
 
 Every read command supports --json alongside its human output, and both carry

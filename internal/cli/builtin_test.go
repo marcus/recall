@@ -124,7 +124,7 @@ timeout_ms = 20000
 [[sources]]
 source_uid = "01UIDDOCS"
 source_id = "docs"
-adapter = "docs"
+adapter = "documents"
 location = "CORPUS"
 freshness_mode = "indexed"
 sensitivity = "internal"

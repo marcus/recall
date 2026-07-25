@@ -266,11 +266,20 @@ func build(paths []string, prev *snapshot, prior []fileCursor, gen int64, full b
 			"no configured stream file is readable (%s)", strings.Join(next.missing, ", "))
 	}
 
+	// Keyed by the locator's local form, not by id alone.
+	//
+	// A record's identity in this stream is (schema, id) — which is why the
+	// locator encodes both. Keying on id let an archived v1 line and the
+	// current v2 line of one record collide in a single slot, so a search
+	// returned "v2/sig-1005" while expand found the v1 record under that id and
+	// refused the locator as expired. Search and expand disagreed about which
+	// record existed, and the evaluation gate on locator resolution is what
+	// caught it.
 	next.byID = make(map[string]record, len(next.records))
 	for _, r := range next.records {
-		// Last write wins. An append-only stream should not repeat an id, but
-		// if it does the later line is the later statement about the record.
-		next.byID[r.id] = r
+		// Last write wins within one identity. An append-only stream should not
+		// repeat one, but if it does the later line is the later statement.
+		next.byID[r.local()] = r
 	}
 	return next, nil
 }

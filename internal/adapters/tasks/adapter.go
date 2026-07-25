@@ -83,6 +83,12 @@ type settings struct {
 	TimeoutMS     int      `json:"timeout_ms"`
 	MaxCandidates int      `json:"max_candidates"`
 	MaxTermProbes int      `json:"max_term_probes"`
+
+	// Replay names a directory of recorded CLI output. When set, no process is
+	// ever spawned: the adapter under test is the parser, the identifier
+	// matching, and the ranking, over a source that cannot change underneath a
+	// benchmark.
+	Replay string `json:"replay"`
 }
 
 // Adapter is the built-in Tasks source.
@@ -133,7 +139,31 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	}
 
 	runner := a.opts.Runner
-	if runner == nil {
+	switch {
+	case runner != nil:
+		// Injected by a caller in Go, which is how the package's own tests run.
+	case set.Replay != "":
+		// Configured replay: a committed evaluation pack cannot spawn the real
+		// CLI, and a pack that could only be made deterministic from Go would
+		// leave this adapter unexercised by any pack at all.
+		// Relative to the source's location, not to the configuration file: the
+		// recording stands in for the store, and the store is the location.
+		// A source with no location falls back to the declaring file's
+		// directory, which is the only other place a relative path could mean.
+		dir := set.Replay
+		if !filepath.IsAbs(dir) {
+			base := cfg.Location
+			if base == "" {
+				base = cfg.BaseDir
+			}
+			dir = filepath.Join(base, dir)
+		}
+		replay, err := NewReplayRunner(dir)
+		if err != nil {
+			return recall.Manifest{}, err
+		}
+		runner = replay
+	default:
 		runner = ExecRunner{Binary: set.binary(), Env: storeEnv(cfg.Location)}
 	}
 
@@ -501,6 +531,10 @@ func settingsSchema() map[string]any {
 			"max_term_probes": map[string]any{
 				"type": "integer", "minimum": 0,
 				"description": "Cap on the extra `--body` invocations one search may spawn.",
+			},
+			"replay": map[string]any{
+				"type":        "string",
+				"description": "Directory of recorded CLI output, relative to the declaring configuration file. When set, no process is spawned and every invocation is answered from the recording, which is what lets a committed evaluation pack exercise this adapter.",
 			},
 		},
 	}

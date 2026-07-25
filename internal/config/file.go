@@ -198,7 +198,26 @@ func rejectUnknownKeys(path string, undecoded []toml.Key) error {
 	if len(undecoded) == 0 {
 		return nil
 	}
-	sorted := slices.Clone(undecoded)
+	// Keys inside an adapter-owned block are not unknown, they are not ours.
+	// The TOML decoder reports everything under a map[string]any as undecoded
+	// because it cannot confirm those keys reached a field, and this package
+	// deliberately bounds nothing inside settings — the adapter's declared
+	// schema does, at the handshake, where it is known.
+	//
+	// The executable-key check below still runs over them: a settings block is
+	// exactly where an executable key would hide, which is why the trust scan
+	// reads the raw tree rather than trusting this pass.
+	kept := make([]toml.Key, 0, len(undecoded))
+	for _, k := range undecoded {
+		if adapterOwned(k) && !namesExecutable(k) {
+			continue
+		}
+		kept = append(kept, k)
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	sorted := slices.Clone(kept)
 	slices.SortFunc(sorted, func(a, b toml.Key) int { return strings.Compare(a.String(), b.String()) })
 
 	keys := make([]string, 0, len(sorted))
@@ -213,6 +232,29 @@ func rejectUnknownKeys(path string, undecoded []toml.Key) error {
 			"%s may be declared only on an adapter definition, never on a source instance", what)
 	}
 	return invalidErrorf(path, keys[0], "unknown key; the full set is %s", strings.Join(keys, ", "))
+}
+
+// adapterOwned reports whether a key lies inside a block this package carries
+// but does not interpret.
+func adapterOwned(k toml.Key) bool {
+	for _, segment := range k[:max(len(k)-1, 0)] {
+		switch strings.ToLower(segment) {
+		case "settings", "secrets":
+			return true
+		}
+	}
+	return false
+}
+
+// namesExecutable reports whether any segment of a key is an executable key,
+// wherever it appears.
+func namesExecutable(k toml.Key) bool {
+	for _, segment := range k {
+		if _, forbidden := executableKeys[strings.ToLower(segment)]; forbidden {
+			return true
+		}
+	}
+	return false
 }
 
 // parseAdaptersDir reads $XDG_CONFIG_HOME/recall/adapters.d in lexical order.

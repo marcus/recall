@@ -5,7 +5,13 @@
   "description": "A versioned set of queries, fixtures or snapshot references, judgments, policy assertions, and budgets. Cases and judgments are named as separate files and are never inlined here.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "pack_id", "version", "cases", "judgments"],
+  "required": [
+    "schema_version",
+    "pack_id",
+    "version",
+    "cases",
+    "judgments"
+  ],
   "properties": {
     "schema_version": {
       "type": "integer",
@@ -77,8 +83,31 @@
       }
     },
     "sensitivity_ceiling": {
-      "enum": ["public", "internal", "confidential", "restricted"],
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
       "description": "No candidate in any case may cross this."
+    },
+    "baseline": {
+      "description": "Provenance of the thresholds above: when they were measured and on what. A threshold with no record of where it came from is folklore, and the first thing anyone asks of a failing gate is whether the bar was ever justified.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recorded"
+      ],
+      "properties": {
+        "recorded": {
+          "type": "string",
+          "description": "Date the baseline was measured."
+        },
+        "note": {
+          "type": "string",
+          "description": "What was measured, on what host, and why the budgets sit where they do."
+        }
+      }
     }
   },
   "$defs": {
