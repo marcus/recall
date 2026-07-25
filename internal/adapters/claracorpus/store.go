@@ -338,7 +338,7 @@ func scan(
 		if err := ctx.Err(); err != nil {
 			return stamp, err
 		}
-		raw, tooLong, atEOF, err := readBoundedLine(br, digest)
+		raw, tooLong, atEOF, err := readBoundedLine(ctx, br, digest)
 		if err != nil {
 			return stamp, protocol.Errorf(protocol.CodeSourceUnavailable,
 				"clara-corpus: %s became unreadable", name)
@@ -380,9 +380,16 @@ func scan(
 // fragments; once the record crosses the limit, the fragments are hashed and
 // discarded until the newline. The digest still identifies the bad content,
 // while coverage records the line as unknown.
-func readBoundedLine(br *bufio.Reader, digest hash.Hash) (raw []byte, tooLong, atEOF bool, err error) {
+func readBoundedLine(
+	ctx context.Context,
+	br *bufio.Reader,
+	digest hash.Hash,
+) (raw []byte, tooLong, atEOF bool, err error) {
 	const bufferedLimit = maxLineBytes + 1 // one optional trailing newline
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, tooLong, false, err
+		}
 		fragment, readErr := br.ReadSlice('\n')
 		if len(fragment) > 0 {
 			_, _ = digest.Write(fragment)
