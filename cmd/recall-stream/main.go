@@ -1,0 +1,61 @@
+// Command recall-stream is Recall's reference external adapter: a JSONL
+// append-only stream source speaking newline-delimited JSON-RPC 2.0 on stdio.
+//
+// It is deliberately the smallest complete thing. An adapter author reads
+// cmd/recall-stream/stream for the six handlers, cmd/recall-stream/conformance
+// for what the wire actually looks like, and needs nothing else.
+//
+// Usage:
+//
+//	recall-stream          # serve the protocol on stdin/stdout
+//	recall-stream -version # print the build identity and exit
+//
+// stdout carries protocol frames only. Everything this process wants to say to
+// a human goes to stderr, which the core captures into diagnostics and never
+// parses.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/marcus/recall/cmd/recall-stream/stream"
+	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/buildinfo"
+)
+
+func main() {
+	// main only decides the exit status. Everything that has to unwind — the
+	// signal handler above all — lives in run, because os.Exit skips defers.
+	os.Exit(run())
+}
+
+func run() int {
+	version := flag.Bool("version", false, "print the adapter identity and exit")
+	flag.Parse()
+	if *version {
+		if _, err := fmt.Fprintf(os.Stdout, "%s %s\n", stream.AdapterID, buildinfo.Version); err != nil {
+			return 1
+		}
+		return 0
+	}
+
+	logger := log.New(os.Stderr, "recall-stream: ", log.LstdFlags|log.LUTC)
+
+	// SIGTERM is the core's second step when a request outlives its deadline
+	// and the advisory cancel went unanswered. Handling it means in-flight
+	// contexts are cancelled and the process exits before SIGKILL arrives.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	if err := adapter.Serve(ctx, os.Stdin, os.Stdout, stream.New(stream.Options{})); err != nil {
+		logger.Printf("serve: %v", err)
+		return 1
+	}
+	return 0
+}

@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "Three locators that do not resolve, and the two different facts that covers. sig-0003 exists but is now schema v2 while the locator names v1: the source changed incompatibly, so expansion fails with locator_expired (-32003) rather than returning the v2 record, which would be the different revision the protocol forbids substituting. v9/sig-0404 parses as a stream locator and names a record this generation does not hold; an append-only stream does not lose records, so a missing one means the file was rewritten, which is the same incompatible change. The third has no schema segment and so is not a stream locator at all: locator_unknown (-32002), a statement about the reference rather than about the source.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 4
+}

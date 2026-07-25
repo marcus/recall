@@ -149,17 +149,16 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 	}, nil
 }
 
-// Build indexes the corpus into a new generation and publishes it.
+// Refresh indexes the corpus into a new generation and publishes it.
 //
-// It is exported because indexing is an operation someone schedules — at
-// handshake, from a maintenance command, after an edit — and because a build
-// that can only be triggered as a side effect of something else cannot be
-// tested for what happens when it fails.
+// Indexing is an operation someone schedules — at handshake, from a maintenance
+// command, after an edit — and a build that can only be triggered as a side
+// effect of something else cannot be tested for what happens when it fails.
 //
-// A failed build returns both: the error, because a failure reported as success
-// is the defect invariant 2 names, and the health report, because the caller's
-// next question is what the source can still do — which is answer from the
-// generation that is still published.
+// A build that fails is reported through the returned health and not as an
+// error. That is not softening the failure: health carries the stale watermark,
+// a non-healthy status, and the reason in diagnostics, which is strictly more
+// than an error conveys. The error return means the refresh could not run.
 func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
 	a.buildMu.Lock()
 	defer a.buildMu.Unlock()
@@ -180,8 +179,12 @@ func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall
 		// the current one, still readable, and health now reports why it is not
 		// moving forward.
 		a.setBuildError(err)
-		health, _ := a.Health(context.WithoutCancel(ctx))
-		return health, err
+		// Reported through health rather than returned as an error: a JSON-RPC
+		// frame carries a result or an error and never both, so an error return
+		// would discard the health of the generation that is still published
+		// and still answering. The error return is reserved for a failure to
+		// perform the refresh at all.
+		return a.Health(context.WithoutCancel(ctx))
 	}
 
 	built := gen.header.BuiltAt

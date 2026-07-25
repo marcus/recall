@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -91,5 +92,39 @@ func TestWithDataDoesNotMutateASentinel(t *testing.T) {
 	}
 	if !strings.Contains(string(withData.Data), "profile") {
 		t.Errorf("data = %s", withData.Data)
+	}
+}
+
+// Wrapping a sentinel with fmt.Errorf is the natural way to write an adapter
+// error in Go. It used to send the code and drop the detail, so
+// "the store no longer holds td-f62256" arrived as "locator_expired".
+func TestWrappedSentinelKeepsItsDiagnostic(t *testing.T) {
+	err := fmt.Errorf("%w: the store no longer holds td-f62256", protocol.ErrLocatorExpired)
+
+	got := protocol.AsError(err)
+	if got.Code != protocol.CodeLocatorExpired {
+		t.Errorf("code = %v, want locator_expired preserved", got.Code)
+	}
+	if !strings.Contains(got.Message, "td-f62256") {
+		t.Errorf("message = %q, want the wrapper's detail preserved", got.Message)
+	}
+	// The code still matches, so callers keep using errors.Is.
+	if !errors.Is(got, protocol.ErrLocatorExpired) {
+		t.Error("the rebuilt error no longer matches its sentinel")
+	}
+}
+
+// For a denied source the detail is the leak: anything specific enough to be
+// useful confirms the record exists.
+func TestDeniedSourceLeaksNothingFromItsWrapper(t *testing.T) {
+	err := fmt.Errorf("%w: user lacks access to salary-review-2026.md",
+		protocol.ErrSourceDenied)
+
+	got := protocol.AsError(err)
+	if got.Code != protocol.CodeSourceDenied {
+		t.Errorf("code = %v, want source_denied", got.Code)
+	}
+	if strings.Contains(got.Message, "salary") {
+		t.Errorf("message = %q leaks what was denied", got.Message)
 	}
 }

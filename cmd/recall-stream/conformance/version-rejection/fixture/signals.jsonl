@@ -1,0 +1,1 @@
+{"schema":1,"id":"sig-0001","kind":"event","event_time":"2026-05-02T09:12:00Z","observed_at":"2026-05-02T09:12:04Z","system":"tasks","ref":"td-f62256","title":"Task td-f62256 moved to NEXT","body":"Recall: ship the reference stream adapter.","revision":"3"}

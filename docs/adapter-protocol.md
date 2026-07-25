@@ -62,11 +62,14 @@ Rules:
   and returns `{}`.
 - `recall/refresh` is what the `checkpoint` capability means. Only adapters
   declaring it serve the method; an adapter owning no projection returns its
-  health unchanged rather than reporting work it did not do. A failed refresh
-  returns both the error and the health of the generation still published,
-  because that is the one still answering. Without this method the only
-  in-contract place to build an index was the handshake, which competes with
-  the handshake timeout on any real corpus.
+  health unchanged rather than reporting work it did not do. A build that fails
+  is reported through the returned health — stale watermark, degraded status,
+  reason in diagnostics — and never as an error: a frame carries a result or an
+  error and never both, so erroring would discard the health of the generation
+  that is still published and still answering. An error means the refresh could
+  not be performed at all. Without this method the only in-contract place to
+  build an index was the handshake, which competes with the handshake timeout
+  on any real corpus.
 
 ## Errors
 
@@ -248,10 +251,47 @@ Conformance is recorded transcripts. Each adapter ships:
 
 ```text
 conformance/
+  <case>/manifest.json      how to replay this case
   <case>/request.jsonl      one JSON-RPC message per line
   <case>/response.jsonl     expected responses, order-significant
   <case>/fixture/           source data for the case
 ```
+
+A transcript that only fixed those file names would not be replayable, because
+three things about a recorded exchange are specific to the machine that
+recorded it. The manifest settles them:
+
+```json
+{
+  "case": "handshake",
+  "description": "what this case demonstrates",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": ["/result/checked_at", "/result/last_success_at"],
+  "responses": 2
+}
+```
+
+- **Placeholders.** Requests carry `${FIXTURE}` and `${WORKDIR}`, substituted
+  textually before parsing. Without them a transcript is bound to the absolute
+  paths of the machine that recorded it.
+- **Deadlines are fixed, not substituted.** Every recorded request states a far
+  future deadline, so replay is time-independent and the harness never rewrites
+  a request field.
+- **`flow: lockstep`.** Send lines in order; after a *request*, wait for its
+  response before sending the next *request*; send *notifications* immediately.
+  The notification exemption is what makes a cancellation case recordable at
+  all — waiting for the response to the search being cancelled would deadlock.
+  Then close stdin and drain; anything read while draining counts.
+- **`volatile`** lists RFC 6901 JSON Pointers from the root of the frame, where
+  `*` matches any array element or object member. Both sides are masked before
+  comparison. Declare a field volatile only when the adapter cannot control it:
+  a timestamp the fixture states is not volatile.
+- **`responses`** is the expected count, so a case that stops answering fails
+  rather than passing short.
 
 `recall doctor --conformance <adapter>` replays each case and diffs responses,
 ignoring declared-volatile fields (timestamps, latency). Required cases:

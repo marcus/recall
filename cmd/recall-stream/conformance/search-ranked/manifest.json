@@ -1,0 +1,16 @@
+{
+  "case": "search-ranked",
+  "description": "Ranked candidates with stable locators and the derivation edges that make this adapter worth shipping. recall/refresh publishes gen-1 explicitly, then a query naming an upstream identifier partitions exact-identifier hits above lexical ones. sig-0001 and sig-0000 both declare derived_from 'tasks:td-f62256', which is character-for-character the locator the Tasks adapter writes for that task, so the projection and the original collapse into one lineage root. sig-0002 carries system 'slack', which the settings block does not map, and therefore carries no edge at all. The second search has no query terms: an empty query with a time window is a temporal browse, and its candidates carry the field match signal rather than a lexical one. The third carries as_of, which this adapter declares it can honor as a filter over the event_time every record already stores; the boundary falls before every event but the archived one, so exactly one candidate survives it, and none is answered from current state.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 5
+}

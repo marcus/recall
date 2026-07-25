@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,8 +25,9 @@ type Handler interface {
 	Health(ctx context.Context) (recall.Health, error)
 	// Refresh brings an adapter-owned projection up to date and reports the
 	// resulting health. An adapter that owns no index returns its health
-	// unchanged. A failed refresh returns both the error and the health of the
-	// generation still published, which is the one still answering.
+	// unchanged. A build that fails is reported through the returned health,
+	// not as an error: a frame carries a result or an error and never both, so
+	// erroring would discard the health of the generation still answering.
 	Refresh(ctx context.Context, p RefreshParams) (recall.Health, error)
 	// Shutdown is asked for a clean exit. Serve returns once in-flight work
 	// finishes; a handler that never finishes is what SIGTERM is for.
@@ -285,9 +287,30 @@ func (s *server) finalWriteErr() error {
 // returns a typed protocol error keeps its code; anything else is an internal
 // error, because guessing a Recall code from an arbitrary message would put
 // words in the adapter's mouth.
+// detail strips a code prefix the wrapper inherited from the sentinel, so a
+// message reads as the thing that went wrong rather than repeating its label.
+func detail(wrapped string, code Code) string {
+	return strings.TrimPrefix(wrapped, code.String()+": ")
+}
+
 func AsError(err error) *Error {
 	var perr *Error
 	if errors.As(err, &perr) {
+		// A sentinel wrapped with fmt.Errorf("%w: detail", ...) is recovered by
+		// errors.As as the bare sentinel, so returning it here would send the
+		// code and silently drop everything the wrapper said. That is the
+		// natural way to write an adapter error in Go, and it made
+		// "the store no longer holds td-f62256" arrive as "locator_expired".
+		//
+		// Denial is the exception, and it is not an oversight: for a denied
+		// source the detail IS the leak, since anything specific enough to be
+		// useful confirms the record exists. That one keeps the bare code.
+		// Comparing full renderings, not messages: an unwrapped *Error already
+		// renders as "code: message", and treating that as a wrapper would
+		// fold the code into its own message every time.
+		if wrapped := err.Error(); wrapped != perr.Error() && perr.Code != CodeSourceDenied {
+			return &Error{Code: perr.Code, Message: detail(wrapped, perr.Code), Data: perr.Data}
+		}
 		return perr
 	}
 	var verr *VersionError

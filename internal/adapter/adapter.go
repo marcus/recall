@@ -46,8 +46,12 @@ type Adapter interface {
 	// in-contract place to build an index was the handshake — which competes
 	// with DefaultHandshakeTimeout on any real corpus.
 	//
-	// A failed refresh returns both the error and the health of the generation
-	// still published, because that is the one still answering queries.
+	// A refresh whose build fails reports that through the health it returns —
+	// stale watermark, degraded status, the reason in diagnostics — and not as
+	// an error. A JSON-RPC frame carries a result or an error and never both,
+	// so an error return would discard the health of the generation that is
+	// still published and still answering. The error return means the refresh
+	// could not be performed at all.
 	Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error)
 
 	// Close releases the adapter. For a subprocess this asks for a clean exit

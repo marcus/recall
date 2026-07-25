@@ -200,15 +200,18 @@ func TestFailedBuildKeepsThePreviousGenerationReadable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
+	// A failed build is reported through health, not as an error: a JSON-RPC
+	// frame carries a result or an error and never both, so erroring here would
+	// discard the health of the generation that is still answering.
 	failed, err := a.Refresh(context.Background(), protocol.RefreshParams{})
-	if err == nil {
-		t.Fatal("Build succeeded over a directory it could not list")
-	}
-	if !strings.Contains(err.Error(), "projects/recall") {
-		t.Errorf("build error %q does not name what could not be read", err)
+	if err != nil {
+		t.Fatalf("a failed build must not fail the refresh call: %v", err)
 	}
 	if failed.Status == recall.HealthHealthy {
-		t.Errorf("the health returned with the failure says healthy: %v", failed.Diagnostics)
+		t.Errorf("refresh reports healthy after a build it could not complete: %v", failed.Diagnostics)
+	}
+	if got, _ := failed.Diagnostics["last_build_error"].(string); !strings.Contains(got, "projects/recall") {
+		t.Errorf("diagnostics %q do not name what could not be read", got)
 	}
 
 	if got := currentGeneration(t, workdir); got != published {

@@ -1,0 +1,14 @@
+{
+  "case": "handshake",
+  "description": "A version range the adapter can satisfy: it negotiates 1, declares its manifest, and answers a health probe from a workdir that has published nothing yet. The probe is what builds and publishes gen-1, so index_generation and the watermarks appear here rather than at initialize.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at"
+  ],
+  "responses": 2
+}

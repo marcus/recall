@@ -1,0 +1,16 @@
+{
+  "case": "search-partial",
+  "description": "Honest coverage over a stream that is not fully readable. One line is a truncated write, one carries schema v3 which this build has no parser for, and the configured archive file is absent. The search still answers — a bad append must not take the source down — but reports outcome 'partial' with the failed record count, the missing file, and the coverage in its diagnostics, so the records it could not read stay unknown rather than looking absent. Health agrees: degraded, coverage partial, with record_count above indexed_count by exactly the failures. A recent index alone is not health.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}

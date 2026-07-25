@@ -1,0 +1,11 @@
+{
+  "case": "expand-details",
+  "description": "One locator at every detail level, then the same locator under a budget it cannot fit. The levels widen rather than reshape: each one's content starts with the previous one's, so a caller comparing summary against full sees added lines and not rewritten ones. context adds the adjacent events as an episode while keeping each neighbour's own locator, because grouping events must not cost a reader the ability to expand one. The last response truncates at the budget and names the boundary that applied, so a budget cut stays distinguishable from a source-side limit.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 6
+}
