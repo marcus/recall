@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -22,6 +23,7 @@ const (
 	ReasonRecordTypeMismatch = recall.SkipRecordTypeMismatch
 	ReasonBudgetExhausted    = "budget_exhausted"
 	ReasonAdapterUnavailable = "adapter_unavailable"
+	ReasonStoreConflict      = "store_identity_conflict"
 
 	// The reasons an ADAPTER may state live in internal/recall, beside the
 	// outcome they qualify, because they are part of the search contract and
@@ -219,10 +221,11 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		}()
 	}
 	wg.Wait()
+	refuseDuplicateStores(instances, verdicts)
 
 	for i, inst := range instances {
 		if v := verdicts[i]; v.reason != "" {
-			plan.Excluded = append(plan.Excluded, exclude(inst, v.reason))
+			plan.Excluded = append(plan.Excluded, exclude(inst, v.reason, v.diagnostics))
 		} else {
 			plan.Targets = append(plan.Targets, v.target)
 		}
@@ -230,10 +233,59 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	return plan, nil
 }
 
+// refuseDuplicateStores prevents one physical store from entering a plan as
+// two independent sources. Different instances can legitimately apply
+// different scopes, so silently keeping the first would lose configured
+// coverage; refusing every conflicting instance makes the ambiguity explicit
+// and prevents duplicated evidence from scoring itself up for corroboration.
+//
+// The identity comes from adapter health after the store was opened. Location
+// strings are deliberately not compared: a repository, subdirectory, symlink,
+// and worktree may all name one store, while two directories with the same
+// basename may hold separate stores.
+func refuseDuplicateStores(instances []*config.SourceInstance, verdicts []verdict) {
+	type claim struct {
+		adapter  string
+		identity string
+	}
+	claimed := make(map[claim][]int)
+	for i, v := range verdicts {
+		if v.reason != "" || v.target.Instance == nil {
+			continue
+		}
+		identity, _ := v.target.Health.Diagnostics[protocol.DiagStoreIdentity].(string)
+		if identity == "" {
+			continue
+		}
+		key := claim{adapter: instances[i].Adapter, identity: identity}
+		claimed[key] = append(claimed[key], i)
+	}
+	for _, indexes := range claimed {
+		if len(indexes) < 2 {
+			continue
+		}
+		ids := make([]string, 0, len(indexes))
+		for _, i := range indexes {
+			ids = append(ids, instances[i].ID)
+		}
+		for _, i := range indexes {
+			identity, _ := verdicts[i].target.Health.Diagnostics[protocol.DiagStoreIdentity].(string)
+			verdicts[i] = verdict{
+				reason: ReasonStoreConflict,
+				diagnostics: map[string]any{
+					protocol.DiagStoreIdentity: identity,
+					"conflicting_sources":      ids,
+				},
+			}
+		}
+	}
+}
+
 // verdict is one source's eligibility: a target, or the reason there is none.
 type verdict struct {
-	target Target
-	reason string
+	target      Target
+	reason      string
+	diagnostics map[string]any
 }
 
 // consider handshakes one source, probes it, and decides whether it may answer.
@@ -354,12 +406,13 @@ func sourceDeadline(now, deadline time.Time, reserve, timeout time.Duration) tim
 	return usable
 }
 
-func exclude(inst *config.SourceInstance, reason string) recall.SourceReport {
+func exclude(inst *config.SourceInstance, reason string, diagnostics map[string]any) recall.SourceReport {
 	return recall.SourceReport{
-		SourceUID: inst.UID,
-		SourceID:  inst.ID,
-		Outcome:   recall.SearchSkipped,
-		Reason:    reason,
+		SourceUID:   inst.UID,
+		SourceID:    inst.ID,
+		Outcome:     recall.SearchSkipped,
+		Reason:      reason,
+		Diagnostics: diagnostics,
 	}
 }
 
@@ -386,10 +439,11 @@ func (p Plan) AsPlan(rankConst, corroborationCap float64) recall.Plan {
 	}
 	for _, e := range p.Excluded {
 		out.Sources = append(out.Sources, recall.PlanSource{
-			SourceUID: e.SourceUID,
-			SourceID:  e.SourceID,
-			Eligible:  false,
-			Reason:    e.Reason,
+			SourceUID:   e.SourceUID,
+			SourceID:    e.SourceID,
+			Eligible:    false,
+			Reason:      e.Reason,
+			Diagnostics: e.Diagnostics,
 		})
 	}
 	return out

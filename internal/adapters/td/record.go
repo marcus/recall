@@ -125,18 +125,20 @@ type searchHit struct {
 
 // workspaceInfo is `td info --json`.
 //
-// Only the fields this adapter can honestly use are decoded. `database` is
-// deliberately absent: td reports the constant ".todos/issues.db" there rather
-// than a resolved path, so quoting it as provenance would be quoting a
-// placeholder. `current_session` is absent too — it changes between
-// invocations, so a watermark built on it would report a change on every
-// probe.
+// Only the fields this adapter can honestly use are decoded. Current td
+// reports database as ".todos/issues.db"; newer or wrapped implementations may
+// report an absolute database or root. The relative form is joined to the
+// root independently resolved from the configured location, then checked
+// against Project. An absolute form or Root is authoritative. current_session
+// is absent because it changes between invocations.
 type workspaceInfo struct {
 	// Project is td's own name for the workspace: the base name of the
 	// resolved root. It is reported alongside the configured workspace name in
 	// diagnostics, so a location pointing somewhere unexpected is visible
 	// rather than silent.
-	Project string `json:"project"`
+	Project  string `json:"project"`
+	Database string `json:"database"`
+	Root     string `json:"root"`
 
 	Issues struct {
 		Total      int64 `json:"total"`

@@ -21,7 +21,10 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 	if _, _, err := a.session(); err != nil {
 		return recall.ExpandResponse{}, err
 	}
-	_, _, _, ws := a.config()
+	ws, err := a.verifiedWorkspace(ctx)
+	if err != nil {
+		return recall.ExpandResponse{}, err
+	}
 
 	id, err := ws.parse(req.Locator.Local)
 	if err != nil {

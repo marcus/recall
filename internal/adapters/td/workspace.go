@@ -23,8 +23,10 @@ const workspaceSep = "/"
 // database of the repository they sit inside. Name is what locators,
 // metadata, and provenance carry.
 //
-// Name is derived from Root and never from Location. It has to be, because
-// Location can name a directory that is not a workspace at all: two sources at
+// Name is derived from Root and never from Location. Before td runs both are
+// provisional results of the filesystem mirror; Health, Search, and Expand
+// bind them against `td info`. It has to be this way because Location can name
+// a directory that is not a workspace at all: two sources at
 // `~/code/recall` and `~/code/recall/docs` are ONE database, and naming the
 // second one `docs` made the core count one issue as two independent pieces of
 // evidence and score it up for the corroboration. Name and Root stay separate
@@ -36,12 +38,15 @@ type workspace struct {
 	Name     string
 	Location string
 	Root     string
+	// StoreIdentity is the verified physical store used in fingerprints and
+	// duplicate detection. A replay has no physical store and leaves it empty.
+	StoreIdentity string
 
-	// Pinned records that the `workspace` setting named this workspace
-	// explicitly. It changes nothing about Name — a pin that disagreed with
-	// the resolved root is refused at the handshake — and exists so
-	// diagnostics can say the identity was asserted as well as observed.
-	Pinned bool
+	// Asserted is the optional `workspace` setting. It is an assertion, not
+	// identity: the filesystem mirror cannot decide whether it agrees. The
+	// assertion is checked only after `td info` identifies the database td
+	// actually opened.
+	Asserted string
 }
 
 // resolveWorkspace decides a workspace's identity before any td runs.
@@ -51,22 +56,19 @@ type workspace struct {
 // unavailable, and a source that could not name itself until td answered could
 // not report anything at all.
 //
-// What it does NOT do is take the identity from configuration. The name is the
-// last element of the RESOLVED root — the directory td will open a database in
-// — which is also what td itself reports as its project name, so the two can be
-// compared against each other on every health probe. See [resolveRoot] for why
-// that resolution is a mirror of td's and why the comparison is what makes the
-// mirror safe.
+// What it does NOT do is take the identity from configuration. The provisional
+// name is the last element of the RESOLVED root — the directory td is expected
+// to open a database in — which is also what td reports as its project name,
+// so the two can be compared on every probe and operation. See [resolveRoot]
+// for why that resolution is a mirror and why binding it against td's answer
+// is what makes the mirror safe.
 //
 // The `workspace` setting therefore ASSERTS the identity rather than
-// overriding it, and a disagreement is refused here. It used to override, and
-// that is how a source pointing at clara-home with `workspace = "recall"`
-// answered `td:recall/td-224186` out of the wrong database: a name that came
-// from configuration is a name nothing checked. Two repositories sharing a
-// directory name do not need the override to stay apart — every locator
-// already carries the source_id, and two instances are two source_ids — so
-// what is lost by refusing is a rename, and what is gained is that no locator
-// can name a workspace its database is not.
+// overriding it. The assertion is syntax-checked here, then compared with the
+// opened database by [Adapter.Health] (and by direct Search/Expand calls)
+// before a locator can be emitted or expanded. Comparing it here would make
+// the mirror authoritative and can falsely refuse a sound source when td's
+// resolution changes.
 func resolveWorkspace(location, configured string, replaying bool) (workspace, error) {
 	loc := expandHome(strings.TrimSpace(location))
 	if loc == "" {
@@ -96,21 +98,13 @@ func resolveWorkspace(location, configured string, replaying bool) (workspace, e
 	}
 
 	asserted := strings.TrimSpace(configured)
-	if asserted != "" && !strings.EqualFold(asserted, name) {
-		return workspace{}, protocol.Errorf(protocol.CodeInvalidParams,
-			"td settings: workspace %q, but %s resolves to the td database at %s, whose workspace is %q. "+
-				"A configured name cannot rename another workspace's database: locators built from it would "+
-				"name a workspace this source does not read. Remove the setting, or point the location at %q",
-			asserted, loc, root, name, asserted)
+	if asserted != "" {
+		if err := checkWorkspaceName(asserted); err != nil {
+			return workspace{}, err
+		}
 	}
-	return workspace{Name: name, Location: loc, Root: root, Pinned: asserted != ""}, nil
+	return workspace{Name: name, Location: loc, Root: root, Asserted: asserted}, nil
 }
-
-// resolvedProject is the name td should report for the database this instance
-// resolved to. Health compares it against `td info`'s own answer, which is the
-// one check that ties this adapter's idea of its identity to the database that
-// was actually opened.
-func (w workspace) resolvedProject() string { return filepath.Base(w.Root) }
 
 // checkWorkspaceName rejects names that would not survive a round trip through
 // a locator. A name carrying the locator separator, the workspace separator,

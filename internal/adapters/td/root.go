@@ -32,10 +32,11 @@ const (
 // a directory td never opened. That is why nothing trusts the result on its
 // own. [Adapter.Health] compares the base name of what this function returned
 // against the project name `td info` reports — td's own statement about the
-// database it just read — and degrades the source when they disagree. A drift
-// in td's resolution surfaces as a source that says it cannot confirm its
-// identity, which is recoverable, rather than as a source that quietly answers
-// for the wrong workspace, which is not.
+// database it just read — and makes the source unusable when they disagree.
+// Search and Expand repeat that binding before they can emit or accept a
+// locator. A drift in td's resolution therefore surfaces as a source that
+// cannot confirm its identity, rather than as one that quietly answers for the
+// wrong workspace.
 //
 // Filesystem reads only, in the common case. A repository holding its own
 // `.todos/` settles on the first check, so the ordinary configuration costs no

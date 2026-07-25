@@ -470,11 +470,16 @@ func TestLiveAssertedWorkspaceMustMatchTheDatabase(t *testing.T) {
 		Settings:           map[string]any{"binary": binary, "workspace": "recall"},
 	})
 	t.Cleanup(func() { _ = a.Close() })
-	if err == nil {
-		t.Fatal("a workspace name naming another database was accepted")
+	if err != nil {
+		t.Fatalf("initialize should defer identity until td opens the database: %v", err)
 	}
-	if !strings.Contains(err.Error(), "clara-home") || !strings.Contains(err.Error(), "recall") {
-		t.Errorf("error does not name both the asserted and the resolved workspace: %v", err)
+	mismatch := health(t, a)
+	if mismatch.Usable() {
+		t.Fatalf("a workspace name naming another database is usable: %v", mismatch.Diagnostics)
+	}
+	detail, _ := mismatch.Diagnostics["identity"].(string)
+	if !strings.Contains(detail, "clara-home") || !strings.Contains(detail, "recall") {
+		t.Errorf("identity diagnostic does not name both asserted and opened workspaces: %v", mismatch.Diagnostics)
 	}
 
 	// The same setting, naming what td actually opened, is fine — and is

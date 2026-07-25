@@ -3,7 +3,9 @@ package td_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -183,6 +185,169 @@ func TestMissingWorkspaceIsUnavailableAndNeverEmptySuccess(t *testing.T) {
 	// The diagnostic a person reads must not carry td's terminal colors.
 	if detail, _ := resp.Diagnostics["detail"].(string); strings.ContainsRune(detail, 0x1b) {
 		t.Errorf("diagnostics[detail] carries an escape sequence: %q", detail)
+	}
+}
+
+// A project/root mismatch is not a degraded-but-searchable source. Any
+// candidate from it would carry a locator for a database the adapter did not
+// verify, and the planner treats degraded health as usable.
+func TestIdentityMismatchIsUnavailableAndCannotEmitOrExpand(t *testing.T) {
+	base := recordedWorkspace(t)
+	reply := base.reply
+	base.reply = func(args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return ok([]byte(`{
+				"project":"somewhere-else",
+				"database":".todos/issues.db",
+				"issues":{"total":5,"open":3,"in_progress":1,"closed":1}
+			}`)), nil
+		}
+		return reply(args)
+	}
+	a := newAdapter(t, base, nil)
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Status != recall.HealthUnavailable || health.Usable() {
+		t.Fatalf("health = %q (%v), want unusable", health.Status, health.Diagnostics)
+	}
+	if health.Coverage != recall.IndexUnknown {
+		t.Errorf("coverage = %q, want unknown", health.Coverage)
+	}
+	if _, ok := health.Diagnostics[protocol.DiagStoreIdentity]; ok {
+		t.Error("an unverified root was published as store identity")
+	}
+
+	resp, err := search(t, a, "adapter")
+	if err == nil {
+		t.Fatal("search across an unverified database succeeded")
+	}
+	if resp.Outcome == recall.SearchSuccess || len(resp.Candidates) != 0 {
+		t.Fatalf("search = outcome %q with %d candidates, want failed and empty",
+			resp.Outcome, len(resp.Candidates))
+	}
+	if base.countCalls("list") != 0 || base.countCalls("search") != 0 {
+		t.Error("identity failure was discovered only after corpus reads began")
+	}
+
+	if _, err := expand(t, a, "tdfix/"+idAdapter, recall.DetailFull, 0); err == nil {
+		t.Fatal("expand accepted a locator before verifying the opened database")
+	}
+	if base.countCalls("show") != 0 {
+		t.Error("expand read a record before verifying the opened database")
+	}
+}
+
+// When td can report an authoritative root, that report wins over the
+// filesystem mirror. This prevents the inverse failure: refusing a sound
+// source merely because the mirror has drifted.
+func TestAuthoritativeInfoRootBindsLocatorsAndFingerprints(t *testing.T) {
+	base := recordedWorkspace(t)
+	reply := base.reply
+	actualRoot := filepath.Join(t.TempDir(), "api")
+	base.reply = func(args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return ok([]byte(fmt.Sprintf(`{
+				"project":"api",
+				"database":%q,
+				"issues":{"total":5,"open":3,"in_progress":1,"closed":1}
+			}`, filepath.Join(actualRoot, ".todos", "issues.db")))), nil
+		}
+		return reply(args)
+	}
+	a, err := initAdapter(t, base, filepath.Join(t.TempDir(), "mirror-was-wrong"),
+		map[string]any{"workspace": "api"})
+	if err != nil {
+		t.Fatalf("initialize refused an assertion before td identified its database: %v", err)
+	}
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Status != recall.HealthHealthy {
+		t.Fatalf("health = %q (%v), want healthy", health.Status, health.Diagnostics)
+	}
+	if got := health.Diagnostics[protocol.DiagStoreIdentity]; got != actualRoot {
+		t.Errorf("store_identity = %v, want td's authoritative root %s", got, actualRoot)
+	}
+
+	resp, err := search(t, a, "adapter")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Candidates) == 0 {
+		t.Fatal("search returned no candidates")
+	}
+	top := resp.Candidates[0]
+	if !strings.HasPrefix(top.Locator.Local, "api/") {
+		t.Errorf("locator = %q, want authoritative workspace api", top.Locator.Local)
+	}
+	if got := top.Metadata["workspace_root"]; got != actualRoot {
+		t.Errorf("candidate workspace_root = %v, want %s", got, actualRoot)
+	}
+}
+
+func TestSameBasenameSeparateDatabasesDoNotShareFingerprints(t *testing.T) {
+	// The recorded info says tdfix, so give each fake the live-style absolute
+	// database identity that makes its actual root authoritative.
+	makeAPI := func(root string) *fakeCLI {
+		base := recordedWorkspace(t)
+		reply := base.reply
+		base.reply = func(args []string) (td.Result, error) {
+			if args[0] == "info" {
+				return ok([]byte(fmt.Sprintf(`{
+					"project":"api",
+					"database":%q,
+					"issues":{"total":5,"open":3,"in_progress":1,"closed":1}
+				}`, filepath.Join(root, ".todos", "issues.db")))), nil
+			}
+			return reply(args)
+		}
+		return base
+	}
+	rootA := filepath.Join(t.TempDir(), "api")
+	rootB := filepath.Join(t.TempDir(), "api")
+	first, err := initAdapter(t, makeAPI(rootA), rootA, nil)
+	if err != nil {
+		t.Fatalf("initialize first authoritative store: %v", err)
+	}
+	second, err := initAdapter(t, makeAPI(rootB), rootB, nil)
+	if err != nil {
+		t.Fatalf("initialize second authoritative store: %v", err)
+	}
+
+	hitA, err := search(t, first, "adapter")
+	if err != nil || len(hitA.Candidates) == 0 {
+		t.Fatalf("search first: %v (%v)", err, hitA.Diagnostics)
+	}
+	hitB, err := search(t, second, "adapter")
+	if err != nil || len(hitB.Candidates) == 0 {
+		t.Fatalf("search second: %v (%v)", err, hitB.Diagnostics)
+	}
+	if got, want := hitA.Candidates[0].Locator.Local, hitB.Candidates[0].Locator.Local; got != want {
+		t.Fatalf("locators differ (%q, %q); test requires the same basename and issue", got, want)
+	}
+	if got, want := hitA.Candidates[0].ContentFingerprint, hitB.Candidates[0].ContentFingerprint; got == want {
+		t.Fatalf("separate stores share content fingerprint %q", got)
+	}
+}
+
+func TestConfiguredWorkspaceAssertionIsCheckedAgainstTdInfo(t *testing.T) {
+	a, err := initAdapter(t, recordedWorkspace(t), workspaceRoot,
+		map[string]any{"workspace": "recall"})
+	if err != nil {
+		t.Fatalf("initialize decided database identity before td ran: %v", err)
+	}
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Usable() || health.Coverage != recall.IndexUnknown {
+		t.Fatalf("mismatched assertion health = %q coverage %q (%v)",
+			health.Status, health.Coverage, health.Diagnostics)
 	}
 }
 

@@ -43,7 +43,7 @@ const searchScope = "td search matches id, title, and description only; text tha
 // indistinguishable from a workspace with no matching issues, and fusion
 // downstream would believe it — invariant 2 in docs/spec.md.
 func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
-	set, sourceID, floor, ws := a.config()
+	set, sourceID, floor, _ := a.config()
 	if _, _, err := a.session(); err != nil {
 		return fail(err, nil)
 	}
@@ -60,6 +60,10 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		// Nothing failed: this source holds only issues and none were asked
 		// for.
 		return skipped(recall.SkipRecordTypeMismatch, "this source holds only td issues"), nil
+	}
+	ws, err := a.verifiedWorkspace(ctx)
+	if err != nil {
+		return fail(err, nil)
 	}
 	if req.Filters.Project != "" && !ws.answersTo(req.Filters.Project) {
 		// A td workspace is a project, so a project filter is how a request
@@ -108,6 +112,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	outcome := recall.SearchSuccess
 	diagnostics := gathered.timing()
 	diagnostics["workspace"] = ws.Name
+	if ws.StoreIdentity != "" {
+		diagnostics["workspace_root"] = ws.StoreIdentity
+	}
 	diagnostics["query_mode"] = queryMode(exact, probes)
 	diagnostics["search_scope"] = searchScope
 	diagnostics["probes"] = len(probes)
@@ -692,7 +699,7 @@ func (a *Adapter) candidate(
 		// issue, read once, out of one database, is one observation. The
 		// fingerprint says so, and record_type plus content_fingerprint
 		// collapses them without the core needing to know anything about td.
-		ContentFingerprint: fingerprint(s.rec.ID, s.rec.UpdatedAt),
+		ContentFingerprint: fingerprint(ws.StoreIdentity, s.rec.ID, s.rec.UpdatedAt),
 	}
 	if s.confirmed {
 		// The listing enumerated this instance's whole scope, so a record it
@@ -704,27 +711,25 @@ func (a *Adapter) candidate(
 	return c
 }
 
-// fingerprint identifies the observation: which issue, and which version of it.
+// fingerprint identifies the observation: which store, issue, and version.
 //
-// Everything that varies between two instances reading one database is
-// deliberately excluded. Not the workspace name, not the configured location,
-// not the resolved root — those are precisely what the two instances disagree
-// about, so a fingerprint built on any of them would differ for the same issue
-// and defeat its own purpose. They would also make the value depend on where a
-// checkout lives, which would put a machine's directory layout into every
-// recorded transcript.
+// The root is the resolved store identity verified against `td info`, not the
+// configured location. Two instances at a repository and its subdirectory
+// therefore agree, while two separate databases with the same directory name
+// cannot collapse merely because td happened to mint the same issue id at the
+// same timestamp.
 //
 // The issue's own updated_at is the version, in preference to the workspace
 // watermark. A watermark fingerprints the whole listing, so two instances
 // scoped to different statuses read different listings and produce different
 // watermarks for issues they both returned; updated_at is a property of the
 // record, so it is the same value in every scope that can see the record.
-//
-// Two different databases collide only by holding the same six-hex id updated
-// at the same nanosecond. td mints ids randomly per database, so that is not a
-// case worth trading the above for.
-func fingerprint(issueID string, updated time.Time) string {
-	sum := sha256.Sum256([]byte(issueID + "\x00" + updated.UTC().Format(time.RFC3339Nano)))
+func fingerprint(storeRoot, issueID string, updated time.Time) string {
+	payload := issueID + "\x00" + updated.UTC().Format(time.RFC3339Nano)
+	if storeRoot != "" {
+		payload = storeRoot + "\x00" + payload
+	}
+	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
 }
 

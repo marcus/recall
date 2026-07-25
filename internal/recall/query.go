@@ -147,13 +147,14 @@ type Plan struct {
 
 // PlanSource records one eligibility decision and the budget it received.
 type PlanSource struct {
-	SourceUID SourceUID     `json:"source_uid"`
-	SourceID  string        `json:"source_id"`
-	Eligible  bool          `json:"eligible"`
-	Reason    string        `json:"reason,omitempty"`
-	Limit     int           `json:"limit"`
-	Timeout   time.Duration `json:"timeout_ns"`
-	Prior     float64       `json:"prior"`
+	SourceUID   SourceUID      `json:"source_uid"`
+	SourceID    string         `json:"source_id"`
+	Eligible    bool           `json:"eligible"`
+	Reason      string         `json:"reason,omitempty"`
+	Diagnostics map[string]any `json:"diagnostics,omitempty"`
+	Limit       int            `json:"limit"`
+	Timeout     time.Duration  `json:"timeout_ns"`
+	Prior       float64        `json:"prior"`
 }
 
 // Suppression records a candidate withheld from display, and why. Counts are

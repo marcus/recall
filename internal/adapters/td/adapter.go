@@ -302,6 +302,119 @@ func (a *Adapter) Close() error {
 	return nil
 }
 
+// verifiedWorkspace returns identity that has been tied to `td info`.
+//
+// Query planning calls Health before Search, but Search deliberately probes
+// again. A .td-root or association can change between the two calls, and the
+// reviewer finding this closes was specifically that Search trusted a prior
+// degraded health result. Expansion can happen much later in a long-lived
+// process, so it has the same requirement.
+func (a *Adapter) verifiedWorkspace(ctx context.Context) (workspace, error) {
+	set, _, _, configured := a.config()
+	if set.Replay != "" {
+		// A recording has no database to validate and its command sequence is
+		// part of the fixture contract. Its configured workspace is the replay
+		// namespace; the recorded td project may intentionally differ.
+		return configured, nil
+	}
+	info, _, err := a.probeWorkspace(ctx)
+	if err != nil {
+		return workspace{}, err
+	}
+	ws, err := bindWorkspace(configured, info)
+	if err != nil {
+		return workspace{}, err
+	}
+	return ws, nil
+}
+
+// probeWorkspace asks td which database it opened. It is kept separate from
+// Health so a direct Search or Expand cannot bypass the identity check.
+func (a *Adapter) probeWorkspace(ctx context.Context) (workspaceInfo, Result, error) {
+	args := []string{"info", "--json"}
+	res, err := a.run(ctx, args...)
+	if err != nil {
+		return workspaceInfo{}, res, err
+	}
+	var info workspaceInfo
+	if err := decodeJSON(res, &info, args...); err != nil {
+		return workspaceInfo{}, res, err
+	}
+	return info, res, nil
+}
+
+// bindWorkspace turns td's report into the only workspace identity operations
+// may use. Configuration and the filesystem mirror are hints until this
+// succeeds.
+func bindWorkspace(configured workspace, info workspaceInfo) (workspace, error) {
+	project := strings.TrimSpace(info.Project)
+	if err := checkWorkspaceName(project); err != nil {
+		return workspace{}, fmt.Errorf("%w: td info reported an invalid project: %w",
+			protocol.ErrSourceUnavailable, err)
+	}
+
+	root := configured.Root
+	authoritativeRoot := false
+	if strings.TrimSpace(info.Root) != "" {
+		if !filepath.IsAbs(info.Root) {
+			return workspace{}, fmt.Errorf("%w: td info root %q is not absolute",
+				protocol.ErrSourceUnavailable, info.Root)
+		}
+		root = canonicalPath(info.Root)
+		authoritativeRoot = true
+	}
+	if filepath.IsAbs(info.Database) {
+		database := canonicalPath(info.Database)
+		if filepath.Base(database) != "issues.db" || filepath.Base(filepath.Dir(database)) != todosDir {
+			return workspace{}, fmt.Errorf("%w: td info database %q does not identify a .todos/issues.db store",
+				protocol.ErrSourceUnavailable, info.Database)
+		}
+		databaseRoot := filepath.Dir(filepath.Dir(database))
+		if authoritativeRoot && canonicalPath(root) != canonicalPath(databaseRoot) {
+			return workspace{}, fmt.Errorf("%w: td info root %s and database %s identify different stores",
+				protocol.ErrSourceUnavailable, root, info.Database)
+		}
+		root = databaseRoot
+		authoritativeRoot = true
+	}
+	root = canonicalPath(root)
+
+	// Current td reports a relative ".todos/issues.db". Refuse paths that
+	// could escape the verified root; they cannot name the store at that root.
+	if database := strings.TrimSpace(info.Database); database != "" && !filepath.IsAbs(database) {
+		clean := filepath.Clean(database)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return workspace{}, fmt.Errorf("%w: td info database %q escapes workspace root %s",
+				protocol.ErrSourceUnavailable, database, root)
+		}
+		if clean != filepath.Join(todosDir, "issues.db") {
+			return workspace{}, fmt.Errorf("%w: td info database %q does not identify the store at root %s",
+				protocol.ErrSourceUnavailable, database, root)
+		}
+	}
+
+	rootProject := filepath.Base(root)
+	if !strings.EqualFold(project, rootProject) {
+		kind := "resolved"
+		if authoritativeRoot {
+			kind = "reported"
+		}
+		return workspace{}, fmt.Errorf("%w: td opened project %q, but its %s root is %s (workspace %q); "+
+			"locators from this source would name a workspace it is not reading",
+			protocol.ErrSourceUnavailable, project, kind, root, rootProject)
+	}
+	if configured.Asserted != "" && !strings.EqualFold(configured.Asserted, project) {
+		return workspace{}, fmt.Errorf("%w: td settings assert workspace %q, but td opened project %q at %s; "+
+			"a configured name cannot rename another workspace's database",
+			protocol.ErrSourceUnavailable, configured.Asserted, project, root)
+	}
+
+	configured.Name = rootProject
+	configured.Root = root
+	configured.StoreIdentity = root
+	return configured, nil
+}
+
 // Health probes the workspace with one `td info`, and nothing else.
 //
 // The honest health question for this source is not "did a command return" but
@@ -321,19 +434,34 @@ func (a *Adapter) Close() error {
 // `database not found`, and reporting that as an empty corpus would let fusion
 // downstream treat "the workspace is gone" as "there is no such issue".
 func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
-	set, _, _, ws := a.config()
+	set, _, _, configured := a.config()
 	checked := a.now()
 
-	infoArgs := []string{"info", "--json"}
-	res, err := a.run(ctx, infoArgs...)
+	info, res, err := a.probeWorkspace(ctx)
 	if err != nil {
 		return adapter.Unhealthy(err), nil
 	}
-	var info workspaceInfo
-	if err := decodeJSON(res, &info, infoArgs...); err != nil {
-		return adapter.Unhealthy(err), nil
+	ws := configured
+	if set.Replay == "" {
+		ws, err = bindWorkspace(configured, info)
 	}
-
+	if err != nil {
+		// Health reports source failures in its status; a Go error here would
+		// make callers discard the structured diagnostics and coverage.
+		//nolint:nilerr
+		return recall.Health{
+			Status:    recall.HealthUnavailable,
+			CheckedAt: checked,
+			Coverage:  recall.IndexUnknown,
+			Diagnostics: map[string]any{
+				"workspace":          configured.Name,
+				"workspace_location": configured.Location,
+				"workspace_root":     configured.Root,
+				"td_project":         info.Project,
+				"identity":           err.Error(),
+			},
+		}, nil
+	}
 	health := recall.Health{
 		Status:      recall.HealthHealthy,
 		CheckedAt:   checked,
@@ -353,7 +481,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 			"cli_wall_ms":        res.Elapsed.Milliseconds(),
 		},
 	}
-	if ws.Pinned {
+	if ws.Asserted != "" {
 		// The identity was asserted by configuration as well as resolved, and
 		// the two agreed or this instance would not have finished its
 		// handshake. Reported so an operator reading diagnostics can tell an
@@ -369,20 +497,6 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		// nothing here for the identity check to compare against.
 		health.Diagnostics["replay"] = true
 
-	case !strings.EqualFold(info.Project, ws.resolvedProject()):
-		// td opened a database in a directory this adapter did not predict, so
-		// every locator this instance would emit names a workspace that is not
-		// the one being read. Degraded rather than unavailable: the workspace
-		// answers, and the records are real — it is the IDENTITY that cannot be
-		// trusted, and a caller has to be able to tell those apart. Reaching
-		// this means td's resolution and the mirror in root.go have diverged,
-		// which is the failure that mirror is allowed to have.
-		health.Status = recall.HealthDegraded
-		health.Diagnostics["identity"] = fmt.Sprintf(
-			"td opened project %q, but the location %s resolves to %s; "+
-				"locators from this source would name a workspace it is not reading",
-			info.Project, ws.Location, ws.Root)
-
 	default:
 		// The store this instance opened, under the key `recall doctor` reads
 		// to find two sources reading one store. See docs/adapter-protocol.md.
@@ -391,7 +505,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		// project name alone cannot — and it is published only here, once the
 		// resolution has been confirmed against td's own answer, so a value
 		// nothing verified never reaches the check.
-		health.Diagnostics[protocol.DiagStoreIdentity] = ws.Root
+		health.Diagnostics[protocol.DiagStoreIdentity] = ws.StoreIdentity
 	}
 
 	// `td info` is the whole of this probe, and the freshness evidence health
