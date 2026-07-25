@@ -197,6 +197,13 @@ func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall
 
 	gen, err := buildIndex(ctx, root, settings, indexDir)
 	if err != nil {
+		// Cancellation and deadline expiry are not corpus health. They mean the
+		// caller abandoned this maintenance operation; the previously
+		// published generation remains exactly as it was and the host needs the
+		// error to preserve cancellation semantics across CLI, HTTP, and MCP.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return recall.Health{}, err
+		}
 		// Nothing was published. The previously published generation is still
 		// the current one, still readable, and health now reports why it is not
 		// moving forward.
@@ -346,7 +353,7 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		}
 	}
 
-	corpus, err := scanCorpus(root, settings)
+	corpus, err := scanCorpus(ctx, root, settings)
 	if err != nil {
 		// The index can still answer, but nothing can confirm it describes the
 		// corpus, and expansion reads files this walk could not see.

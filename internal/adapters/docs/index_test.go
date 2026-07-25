@@ -178,6 +178,29 @@ func TestPublicationDropsSupersededGenerations(t *testing.T) {
 	}
 }
 
+func TestCancelledRefreshStopsAndKeepsPublishedGeneration(t *testing.T) {
+	t.Parallel()
+	a, workdir := newAdapter(t, cleanCorpus(t), nil)
+	published := currentGeneration(t, workdir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := a.Refresh(ctx, protocol.RefreshParams{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled refresh error = %v, want context.Canceled", err)
+	}
+	if got := currentGeneration(t, workdir); got != published {
+		t.Fatalf("cancelled refresh published %q over %q", got, published)
+	}
+	if got := indexEntries(t, workdir, buildPrefix); len(got) != 0 {
+		t.Fatalf("cancelled refresh left staging directories: %v", got)
+	}
+	h := health(t, a)
+	if h.IndexGeneration != published || h.Status != recall.HealthHealthy {
+		t.Fatalf("health after cancellation = %+v, want unchanged healthy generation %s", h, published)
+	}
+}
+
 // TestFailedBuildKeepsThePreviousGenerationReadable fails the builder for real:
 // a directory it cannot list. That is not a record-level failure — a directory
 // nobody can enumerate makes the boundary itself unknown, and publishing it

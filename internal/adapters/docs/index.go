@@ -215,7 +215,7 @@ func (g *generation) confirmedAt() *time.Time {
 // removed on the way out of a failed build, and collected by the next build
 // when the process died before it could run anything at all.
 func buildIndex(ctx context.Context, root string, s Settings, indexDir string) (*generation, error) {
-	corpus, err := scanCorpus(root, s)
+	corpus, err := scanCorpus(ctx, root, s)
 	if err != nil {
 		return nil, err
 	}

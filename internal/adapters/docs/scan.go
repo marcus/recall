@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -49,11 +50,14 @@ type skippedDir struct {
 	Reason string
 }
 
-func scanCorpus(root string, s Settings) (scan, error) {
+func scanCorpus(ctx context.Context, root string, s Settings) (scan, error) {
 	var files []fileRef
 	var skipped []skippedDir
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			if d == nil || d.IsDir() {
 				return fmt.Errorf("cannot list %s: %w", relOrBase(root, path), walkErr)

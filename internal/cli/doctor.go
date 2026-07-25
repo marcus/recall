@@ -251,7 +251,7 @@ func diagnoseRuntime(ctx context.Context, cfg *config.Config, rt *runtime) Diagn
 	d.add(accessCheck(eligible))
 
 	health, manifests, healths := healthCheck(ctx, rt, eligible)
-	d.add(health, servingCheck(eligible, healths), isolationCheck(eligible, healths),
+	d.add(health, servingCheck(eligible, manifests, healths), isolationCheck(eligible, healths),
 		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
 	return d.finish()
 }
@@ -601,7 +601,11 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 // actionable. A stale source at prior 0.9 is a nuisance; the same staleness at
 // 1.5 is silently shaping every answer on the machine, and the two should not
 // look alike in a report someone skims.
-func servingCheck(sources []*config.SourceInstance, healths map[string]recall.Health) Check {
+func servingCheck(
+	sources []*config.SourceInstance,
+	manifests map[string]recall.Manifest,
+	healths map[string]recall.Health,
+) Check {
 	var problems []Problem
 	whole := 0
 
@@ -632,11 +636,15 @@ func servingCheck(sources []*config.SourceInstance, healths map[string]recall.He
 			whole++
 			continue
 		}
+		message := fmt.Sprintf("%s (base_prior %g); it answers, so a query will use it, and the answer "+
+			"will be drawn from less than this source holds",
+			strings.Join(found, ", "), s.BasePrior)
+		if manifests[s.ID].Can(recall.CapCheckpoint) {
+			message += fmt.Sprintf("; run recall refresh --source %s", s.ID)
+		}
 		problems = append(problems, Problem{
 			SourceID: s.ID,
-			Message: fmt.Sprintf("%s (base_prior %g); it answers, so a query will use it, and the answer "+
-				"will be drawn from less than this source holds; run recall refresh --source %s",
-				strings.Join(found, ", "), s.BasePrior, s.ID),
+			Message:  message,
 		})
 	}
 

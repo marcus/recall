@@ -3,6 +3,7 @@ package cli_test
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/marcus/recall/internal/adapter"
@@ -376,8 +377,10 @@ func TestDoctorRefusesTwoSourcesOverOneStore(t *testing.T) {
 // command — and it has to stay distinguishable from a configuration that does
 // not load, because the two are fixed by different things.
 func TestDoctorReportsWhatASourceIsActuallyServing(t *testing.T) {
+	checkpoint := manifest()
+	checkpoint.Capabilities = append(checkpoint.Capabilities, recall.CapCheckpoint)
 	stale := &fake{
-		manifest: manifest(),
+		manifest: checkpoint,
 		health: recall.Health{
 			Status:       recall.HealthDegraded,
 			Coverage:     recall.IndexPartial,
@@ -418,6 +421,30 @@ func TestDoctorReportsWhatASourceIsActuallyServing(t *testing.T) {
 	for _, want := range []string{"coverage partial", "7 of 9 records indexed", "base_prior", "recall refresh --source docs"} {
 		contains(t, stdout, want,
 			"the report has to say what is missing and how much authority the source carries")
+	}
+}
+
+func TestDoctorDoesNotRecommendRefreshForSourceWithoutCheckpoint(t *testing.T) {
+	stale := &fake{
+		manifest: manifest(),
+		health: recall.Health{
+			Status:      recall.HealthDegraded,
+			Coverage:    recall.IndexPartial,
+			RecordCount: 2, IndexedCount: 1,
+		},
+	}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{
+			"fakedocs": stale, "faketasks": {manifest: manifest()},
+		}),
+	})
+	code, stdout, _ := h.run("doctor", "--json")
+	if code != cli.ExitDegraded {
+		t.Fatalf("exit = %d\n%s", code, stdout)
+	}
+	if strings.Contains(stdout, "recall refresh --source docs") {
+		t.Fatalf("doctor recommended unsupported refresh command\n%s", stdout)
 	}
 }
 
