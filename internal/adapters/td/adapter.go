@@ -499,6 +499,24 @@ func parseSettings(raw map[string]any) (settings, error) {
 				"td settings: unknown type %q, want one of %s", kind, strings.Join(knownTypes, ", "))
 		}
 	}
+	if len(set.Labels) > 1 {
+		// td INTERSECTS repeated --labels; this schema documented "any of".
+		// Configuring two labels therefore selected issues carrying both, which
+		// is usually none, and the source then answered every query with zero
+		// candidates while health still reported its full record_count and
+		// coverage complete. A false absence presented as a complete boundary is
+		// the invariant-5 failure, arriving through configuration where nothing
+		// downstream can see it.
+		//
+		// Refused rather than silently reinterpreted: a union needs one probe
+		// per label, and inventing that here would make one configured filter
+		// mean something different from the same filter typed at td.
+		return settings{}, protocol.Errorf(protocol.CodeInvalidParams,
+			"td settings: labels %v — td intersects repeated labels, so more than one "+
+				"selects issues carrying all of them, which is almost never intended and "+
+				"cannot be distinguished from an empty workspace. Configure one label, or "+
+				"one source instance per label", set.Labels)
+	}
 	return set, nil
 }
 
@@ -533,7 +551,11 @@ func settingsSchema() map[string]any {
 			},
 			"statuses": stringList("Restrict this source to issues in these td statuses.", knownStatuses),
 			"types":    stringList("Restrict this source to these td issue types.", knownTypes),
-			"labels":   stringList("Restrict this source to issues carrying any of these labels.", nil),
+			// Singular in effect: td intersects repeated --labels, so the adapter
+			// refuses more than one rather than let a config mean "all of" while
+			// reading as "any of". One source instance per label is the way to
+			// express a union.
+			"labels": stringList("Restrict this source to issues carrying this label. Configure at most one; td intersects repeated labels.", nil),
 			"timeout_ms": map[string]any{
 				"type": "integer", "minimum": 1,
 				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins.",

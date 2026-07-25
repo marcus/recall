@@ -78,6 +78,9 @@ var stopwords = map[string]struct{}{
 // maxTerms bounds how many terms one query contributes before probing is
 // capped. A pasted paragraph must not turn into an unbounded term list even
 // before the probe cap applies.
+// maxTermBytes bounds one probe's length; see queryTerms.
+const maxTermBytes = 128
+
 const maxTerms = 12
 
 // queryTerms lowercases a query and splits it into deduplicated terms.
@@ -93,6 +96,15 @@ func queryTerms(query string) []string {
 			// Shorter than three characters is not a useful substring probe
 			// against td: "id LIKE '%to%'" matches most of a workspace, and
 			// each probe costs a process.
+			continue
+		}
+		if len(field) > maxTermBytes {
+			// Query text must not be able to move coverage. A term long enough
+			// to blow the argv limit makes its probe fail E2BIG, which surfaces
+			// as an unavailable source and degrades an otherwise answerable
+			// query — honestly reported, but caused by the question rather than
+			// by the source. td matches substrings, so nothing this long is a
+			// useful probe anyway.
 			continue
 		}
 		if _, stop := stopwords[field]; stop {
