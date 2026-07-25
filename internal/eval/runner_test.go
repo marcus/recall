@@ -217,7 +217,13 @@ func TestLocatorResolutionIsMeasured(t *testing.T) {
 
 func TestRunnerRecordsSourceAndExpansionAssertionInputs(t *testing.T) {
 	e := newEngine()
-	e.responses["q"] = answered("uid-docs:a.md")
+	response := answered("uid-docs:a.md")
+	response.Suppressed = []recall.Suppression{{
+		Reason:      recall.SuppressLineageSeen,
+		Count:       1,
+		LineageRoot: "uid-docs:hidden.md",
+	}}
+	e.responses["q"] = response
 	e.expandContent["a.md"] = "four"
 
 	r := eval.NewRunner(e, packFor(t, minimalPack), eval.RunOptions{})
@@ -236,6 +242,12 @@ func TestRunnerRecordsSourceAndExpansionAssertionInputs(t *testing.T) {
 	}
 	if len(got[0].Expansions) != 1 || got[0].Expansions[0].Bytes != 4 {
 		t.Errorf("expansions = %+v, want 4 content bytes", got[0].Expansions)
+	}
+	if len(got[0].Suppressions) != 1 ||
+		got[0].Suppressions[0].Reason != recall.SuppressLineageSeen ||
+		got[0].Suppressions[0].LineageRoot != "uid-docs:hidden.md" {
+		t.Errorf("suppressions = %+v, want positive lineage suppression telemetry",
+			got[0].Suppressions)
 	}
 }
 
@@ -469,6 +481,102 @@ func TestEveryDeclaredCaseAssertionCanFailTheRun(t *testing.T) {
 				t.Fatal("a declared assertion failed but the run remained valid")
 			}
 		})
+	}
+}
+
+func TestSuppressedLineageRequiresPositiveSuppressionTelemetry(t *testing.T) {
+	root := recall.LineageRoot("uid:hidden")
+	tests := []struct {
+		name        string
+		result      eval.CaseResult
+		wantFailure bool
+	}{
+		{
+			name:        "missing lineage was not suppression",
+			result:      eval.CaseResult{},
+			wantFailure: true,
+		},
+		{
+			name: "different suppression reason is not proof",
+			result: eval.CaseResult{Suppressions: []recall.Suppression{{
+				Reason: recall.SuppressSensitivity, Count: 1, LineageRoot: root,
+			}}},
+			wantFailure: true,
+		},
+		{
+			name: "zero suppressed candidates is not proof",
+			result: eval.CaseResult{Suppressions: []recall.Suppression{{
+				Reason: recall.SuppressLineageSeen, Count: 0, LineageRoot: root,
+			}}},
+			wantFailure: true,
+		},
+		{
+			name: "retrieved candidate suppressed for prior display",
+			result: eval.CaseResult{Suppressions: []recall.Suppression{{
+				Reason: recall.SuppressLineageSeen, Count: 1, LineageRoot: root,
+			}}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := goodCase("case")
+			c.Assertions = &eval.Assertions{SuppressedLineages: []recall.LineageRoot{root}}
+			score := eval.Score(c, nil, tc.result)
+			failed := len(score.AssertionViolations) > 0
+			if failed != tc.wantFailure {
+				t.Fatalf("violations = %v, want failure %v",
+					score.AssertionViolations, tc.wantFailure)
+			}
+		})
+	}
+}
+
+func TestPositiveExpansionAssertionsDoNotPassWithoutResults(t *testing.T) {
+	root := recall.LineageRoot("uid:expected")
+	tests := []struct {
+		name       string
+		assertions eval.Assertions
+		wantField  string
+	}{
+		{
+			name:       "byte ceiling needs an expansion",
+			assertions: eval.Assertions{MaxExpansionBytes: 512},
+			wantField:  "max_expansion_bytes",
+		},
+		{
+			name: "expected revision needs its lineage expansion",
+			assertions: eval.Assertions{
+				ExpectedRevisions: map[recall.LineageRoot]string{root: "rev-1"},
+			},
+			wantField: "expected_revisions",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := goodCase("case")
+			c.ExpectedBehavior = eval.BehaviorAnswer
+			c.Assertions = &tc.assertions
+			score := eval.Score(c, nil, eval.CaseResult{})
+			if len(score.AssertionViolations) != 1 ||
+				!strings.Contains(score.AssertionViolations[0], tc.wantField) {
+				t.Fatalf("violations = %v, want one %s precondition failure",
+					score.AssertionViolations, tc.wantField)
+			}
+		})
+	}
+}
+
+func TestExpectedAbstentionExplicitlyPermitsNoExpansion(t *testing.T) {
+	c := goodCase("case")
+	c.ExpectedBehavior = eval.BehaviorAbstain
+	c.Assertions = &eval.Assertions{MaxExpansionBytes: 512}
+
+	score := eval.Score(c, nil, eval.CaseResult{Behavior: eval.BehaviorAbstain})
+	if len(score.AssertionViolations) != 0 {
+		t.Fatalf("an expected no-result case failed an expansion ceiling: %v",
+			score.AssertionViolations)
 	}
 }
 

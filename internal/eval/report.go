@@ -101,6 +101,12 @@ type CaseResult struct {
 	// may report success while contributing no evidence.
 	ReturnedSources []recall.SourceUID `json:"returned_source_uids,omitempty"`
 
+	// Suppressions are the engine's positive evidence that a retrieved
+	// candidate was withheld, including the policy reason and candidate count.
+	// Absence from Ranked is not proof of suppression: the candidate may never
+	// have been retrieved.
+	Suppressions []recall.Suppression `json:"suppressions,omitempty"`
+
 	Expansions []Expansion  `json:"expansions,omitempty"`
 	Provenance []Provenance `json:"provenance,omitempty"`
 
@@ -420,11 +426,16 @@ func caseAssertionViolations(c Case, r CaseResult) []string {
 			"max_latency_ms: %s exceeded %dms", r.Latency, a.MaxLatencyMS))
 	}
 	if a.MaxExpansionBytes > 0 {
-		for _, expansion := range r.Expansions {
-			if expansion.Bytes > a.MaxExpansionBytes {
-				failures = append(failures, fmt.Sprintf(
-					"max_expansion_bytes: %s returned %d bytes over %d",
-					expansion.Locator.Local, expansion.Bytes, a.MaxExpansionBytes))
+		if len(r.Expansions) == 0 && c.ExpectedBehavior != BehaviorAbstain {
+			failures = append(failures,
+				"max_expansion_bytes: no returned expansion to measure")
+		} else {
+			for _, expansion := range r.Expansions {
+				if expansion.Bytes > a.MaxExpansionBytes {
+					failures = append(failures, fmt.Sprintf(
+						"max_expansion_bytes: %s returned %d bytes over %d",
+						expansion.Locator.Local, expansion.Bytes, a.MaxExpansionBytes))
+				}
 			}
 		}
 	}
@@ -433,10 +444,42 @@ func caseAssertionViolations(c Case, r CaseResult) []string {
 	for _, root := range r.Ranked {
 		ranked[root] = true
 	}
+	expanded := make(map[recall.LineageRoot]Expansion, len(r.Expansions))
+	for _, expansion := range r.Expansions {
+		if expansion.Root != "" {
+			expanded[expansion.Root] = expansion
+		}
+	}
+	for root, want := range a.ExpectedRevisions {
+		expansion, ok := expanded[root]
+		if !ok {
+			failures = append(failures, fmt.Sprintf(
+				"expected_revisions: no expansion resolved %s", root))
+			continue
+		}
+		if expansion.Revision != want {
+			failures = append(failures, fmt.Sprintf(
+				"expected_revisions: %s resolved revision %q, want %q",
+				root, expansion.Revision, want))
+		}
+	}
+
+	suppressed := make(RootSet, len(r.Suppressions))
+	for _, suppression := range r.Suppressions {
+		if suppression.Reason == recall.SuppressLineageSeen &&
+			suppression.Count > 0 &&
+			suppression.LineageRoot != "" {
+			suppressed[suppression.LineageRoot] = true
+		}
+	}
 	for _, root := range a.SuppressedLineages {
 		if ranked[root] {
 			failures = append(failures, fmt.Sprintf(
 				"suppressed_lineages: returned %s", root))
+		} else if !suppressed[root] {
+			failures = append(failures, fmt.Sprintf(
+				"suppressed_lineages: no suppression telemetry for %s with reason %s",
+				root, recall.SuppressLineageSeen))
 		}
 	}
 	for _, root := range a.VisibleLineages {

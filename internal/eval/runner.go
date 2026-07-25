@@ -173,6 +173,7 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 	}
 	result.SourceFamilies = familiesOf(resp)
 	result.ReturnedSources = returnedSourcesOf(resp)
+	result.Suppressions = append([]recall.Suppression(nil), resp.Suppressed...)
 	result.SensitivityViolations = ceilingViolations(c, resp)
 	result.Expansions = r.checkExpansions(ctx, c, resp)
 	return result, nil
