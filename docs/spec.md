@@ -469,18 +469,31 @@ identifiers first, conservative matching otherwise. Entity matching never uses
 unbounded substring tests; adapters supply exact identifiers, token-boundary
 matches, aliases, or typed resolvers, and test known false positives.
 
+Corroboration counts **units**, not lineage groups. Distinct lineage roots are
+not sufficient evidence of independence: two chunks of one document and two
+fingerprint-identical records have distinct roots but are one thing said once.
+Groups collapse into one unit when they share `source_uid` plus
+`source_record_id`, or `record_type` plus `content_fingerprint`. A unit's score
+is the maximum of its groups'.
+
 ```text
 cluster_score = min(
-    sum over distinct lineage groups g of lineage_score(g),
-    corroboration_cap * max lineage_score(g)
+    sum over independent units u of unit_score(u),
+    corroboration_cap * max unit_score(u)
 )
 ```
 
-Independent corroboration requires distinct lineage roots. Two projections of
-one record never corroborate each other.
+Independence is directional — a composite depends on its parents — so the sum
+is built by offering units in a defined order and accepting one only when it
+adds independent evidence. Non-derivative units are offered first: a unit that
+restates others (a composite with ancestors, or a source declaring
+`derives_from`) is offered last regardless of score, so a strong summary is
+never counted as the evidence while the records it summarizes are rejected as
+restatements of it.
 
 Defaults, all evaluation parameters: `rank_constant = 60`,
-`corroboration_cap = 2.0`, priors in `[0.5, 2.0]`.
+`corroboration_cap = 2.0` (never below 1, which would make corroborated
+evidence score below a single group), priors in `[0.5, 2.0]`.
 
 ### 5. Exact-Match Promotion
 

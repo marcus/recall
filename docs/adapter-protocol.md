@@ -147,7 +147,11 @@ exact lookup, an API, or any combination.
 
 ```text
 candidate_id         stable within the source revision
-source_record_id     stable native or adapter-defined record identity
+source_record_id     stable identity of the RECORD, not of this candidate.
+                     Chunks of one document, or several hits inside one task,
+                     all carry the same value. Corroboration collapses on it,
+                     so a per-chunk value would let one source corroborate
+                     itself.
 locator              stable printable expansion reference
 derived_from         optional upstream locators, for lineage
 record_type          person | task | document | message | event | ...

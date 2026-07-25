@@ -1,0 +1,182 @@
+package ranking_test
+
+import (
+	"testing"
+
+	"github.com/marcus/recall/internal/ranking"
+	"github.com/marcus/recall/internal/recall"
+)
+
+// Entity matching is where a retrieval layer quietly goes wrong: merge two
+// things that are not the same and the answer confidently cites the wrong
+// record, with corroboration to back it up. Every pair here is one a substring
+// test would have merged. None of them may merge.
+func TestEntityMatchingRefusesFalsePositives(t *testing.T) {
+	cases := []struct {
+		name string
+		why  string
+		a, b recall.Candidate
+	}{
+		{
+			name: "title is a prefix of the other",
+			why:  "the classic substring merge: a spec is not the thing it specifies",
+			a:    cand("docs", "a.md#1", 1, title("Recall Spec")),
+			b:    cand("mail", "m-1", 1, title("Recall Spec Review Thread")),
+		},
+		{
+			name: "title is a suffix of the other",
+			why:  "a qualifier in front changes the subject",
+			a:    cand("docs", "a.md#1", 1, title("Release Notes")),
+			b:    cand("mail", "m-1", 1, title("Pre Release Notes")),
+		},
+		{
+			name: "personal name extended",
+			why:  "two people share a first and last name often enough to matter",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller Jr")),
+		},
+		{
+			name: "single word titles",
+			why:  "one word is not identity; an adapter that knows better declares an entity id",
+			a:    cand("docs", "a.md#1", 1, title("Recall")),
+			b:    cand("mail", "m-1", 1, title("Recall")),
+		},
+		{
+			name: "same title, different record types",
+			why:  "the meeting and the note about the meeting are different records",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordDocument), title("Weekly Sync")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordEvent), title("Weekly Sync")),
+		},
+		{
+			name: "identifier is a prefix of the other",
+			why:  "td-1 and td-12 differ by one character and by everything else",
+			a:    cand("docs", "a.md#1", 1, meta(ranking.MetaEntityID, "td-1")),
+			b:    cand("mail", "m-1", 1, meta(ranking.MetaEntityID, "td-12")),
+		},
+		{
+			name: "same entity id, different entity type",
+			why:  "record identifiers are numbered independently per type",
+			a:    cand("docs", "a.md#1", 1, meta(ranking.MetaEntityID, "42"), meta(ranking.MetaEntityType, "person")),
+			b:    cand("mail", "m-1", 1, meta(ranking.MetaEntityID, "42"), meta(ranking.MetaEntityType, "task")),
+		},
+		{
+			name: "same record id, different sources",
+			why:  "a record id is only unique inside its own source; two sources both number from 1",
+			a:    cand("docs", "a.md#1", 1, recordID("42")),
+			b:    cand("mail", "m-1", 1, recordID("42")),
+		},
+		{
+			name: "same fingerprint, different record types",
+			why:  "identical text in a task and a document is a duplicate to show, not one record",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordDocument), fingerprint("fp-1")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordTask), fingerprint("fp-1")),
+		},
+		{
+			name: "alias shorter than the name",
+			why:  "an alias matches a whole name or not at all",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), title("Someone Else"), meta(ranking.MetaAliases, []string{"Marcus V"})),
+		},
+		{
+			name: "no identity declared at all",
+			why:  "silence is not a match; empty titles and empty fingerprints merge nothing",
+			a:    cand("docs", "a.md#1", 1),
+			b:    cand("mail", "m-1", 1),
+		},
+	}
+
+	r := newRanker(t, nil)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Withholding one of the two as a near-duplicate is a display
+			// decision and is allowed; treating them as one record is not.
+			if clustered(fuse(t, r, request(tc.a, tc.b)), tc.a, tc.b) {
+				t.Fatalf("merged into one cluster; must stay separate: %s", tc.why)
+			}
+		})
+	}
+}
+
+// clustered reports whether two candidates ended up in the same cluster.
+func clustered(f ranking.Fusion, a, b recall.Candidate) bool {
+	for _, res := range f.Results {
+		var sawA, sawB bool
+		for _, m := range res.Members {
+			for _, c := range m.Candidates {
+				sawA = sawA || c.CandidateID == a.CandidateID
+				sawB = sawB || c.CandidateID == b.CandidateID
+			}
+		}
+		if sawA && sawB {
+			return true
+		}
+	}
+	return false
+}
+
+// The other half of the contract: declared identity must actually merge, or
+// clustering is conservative to the point of uselessness.
+func TestEntityMatchingMergesDeclaredIdentity(t *testing.T) {
+	cases := []struct {
+		name string
+		why  string
+		a, b recall.Candidate
+	}{
+		{
+			name: "same entity id across sources",
+			why:  "a typed identifier is the strongest thing an adapter can say",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), meta(ranking.MetaEntityID, "p-42")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), meta(ranking.MetaEntityID, "p-42")),
+		},
+		{
+			name: "identical multi-token title and record type",
+			why:  "the conservative fallback: whole name, same kind of record",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), title("marcus  vorwaller")),
+		},
+		{
+			name: "declared alias equal to the other name",
+			why:  "aliases are how a source declares a second full name",
+			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
+			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), title("M V"), meta(ranking.MetaAliases, []any{"Marcus Vorwaller"})),
+		},
+		{
+			name: "same fingerprint and record type",
+			why:  "the advisory hash collapses duplicates when nothing was declared",
+			a:    cand("docs", "a.md#1", 1, fingerprint("fp-1")),
+			b:    cand("mail", "m-1", 1, fingerprint("fp-1")),
+		},
+	}
+
+	r := newRanker(t, nil)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fuse(t, r, request(tc.a, tc.b))
+			if len(got.Results) != 1 {
+				t.Fatalf("results = %v, want one cluster: %s", order(got), tc.why)
+			}
+		})
+	}
+}
+
+// Merging for scoring is not merging for retrieval. A fingerprint match is
+// advisory: the records stay separately addressable, and they stop
+// corroborating each other.
+func TestFingerprintMergeKeepsRecordsAddressable(t *testing.T) {
+	r := newRanker(t, nil)
+	got := single(t, fuse(t, r, request(
+		cand("docs", "a.md#1", 1, fingerprint("fp-1")),
+		cand("mail", "m-1", 1, fingerprint("fp-1")),
+	)))
+
+	if len(got.Members) != 2 {
+		t.Errorf("members = %d, want both records expandable", len(got.Members))
+	}
+	if n := got.Explanation.Corroboration.DistinctLineages; n != 1 {
+		t.Errorf("distinct lineages = %d, want 1: the same content is not two opinions", n)
+	}
+	alone := single(t, fuse(t, r, request(cand("docs", "a.md#1", 1, fingerprint("fp-1")))))
+	if got.Score != alone.Score {
+		t.Errorf("score = %v, want %v", got.Score, alone.Score)
+	}
+}
