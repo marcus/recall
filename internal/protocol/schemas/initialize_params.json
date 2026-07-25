@@ -34,6 +34,10 @@
       "description": "Configured path, endpoint, or connection reference for this source instance.",
       "type": "string"
     },
+    "base_dir": {
+      "description": "Directory of the file that declared this source. Settings is adapter-owned, so configuration cannot resolve paths inside it; an adapter resolves settings paths against this rather than the process working directory.",
+      "type": "string"
+    },
     "settings": {
       "description": "Adapter-owned settings, shaped by the manifest's settings_schema.",
       "type": [

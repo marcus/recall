@@ -140,6 +140,28 @@ candidate must be suppressed or visible
 no candidate may cross the profile sensitivity ceiling
 ```
 
+### Known Gaps
+
+Writing the first pack found things a case cannot yet say. They are recorded
+here rather than fixed by adding fields, because a field no case writes and no
+metric reads is the dead-contract defect invariant 6 names. Each lands with the
+pack that needs it:
+
+- **An exclusion reason cannot be asserted.** `expected_source_outcomes` takes
+  an outcome, so `unhealthy`, `denied`, `sensitivity_ceiling`,
+  `as_of_unsupported`, and `budget_exhausted` all flatten to `skipped` —
+  including the `as_of` case whose entire point is *which* reason was reported.
+- **A match signal cannot be asserted.** The near-miss category exists to prove
+  a substring does not exact-match, but `exact_identifier` is only observable
+  through ranking, even though it is a deterministic partition and the
+  explanation carries it.
+- **An expansion's detail level cannot be stated**, so detail coverage lives in
+  tags by convention.
+- **A committed document corpus cannot express reproducible temporal
+  behavior.** The documents adapter derives `as_of` from file mtime, which git
+  does not preserve, so temporal cases belong on a stream source whose records
+  carry their own event time.
+
 ## Reproducible Execution
 
 Every deterministic run records: Recall commit and dirty-tree state; pack

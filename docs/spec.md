@@ -428,8 +428,10 @@ v1 has no per-record ACLs. Access is source-level:
 
 - Sensitivity is an ordered scale: `public < internal < confidential <
   restricted`.
-- A profile declares `max_sensitivity`. Sources above it are ineligible and
-  reported as `denied`.
+- A profile declares `max_sensitivity`. Sources above it are ineligible, and are
+  reported as `skipped` with reason `sensitivity_ceiling` — not as `denied`,
+  which means the source itself refused. Honoring a configured ceiling is the
+  system working as asked, so it does not degrade coverage either.
 - A candidate may raise its sensitivity above the source floor, never lower it.
   A candidate raised above the profile ceiling is dropped and counted in
   `suppressed` with reason `sensitivity`.

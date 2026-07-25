@@ -134,6 +134,7 @@ func (r *Registry) handshake(inst *config.SourceInstance) adapter.Config {
 		Workdir:            r.Workdir(inst),
 		SourceID:           inst.ID,
 		Location:           inst.Location,
+		BaseDir:            inst.BaseDir,
 		Settings:           inst.Settings,
 	}
 }

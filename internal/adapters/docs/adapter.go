@@ -78,6 +78,20 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 	if root == "" {
 		return recall.Manifest{}, errors.New("docs: no corpus: set the source location or settings.root")
 	}
+	if !filepath.IsAbs(root) {
+		// A relative root comes from the adapter-owned settings block, which
+		// configuration does not resolve. Resolving it against the process
+		// working directory would make the same configuration read different
+		// files depending on where Recall was started.
+		base := cfg.BaseDir
+		if base == "" {
+			base, err = os.Getwd()
+			if err != nil {
+				return recall.Manifest{}, err
+			}
+		}
+		root = filepath.Join(base, root)
+	}
 	root, err = filepath.Abs(root)
 	if err != nil {
 		return recall.Manifest{}, err

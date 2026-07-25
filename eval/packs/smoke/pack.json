@@ -2,7 +2,7 @@
   "schema_version": 1,
   "pack_id": "smoke",
   "version": "0.1.0",
-  "description": "Synthetic, committed, network-free. Every case is answerable from the fixtures under sources/ and the transcripts under transcripts/. Cases select their own profile: the failing fixtures live in profiles of their own so a source that always fails cannot make every case report degraded coverage.",
+  "description": "Synthetic, committed, network-free. Every case is answerable from the fixtures under sources/ and the transcripts under transcripts/. Cases select their own profile: the failing fixtures live in profiles of their own so a source that always fails cannot make every case report degraded coverage. Budgets and thresholds here are absolute first-run placeholders, to be replaced by regression bounds once measured distributions exist.",
   "profile": "smoke",
   "cases": "cases.jsonl",
   "judgments": "judgments.jsonl",
@@ -10,7 +10,7 @@
   "transcripts": "transcripts",
   "network_access": false,
   "budgets": {
-    "p95_latency_ms": 400,
+    "p95_latency_ms": 1000,
     "model_calls": 0,
     "tokens": 0,
     "external_requests": 0

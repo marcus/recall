@@ -198,8 +198,18 @@ type InitializeParams struct {
 	SourceID string `json:"source_id"`
 
 	// Location is the configured path, endpoint, or connection reference for
-	// this source instance.
+	// this source instance. Configuration has already resolved a relative one
+	// against the file that declared it.
 	Location string `json:"location,omitempty"`
+
+	// BaseDir is the directory of the file that declared this source.
+	//
+	// It exists because Settings is adapter-owned, so configuration cannot
+	// resolve paths inside it — an adapter reading settings.root had nothing to
+	// resolve against and fell back to the process working directory, which
+	// makes the same configuration read different files depending on where
+	// Recall was started.
+	BaseDir string `json:"base_dir,omitempty"`
 
 	// Settings is the adapter-owned settings block. Its shape is declared by
 	// the manifest's settings_schema, which is only knowable after the
