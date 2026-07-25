@@ -95,6 +95,25 @@ func TestPythonTemplateSelfTests(t *testing.T) {
 	}
 }
 
+// The copyable README is part of the template contract. In particular, it must
+// not teach implementers to return broader partial results for a filter they
+// cannot evaluate when the recorded adapter correctly skips before retrieval.
+func TestPythonTemplateREADMEStatesUnsupportedFilterOutcome(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(pythonTemplate, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"unsupported filter returns `skipped`",
+		"`filter_unsupported` before retrieval",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("README does not state %q", want)
+		}
+	}
+}
+
 func TestPythonTemplateTranscriptsAreRedactedAndPortable(t *testing.T) {
 	root := filepath.Join(pythonTemplate, "conformance")
 	suite, err := conformance.LoadSuite(root)

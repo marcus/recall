@@ -110,9 +110,11 @@ Keep, and change only with a reason you can write down:
   where this instance found it.
 - `source_record_id` being the record, while `candidate_id` is the hit. Several
   sections of one note are several candidates and one piece of evidence.
-- Every path that returns `partial`, and every diagnostic that says why. There
-  are four in here: an unreadable record, a truncated listing, a filter that
-  could not be applied, and a source that could not be reached at all.
+- Every path that cannot assert a complete search boundary, and every
+  diagnostic or reason that says why. An unreadable record and a truncated
+  listing return `partial`; an unsupported filter returns `skipped` with
+  `filter_unsupported` before retrieval; an unreachable source returns
+  `unavailable`.
 - The refusal to derive an event time from a file's mtime.
 - `one_line` and `safe_text` on every string that leaves the process.
 - Byte limits that include the UTF-8 ellipsis, rather than appending it after
