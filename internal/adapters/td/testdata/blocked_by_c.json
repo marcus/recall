@@ -1,0 +1,26 @@
+{
+  "all": null,
+  "direct": null,
+  "direct_count": 0,
+  "issue": {
+    "id": "td-9e7a3a",
+    "title": "Document corpus indexing",
+    "description": "Markdown chunked by heading, retrieved from an adapter-owned lexical index.",
+    "status": "open",
+    "type": "task",
+    "priority": "P1",
+    "points": 0,
+    "labels": [
+      "wave1"
+    ],
+    "implementer_session": "",
+    "creator_session": "ses_d3b401",
+    "reviewer_session": "",
+    "created_at": "2026-07-24T22:54:32.589656-07:00",
+    "updated_at": "2026-07-24T22:54:32.589656-07:00",
+    "minor": false,
+    "created_branch": "worktree-agent-a37f64c3aa9c1fff1",
+    "defer_count": 0
+  },
+  "transitive_count": 0
+}

@@ -1,0 +1,11 @@
+{
+  "case": "handshake-version",
+  "description": "A version range this build cannot satisfy. The handshake fails explicitly rather than degrading to a version neither side implements, and it fails before any settings are read, because a version that cannot be spoken makes the rest of the frame meaningless.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 1
+}

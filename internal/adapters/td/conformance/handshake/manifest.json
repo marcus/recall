@@ -1,0 +1,16 @@
+{
+  "case": "handshake",
+  "description": "A version range the adapter can satisfy: it negotiates 1, declares a manifest that claims live retrieval and as_of none, and answers a health probe. Health is a td info probe plus the workspace listing, so the record count, the coverage, and the watermark all come from the workspace rather than from the fact that a command returned. The diagnostics report the configured workspace name and the project td itself resolved side by side \u2014 here they differ, because the recording was captured from a workspace named tdfix and the case configures the name recall \u2014 so a location pointing somewhere unexpected is visible rather than silent.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/diagnostics/workspace_root",
+    "/result/diagnostics/cli_wall_ms"
+  ],
+  "responses": 2
+}

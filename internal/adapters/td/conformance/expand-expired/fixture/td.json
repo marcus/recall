@@ -1,0 +1,52 @@
+{
+  "comment": "Recorded td output, replayed instead of spawning the binary: a transcript that ran the real td would replay a workspace that changes with every commit.",
+  "invocations": [
+    {
+      "contains": [
+        "info"
+      ],
+      "stdout": "info.json"
+    },
+    {
+      "contains": [
+        "list"
+      ],
+      "stdout": "list_all.json"
+    },
+    {
+      "contains": [
+        "search"
+      ],
+      "stdout": "search_adapter.json"
+    },
+    {
+      "contains": [
+        "show",
+        "td-277316"
+      ],
+      "stdout": "show_a.json"
+    },
+    {
+      "contains": [
+        "depends-on"
+      ],
+      "stdout": "depends_on_a.json"
+    },
+    {
+      "contains": [
+        "blocked-by"
+      ],
+      "stdout": "blocked_by_a.json"
+    },
+    {
+      "contains": [
+        "files"
+      ],
+      "stdout": "files_a.json"
+    }
+  ],
+  "default": {
+    "stdout": "show_not_found.json",
+    "exit_code": 1
+  }
+}

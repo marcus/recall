@@ -1,0 +1,11 @@
+{
+  "case": "search-unavailable",
+  "description": "A workspace td cannot resolve. Every invocation exits non-zero with `database not found`, and the search fails with -32000 source_unavailable rather than returning an empty candidate list. This is the invariant the adapter exists to keep: an unreachable workspace must never be indistinguishable from a workspace with no matching issues.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

@@ -1,0 +1,79 @@
+[
+  {
+    "Issue": {
+      "id": "td-277316",
+      "title": "Adapter interface, supervision, and pooling",
+      "description": "One Go interface implemented by built-in adapters directly and by external adapters over JSON-RPC.\n\nDeadline enforcement: cancel notification, then SIGTERM, then SIGKILL. The outcome is timeout or failed, never empty success.",
+      "status": "open",
+      "type": "task",
+      "priority": "P1",
+      "points": 5,
+      "labels": [
+        "wave1",
+        "track-adapter"
+      ],
+      "parent_id": "td-38ba01",
+      "acceptance": "- A hanging fixture adapter is killed at its deadline\n- Handshake version-range rejection surfaces as a configuration error",
+      "implementer_session": "",
+      "creator_session": "ses_d3b401",
+      "reviewer_session": "",
+      "created_at": "2026-07-24T22:54:32.197072-07:00",
+      "updated_at": "2026-07-24T22:54:32.197072-07:00",
+      "minor": false,
+      "created_branch": "worktree-agent-a37f64c3aa9c1fff1",
+      "defer_count": 0
+    },
+    "Score": 70,
+    "MatchField": "title"
+  },
+  {
+    "Issue": {
+      "id": "td-9e7a3a",
+      "title": "Document corpus indexing",
+      "description": "Markdown chunked by heading, retrieved from an adapter-owned lexical index.",
+      "status": "open",
+      "type": "task",
+      "priority": "P1",
+      "points": 0,
+      "labels": [
+        "wave1"
+      ],
+      "implementer_session": "",
+      "creator_session": "ses_d3b401",
+      "reviewer_session": "",
+      "created_at": "2026-07-24T22:54:32.589656-07:00",
+      "updated_at": "2026-07-24T22:54:32.589656-07:00",
+      "minor": false,
+      "created_branch": "worktree-agent-a37f64c3aa9c1fff1",
+      "defer_count": 0
+    },
+    "Score": 40,
+    "MatchField": "description"
+  },
+  {
+    "Issue": {
+      "id": "td-5fad1f",
+      "title": "Retire the old signal poller",
+      "description": "Nothing reads the poller since the stream adapter landed.",
+      "status": "closed",
+      "type": "chore",
+      "priority": "P3",
+      "points": 0,
+      "labels": [
+        "wave2"
+      ],
+      "implementer_session": "",
+      "creator_session": "ses_d3b401",
+      "reviewer_session": "",
+      "closed_by_session": "ses_d3b401",
+      "created_at": "2026-07-24T22:54:32.791848-07:00",
+      "updated_at": "2026-07-24T22:54:33.488525-07:00",
+      "closed_at": "2026-07-24T22:54:33.483785-07:00",
+      "minor": false,
+      "created_branch": "worktree-agent-a37f64c3aa9c1fff1",
+      "defer_count": 0
+    },
+    "Score": 40,
+    "MatchField": "description"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "case": "shutdown",
+  "description": "A clean exit after real work. recall/shutdown takes {} and returns {}; the adapter releases what it holds, the server finishes in-flight work and returns, and the process closes stdout and exits. Nothing is written after the acknowledgement, which is what the replayer's drain checks.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/candidates/*/metadata/workspace_root",
+    "/result/diagnostics/cli_wall_ms"
+  ],
+  "responses": 3
+}

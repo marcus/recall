@@ -1,0 +1,16 @@
+{
+  "case": "search-partial",
+  "description": "Honest coverage when part of a search fails. Three probes go out for this query \u2014 the whole phrase and each term \u2014 and the fixture makes the 'corroboration' probe fail the way a broken workspace does. The two that answered are returned, the outcome is partial rather than success, and failed_probes says how much recall was lost. Reporting success here would present a thin answer as a complete one.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/candidates/*/metadata/workspace_root",
+    "/result/diagnostics/cli_wall_ms"
+  ],
+  "responses": 2
+}

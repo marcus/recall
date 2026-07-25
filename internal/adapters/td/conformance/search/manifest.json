@@ -1,0 +1,16 @@
+{
+  "case": "search",
+  "description": "Ranked candidates with stable workspace-qualified locators. One query term is one td search invocation, and the order td returned is the order emitted: a title hit above two description hits, the P1 task above the P3 chore on the priority tie-break. Every locator carries the workspace, every candidate's metadata names it and its root, and the source_revision is a fingerprint of the exact listing bytes that answered.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/candidates/*/confirmed_at",
+    "/result/candidates/*/metadata/workspace_root",
+    "/result/diagnostics/cli_wall_ms"
+  ],
+  "responses": 2
+}

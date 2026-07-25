@@ -1,0 +1,302 @@
+package td_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/marcus/recall/internal/adapter"
+	"github.com/marcus/recall/internal/adapters/td"
+	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/internal/recall"
+)
+
+// The manifest is the basis for eligibility, so every claim in it has to be
+// one this adapter can keep.
+func TestManifestDeclaresWhatTdCanDo(t *testing.T) {
+	a := td.New(td.Options{Runner: recordedWorkspace(t), Clock: fixedClock})
+	manifest, err := a.Initialize(context.Background(), adapter.Config{
+		ProtocolVersionMin: protocol.MinVersion,
+		ProtocolVersionMax: protocol.MaxVersion,
+		Workdir:            t.TempDir(),
+		SourceID:           "td",
+		Location:           workspaceRoot,
+	})
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	// as_of is the claim that matters most. td publishes created_at,
+	// updated_at, and closed_at, which is more history than the Tasks CLI
+	// offers and still not record history: there is no prior revision of a
+	// title or a description, and updated_at is a single last-write stamp. An
+	// issue edited after a boundary could only be answered from current state,
+	// which docs/spec.md forbids outright.
+	if manifest.AsOfSupport != recall.AsOfNone {
+		t.Errorf("as_of_support = %q, want none: td stores no record history", manifest.AsOfSupport)
+	}
+	if manifest.AsOfSupport.Honors() {
+		t.Error("as_of_support claims it can honor a historical boundary")
+	}
+
+	// Live only. The adapter owns no index, so it must not offer to serve one.
+	if !manifest.Supports(recall.FreshnessLive) {
+		t.Error("manifest does not declare live")
+	}
+	for _, mode := range []recall.FreshnessMode{recall.FreshnessIndexed, recall.FreshnessHybrid} {
+		if manifest.Supports(mode) {
+			t.Errorf("manifest declares %q, but this adapter maintains no index", mode)
+		}
+	}
+	if manifest.Can(recall.CapCheckpoint) {
+		t.Error("manifest declares checkpoint, but this adapter owns no projection to rebuild")
+	}
+	for _, cap := range []recall.Capability{recall.CapSearch, recall.CapExpand} {
+		if !manifest.Can(cap) {
+			t.Errorf("manifest is missing capability %q", cap)
+		}
+	}
+	if !slices.Equal(manifest.RecordTypes, []recall.RecordType{recall.RecordTask}) {
+		t.Errorf("record_types = %v, want [task]", manifest.RecordTypes)
+	}
+	if manifest.Sensitivity != recall.SensitivityInternal {
+		t.Errorf("sensitivity floor = %v, want internal", manifest.Sensitivity)
+	}
+	if manifest.SettingsSchema == nil {
+		t.Error("no settings schema: recall doctor cannot validate a configuration without one")
+	}
+}
+
+// A source instance is a workspace, so a source that names no location names
+// no workspace. Failing the handshake is the only honest answer: the adapter
+// would otherwise resolve td's database from whatever directory recall was
+// started in, which is a different workspace on every invocation.
+func TestHandshakeRefusesASourceWithNoWorkspace(t *testing.T) {
+	if _, err := initAdapter(t, recordedWorkspace(t), "", nil); err == nil {
+		t.Fatal("a source with no location completed the handshake")
+	}
+}
+
+func TestSettingsAreValidatedAtHandshake(t *testing.T) {
+	cases := []struct {
+		name     string
+		settings map[string]any
+		location string
+	}{
+		{name: "unknown key", settings: map[string]any{"stauts": []any{"open"}}},
+		{name: "unknown status", settings: map[string]any{"statuses": []any{"in-progress"}}},
+		{name: "unknown type", settings: map[string]any{"types": []any{"story"}}},
+		{
+			// A workspace name carrying the locator separator would parse back
+			// as a different reference, which is the one way a locator can
+			// quietly start naming another record.
+			name:     "workspace name that would not survive a locator",
+			settings: map[string]any{"workspace": "work:api"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := initAdapter(t, recordedWorkspace(t), workspaceRoot, tc.settings); err == nil {
+				t.Fatalf("settings %v were accepted", tc.settings)
+			}
+		})
+	}
+}
+
+// Health asks td whether this workspace resolves to a readable database, and
+// reports the workspace it resolved alongside the one that was configured.
+func TestHealthReportsAReadableWorkspace(t *testing.T) {
+	cli := recordedWorkspace(t)
+	a := newAdapter(t, cli, nil)
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Status != recall.HealthHealthy {
+		t.Fatalf("status = %q (%v), want healthy", health.Status, health.Diagnostics)
+	}
+	if health.RecordCount != 5 {
+		t.Errorf("record_count = %d, want the 5 issues td reports", health.RecordCount)
+	}
+	if health.Coverage != recall.IndexComplete {
+		t.Errorf("coverage = %q, want complete", health.Coverage)
+	}
+	if health.SourceWatermark == "" {
+		t.Error("no watermark: td publishes no revision, so a search has no freshness evidence without one")
+	}
+	if got := health.Diagnostics["workspace"]; got != "tdfix" {
+		t.Errorf("diagnostics[workspace] = %v, want the configured workspace name", got)
+	}
+	if got := health.Diagnostics["td_project"]; got != "tdfix" {
+		t.Errorf("diagnostics[td_project] = %v, want the project td resolved", got)
+	}
+	if health.LastSuccess == nil {
+		t.Error("a healthy probe recorded no last success")
+	}
+}
+
+// The invariant this adapter exists to keep: a workspace that is missing, or
+// that was never initialized, is unavailable. If it were reported as a
+// successful empty search, fusion downstream would read "the workspace is
+// gone" as "there is no such issue".
+func TestMissingWorkspaceIsUnavailableAndNeverEmptySuccess(t *testing.T) {
+	// Exactly what td writes when it cannot resolve a database: a colorized
+	// banner on stdout ahead of the envelope, and exit 1.
+	missing := &fakeCLI{reply: func([]string) (td.Result, error) {
+		return td.Result{Stdout: fixture(t, "no_database.json"), ExitCode: 1}, nil
+	}}
+	a := newAdapter(t, missing, nil)
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health returned an error rather than an unhealthy report: %v", err)
+	}
+	if health.Status != recall.HealthUnavailable {
+		t.Errorf("status = %q, want unavailable", health.Status)
+	}
+	if health.Coverage != recall.IndexUnknown {
+		t.Errorf("coverage = %q, want unknown: nothing confirmed what the workspace holds", health.Coverage)
+	}
+	if health.RecordCount != 0 {
+		t.Errorf("record_count = %d for an unreachable workspace", health.RecordCount)
+	}
+
+	resp, err := search(t, a, "adapter")
+	if err == nil {
+		t.Fatal("search over a missing workspace returned no error")
+	}
+	if resp.Outcome == recall.SearchSuccess {
+		t.Fatalf("outcome = %q for a missing workspace; an empty success is indistinguishable from no matches", resp.Outcome)
+	}
+	if len(resp.Candidates) != 0 {
+		t.Errorf("a failed search returned %d candidates", len(resp.Candidates))
+	}
+	// The diagnostic a person reads must not carry td's terminal colors.
+	if detail, _ := resp.Diagnostics["detail"].(string); strings.ContainsRune(detail, 0x1b) {
+		t.Errorf("diagnostics[detail] carries an escape sequence: %q", detail)
+	}
+}
+
+// A workspace td can resolve but not list is degraded, not unavailable: the
+// source is reachable and nothing has confirmed what it holds.
+func TestUnreadableListingDegradesRatherThanDisappears(t *testing.T) {
+	info := fixture(t, "info.json")
+	cli := &fakeCLI{reply: func(args []string) (td.Result, error) {
+		if args[0] == "info" {
+			return ok(info), nil
+		}
+		return td.Result{Stdout: []byte("not json at all"), ExitCode: 0}, nil
+	}}
+	a := newAdapter(t, cli, nil)
+
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if health.Status != recall.HealthDegraded {
+		t.Errorf("status = %q (%v), want degraded", health.Status, health.Diagnostics)
+	}
+	if health.Coverage != recall.IndexUnknown {
+		t.Errorf("coverage = %q, want unknown", health.Coverage)
+	}
+	if health.SourceWatermark != "" {
+		t.Error("a watermark was reported for a listing that could not be read")
+	}
+}
+
+// Refresh exists because the contract has it. This source owns no projection,
+// so it must report health unchanged rather than claim work it never did.
+func TestRefreshReportsHealthWithoutClaimingWork(t *testing.T) {
+	a := newAdapter(t, recordedWorkspace(t), nil)
+
+	refreshed, err := a.Refresh(context.Background(), protocol.RefreshParams{})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	health, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if refreshed.Status != health.Status || refreshed.SourceWatermark != health.SourceWatermark {
+		t.Errorf("refresh reported %q/%q, health reported %q/%q; a live source has nothing to rebuild",
+			refreshed.Status, refreshed.SourceWatermark, health.Status, health.SourceWatermark)
+	}
+	if refreshed.IndexGeneration != "" {
+		t.Errorf("refresh published index generation %q for a source with no index", refreshed.IndexGeneration)
+	}
+}
+
+// A closed adapter must fail rather than answer. An empty result from a closed
+// source would be a claim about the workspace that nothing looked at.
+func TestClosedAdapterFailsRatherThanAnswers(t *testing.T) {
+	a := newAdapter(t, recordedWorkspace(t), nil)
+	if err := a.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	resp, err := search(t, a, "adapter")
+	if !errors.Is(err, adapter.ErrClosed) {
+		t.Errorf("search after close: err = %v, want ErrClosed", err)
+	}
+	if resp.Outcome == recall.SearchSuccess {
+		t.Errorf("outcome = %q after close", resp.Outcome)
+	}
+	if _, err := a.Expand(context.Background(), recall.ExpandRequest{
+		Locator: recall.Locator{SourceID: "td", Local: "tdfix/" + idAdapter},
+	}); !errors.Is(err, adapter.ErrClosed) {
+		t.Errorf("expand after close: err = %v, want ErrClosed", err)
+	}
+}
+
+// Recorded td output is a supported way to configure this source, because a
+// committed evaluation pack cannot spawn td against a workspace that changes
+// with every commit.
+func TestReplayAnswersWithoutSpawningTd(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir+"/"+td.ReplayFile, `{
+      "invocations": [
+        {"contains": ["info"], "stdout": "info.json"},
+        {"contains": ["list"], "stdout": "list_all.json"},
+        {"contains": ["search"], "stdout": "search_adapter.json"}
+      ],
+      "default": {"stdout": "show_not_found.json", "exit_code": 1}
+    }`)
+	for _, name := range []string{"info.json", "list_all.json", "search_adapter.json", "show_not_found.json"} {
+		writeFile(t, dir+"/"+name, string(fixture(t, name)))
+	}
+
+	// No Runner is injected: the replay directory is what makes this adapter
+	// answer, which is the whole point of it being configuration.
+	a := td.New(td.Options{Clock: fixedClock})
+	if _, err := a.Initialize(context.Background(), adapter.Config{
+		ProtocolVersionMin: protocol.MinVersion,
+		ProtocolVersionMax: protocol.MaxVersion,
+		Workdir:            t.TempDir(),
+		SourceID:           "td",
+		Location:           dir,
+		Settings:           map[string]any{"replay": "."},
+	}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	resp, err := search(t, a, "adapter")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if got := ids(resp); len(got) == 0 || got[0] != idAdapter {
+		t.Errorf("replayed search = %v, want %s first", got, idAdapter)
+	}
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}

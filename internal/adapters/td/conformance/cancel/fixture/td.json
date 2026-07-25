@@ -1,0 +1,23 @@
+{
+  "comment": "A workspace slow enough to cancel. delay_ms is interruptible, so an abandoned request does not wait it out.",
+  "invocations": [
+    {
+      "contains": [
+        "search"
+      ],
+      "stdout": "search_adapter.json",
+      "delay_ms": 30000
+    },
+    {
+      "contains": [
+        "list"
+      ],
+      "stdout": "list_all.json",
+      "delay_ms": 30000
+    }
+  ],
+  "default": {
+    "stdout": "show_not_found.json",
+    "exit_code": 1
+  }
+}

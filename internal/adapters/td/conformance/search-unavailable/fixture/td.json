@@ -1,0 +1,8 @@
+{
+  "comment": "A directory that is not a td workspace: every command fails the same way.",
+  "invocations": [],
+  "default": {
+    "stdout": "no_database.json",
+    "exit_code": 1
+  }
+}
