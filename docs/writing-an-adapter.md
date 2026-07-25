@@ -320,13 +320,26 @@ The obligations, in the order they matter (full list in
   boundary completes. The template makes an immutable
   `index-gen-N-<digest>.sqlite` durable, then atomically replaces
   `checkpoint.json`, which is the publication pointer. A build or checkpoint
-  failure leaves the previous generation published, readable, and answering.
+  failure before that rename leaves the previous generation published,
+  readable, and answering.
+- **Bind the bytes and boundary to one stable scan.** Capture file names and
+  identities before reading, verify each open file remains the same through its
+  read, and capture the boundary again afterward. If either boundary differs,
+  publish nothing and retry or report the old generation as degraded. Computing
+  a cache signature only after reading can bless old bytes with new metadata and
+  leave a stale index looking current indefinitely.
 - **Checkpoint after records are durable, and make it the publication
   boundary.** A checkpoint that names a generation the reader cannot open is
   worse than no checkpoint; an index made visible before its checkpoint is also
   unsafe, because a crash can make the next process reuse that generation
   identity for different content. The template binds the full content digest
   into both the immutable filename and generation id.
+- **A rename is a publication even when the following directory fsync is
+  uncertain.** Once the new checkpoint name is visible, live state must retain
+  that matching generation because a restart can read it. Degrade health to
+  report uncertain crash durability; do not claim the old generation remains
+  published. Since both old and new pointers bind immutable digest-named files,
+  either crash outcome is internally consistent.
 - **Report `index_generation`, `index_watermark`, and `index_config`.**
   `index_config` identifies the retrieval configuration — analyzer, tokenizer,
   scoring parameters — and exists because `index_model` covers only embeddings.
@@ -429,7 +442,9 @@ out carries an invisible bidi override and breaks the next tool that reads it.
 
 For diagnostics: a denied source must not leak record existence, and no
 diagnostic needs an absolute path. Name files by base name. Hash anything that
-is a path by nature.
+is a path by nature. A base name is still source-controlled text: pass it
+through the same single-line control stripping as titles before putting it in
+health, an error, or stderr.
 
 ### The trust boundary
 

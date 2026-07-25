@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -135,7 +137,7 @@ class PublicationInvariantTests(unittest.TestCase):
 
         def reject(_workdir, snapshot):
             staged.append(snapshot.generation_id())
-            return False
+            return notes.CheckpointPublication(False, False, "injected rejection")
 
         with mock.patch.object(notes, "save_checkpoint", side_effect=reject):
             current = self.adapter.current(full=True)
@@ -191,10 +193,84 @@ class PublicationInvariantTests(unittest.TestCase):
                 return real_replace(source, destination)
 
             with mock.patch.object(notes.os, "replace", side_effect=fail_checkpoint):
-                self.assertFalse(notes.save_checkpoint(empty_workdir, staged))
+                publication = notes.save_checkpoint(empty_workdir, staged)
+            self.assertFalse(publication.published)
             self.assertFalse(
                 os.path.exists(os.path.join(empty_workdir, notes.CHECKPOINT_FILE))
             )
+
+    def test_mid_scan_mutation_never_publishes_complete_stale_snapshot(self):
+        with tempfile.TemporaryDirectory() as empty_workdir:
+            candidate = notes.Adapter()
+            candidate.initialize(
+                {
+                    "protocol_version_min": 1,
+                    "protocol_version_max": 1,
+                    "source_id": "notes",
+                    "location": self.root.name,
+                    "workdir": empty_workdir,
+                    "settings": {},
+                },
+                notes.Cancellation(0),
+            )
+            real_read = notes.read_stable
+            mutated = False
+
+            def mutate_after_read(path, expected_identity):
+                nonlocal mutated
+                raw = real_read(path, expected_identity)
+                if not mutated:
+                    mutated = True
+                    self.write(note_text(title="new title", body="new body"))
+                return raw
+
+            with mock.patch.object(notes, "read_stable", side_effect=mutate_after_read):
+                health = candidate.health({}, notes.Cancellation(0))
+            self.assertEqual(health["status"], "unavailable")
+            self.assertEqual(health["coverage"], "unknown")
+            self.assertIn("changed during the scan", health["diagnostics"]["reason"])
+            self.assertFalse(
+                os.path.exists(os.path.join(empty_workdir, notes.CHECKPOINT_FILE))
+            )
+
+            # The next stable scan indexes the new bytes; the stale bytes from
+            # the rejected scan never became a complete/healthy generation.
+            recovered = candidate.search(
+                {"query": "new", "limit": 10}, notes.Cancellation(0)
+            )
+            self.assertEqual(recovered["outcome"], "success")
+            self.assertEqual(recovered["candidates"][0]["title"], "new title")
+
+    def test_post_rename_fsync_failure_keeps_live_and_restart_consistent(self):
+        self.write(note_text(title="published with uncertain fsync"))
+        real_fsync = notes.fsync_directory
+        calls = 0
+
+        def fail_checkpoint_directory_fsync(path):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected directory fsync failure")
+            return real_fsync(path)
+
+        with mock.patch.object(
+            notes, "fsync_directory", side_effect=fail_checkpoint_directory_fsync
+        ):
+            published = self.adapter.current(full=True)
+        self.assertEqual(published.generation, self.first.generation + 1)
+        self.assertIs(self.adapter.snapshot, published)
+        self.assertFalse(self.adapter.checkpoint_ok)
+        self.assertIn("fsync", self.adapter.refresh_failure)
+        health = self.adapter.health_of(published)
+        self.assertEqual(health["status"], "degraded")
+        self.assertEqual(health["index_generation"], published.generation_id())
+
+        restarted = self.new_adapter()
+        self.assertIsNotNone(restarted.snapshot)
+        self.assertEqual(
+            restarted.snapshot.generation_id(), published.generation_id()
+        )
+        self.assertEqual(restarted.current().generation_id(), published.generation_id())
 
     def test_checkpoint_round_trip_binds_exact_index(self):
         with open(
@@ -235,6 +311,44 @@ class PublicationInvariantTests(unittest.TestCase):
             result["candidates"][0]["derived_from"],
             ["tasks:td-123", "mail:message-9"],
         )
+
+
+class DiagnosticSanitizationTests(unittest.TestCase):
+    def test_hostile_directory_and_filename_are_safe_in_health_and_stderr(self):
+        with (
+            tempfile.TemporaryDirectory() as root,
+            tempfile.TemporaryDirectory() as workdir,
+        ):
+            hostile_directory = "notes\r\x1b[31m"
+            notes_dir = os.path.join(root, hostile_directory)
+            os.mkdir(notes_dir)
+            hostile_file = "bad\r\x1b[32m.md"
+            with open(os.path.join(notes_dir, hostile_file), "w", encoding="utf-8") as handle:
+                handle.write("title: missing a date\n\nbody\n")
+
+            adapter = notes.Adapter()
+            adapter.initialize(
+                {
+                    "protocol_version_min": 1,
+                    "protocol_version_max": 1,
+                    "source_id": "notes",
+                    "location": root,
+                    "workdir": workdir,
+                    "settings": {"notes_dir": hostile_directory},
+                },
+                notes.Cancellation(0),
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                health = adapter.health({}, notes.Cancellation(0))
+
+            rendered = json.dumps(health, ensure_ascii=False)
+            log_output = stderr.getvalue()
+            for unsafe in ("\r", "\x1b"):
+                self.assertNotIn(unsafe, rendered)
+                self.assertNotIn(unsafe, log_output)
+            self.assertEqual(health["diagnostics"]["notes_dir"], "notes [31m")
+            self.assertEqual(health["diagnostics"]["unreadable"], ["bad [32m.md"])
 
 
 if __name__ == "__main__":

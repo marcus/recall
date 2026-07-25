@@ -134,6 +134,16 @@ class ProtocolError(Exception):
         self.message = message
 
 
+class CorpusChanged(ProtocolError):
+    """The source moved while one generation was being read."""
+
+    def __init__(self):
+        super().__init__(
+            SOURCE_UNAVAILABLE,
+            "notes changed during the scan; no generation was published",
+        )
+
+
 # --------------------------------------------------------------------------
 # Text hygiene
 #
@@ -177,6 +187,20 @@ def safe_text(s: str) -> str:
 def one_line(s: str) -> str:
     """Collapse a value that must occupy exactly one line and forge nothing."""
     return " ".join(_CONTROL.sub("", s).split())
+
+
+def safe_basename(path: str) -> str:
+    """A terminal-safe file name, never a path."""
+    return one_line(os.path.basename(path))
+
+
+def safe_error(exc: BaseException) -> str:
+    """Operational error detail without attacker-controlled path fields."""
+    if isinstance(exc, OSError):
+        reason = exc.strerror or type(exc).__name__
+    else:
+        reason = str(exc) or type(exc).__name__
+    return one_line(str(reason))
 
 
 def clip(s: str, limit: int) -> str:
@@ -619,14 +643,20 @@ class Snapshot:
         return "gen-%d-%s" % (self.generation, self.digest)
 
 
-def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool, str]:
-    """Read the corpus. Returns records, the files that failed, and truncation.
+def file_identity(stat_result: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    """Identity and content-change metadata used to bind one scan boundary."""
+    return (
+        stat_result.st_dev,
+        stat_result.st_ino,
+        stat_result.st_mode,
+        stat_result.st_size,
+        stat_result.st_mtime_ns,
+        stat_result.st_ctime_ns,
+    )
 
-    A directory that cannot be listed is source_unavailable and never an empty
-    corpus: "the source could not be reached" and "the source holds nothing"
-    are different answers, and a caller that cannot tell them apart will read
-    the first as proof of absence.
-    """
+
+def corpus_boundary(notes_dir: str, max_notes: int) -> dict:
+    """Capture the names and identities whose bytes one generation will read."""
     try:
         names = sorted(
             n for n in os.listdir(notes_dir) if n.endswith(".md") and not n.startswith(".")
@@ -634,10 +664,54 @@ def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool, s
     except OSError as exc:
         raise ProtocolError(
             SOURCE_UNAVAILABLE,
-            # The base name only: diagnostics carry no local paths.
             "notes directory %r cannot be listed: %s"
-            % (os.path.basename(notes_dir), exc.strerror or "unreadable"),
+            % (safe_basename(notes_dir), safe_error(exc)),
         ) from exc
+
+    identities = []
+    for name in names[:max_notes]:
+        try:
+            identity = file_identity(os.stat(os.path.join(notes_dir, name)))
+        except OSError:
+            identity = None
+        identities.append((name, identity))
+    material = json.dumps(
+        {"names": names, "identities": identities},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "names": names,
+        "identities": dict(identities),
+        "signature": hashlib.sha256(material).hexdigest(),
+    }
+
+
+def read_stable(path: str, expected_identity) -> bytes:
+    """Read bytes only when the opened file matches and retains its identity."""
+    with open(path, "rb") as handle:
+        before = file_identity(os.fstat(handle.fileno()))
+        if expected_identity is None or before != expected_identity:
+            raise CorpusChanged()
+        raw = handle.read()
+        after = file_identity(os.fstat(handle.fileno()))
+        if after != before:
+            raise CorpusChanged()
+        return raw
+
+
+def scan(
+    notes_dir: str, max_notes: int
+) -> tuple[list[dict], list[str], bool, str, str]:
+    """Read the corpus. Returns records, the files that failed, and truncation.
+
+    A directory that cannot be listed is source_unavailable and never an empty
+    corpus: "the source could not be reached" and "the source holds nothing"
+    are different answers, and a caller that cannot tell them apart will read
+    the first as proof of absence.
+    """
+    before = corpus_boundary(notes_dir, max_notes)
+    names = before["names"]
 
     truncated = len(names) > max_notes
     records: list[dict] = []
@@ -647,24 +721,50 @@ def scan(notes_dir: str, max_notes: int) -> tuple[list[dict], list[str], bool, s
         source_digest.update(b"name\x00" + name.encode("utf-8") + b"\x00")
     for name in names[:max_notes]:
         path = os.path.join(notes_dir, name)
+        raw = None
         try:
-            with open(path, "rb") as handle:
-                raw = handle.read()
+            raw = read_stable(path, before["identities"][name])
             source_digest.update(b"content\x00" + raw + b"\x00")
             text = raw.decode("utf-8")
             records.append(parse_note(path, text))
+        except CorpusChanged:
+            raise
         except (OSError, UnicodeDecodeError, ParseError) as exc:
             # One bad note must not take the corpus down, and it must not
             # disappear either. It is counted, named by base name, and the
             # coverage that results says the index is partial.
-            log("skipping %s: %s" % (name, exc))
-            unreadable.append(name)
-    return records, unreadable, truncated, source_digest.hexdigest()
+            safe_name = one_line(name)
+            log("skipping %s: %s" % (safe_name, safe_error(exc)))
+            unreadable.append(safe_name)
+            if raw is None:
+                # The boundary signature may use machine-local stat identity to
+                # detect drift, but the published digest never may. For bytes
+                # we could not read, bind only the stable name and failure kind.
+                source_digest.update(
+                    b"unreadable\x00"
+                    + safe_name.encode("utf-8")
+                    + b"\x00"
+                    + type(exc).__name__.encode("ascii")
+                    + b"\x00"
+                )
+
+    after = corpus_boundary(notes_dir, max_notes)
+    if after["signature"] != before["signature"]:
+        raise CorpusChanged()
+    return (
+        records,
+        unreadable,
+        truncated,
+        source_digest.hexdigest(),
+        before["signature"],
+    )
 
 
 def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snapshot:
     """Build one durable immutable generation, not yet published."""
-    records, unreadable, truncated, source_digest = scan(notes_dir, max_notes)
+    records, unreadable, truncated, source_digest, signature = scan(
+        notes_dir, max_notes
+    )
 
     tmp = os.path.join(workdir, "build-%d.sqlite" % generation)
     if os.path.exists(tmp):
@@ -732,7 +832,7 @@ def build(workdir: str, notes_dir: str, generation: int, max_notes: int) -> Snap
         unreadable=unreadable,
         digest=source_digest,
         latest=latest,
-        signature=corpus_signature(notes_dir, max_notes),
+        signature=signature,
         index_file=index_file,
     )
 
@@ -802,14 +902,27 @@ def fsync_directory(path: str):
     try:
         descriptor = os.open(path, flags)
     except OSError:
-        return
+        # Windows does not expose O_DIRECTORY and cannot open a directory this
+        # way. POSIX callers do have the primitive, so a failure there is real.
+        if not getattr(os, "O_DIRECTORY", 0):
+            return
+        raise
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
 
 
-def save_checkpoint(workdir: str, snap: Snapshot) -> bool:
+class CheckpointPublication:
+    """Whether the checkpoint rename happened, and whether it was confirmed."""
+
+    def __init__(self, published: bool, durable: bool, diagnostic: str = ""):
+        self.published = published
+        self.durable = durable
+        self.diagnostic = diagnostic
+
+
+def save_checkpoint(workdir: str, snap: Snapshot) -> CheckpointPublication:
     """Atomically publish a generation after both files are durable."""
     payload = {
         "generation": snap.generation,
@@ -834,16 +947,30 @@ def save_checkpoint(workdir: str, snap: Snapshot) -> bool:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
-        fsync_directory(workdir)
-        return True
     except OSError as exc:
-        # The staged immutable index is not published without this pointer.
-        log("checkpoint unwritable: %s" % exc)
+        # No rename means no publication. The previous pointer still wins.
+        log("checkpoint unpublished: %s" % safe_error(exc))
         try:
             os.remove(temporary)
         except OSError:
             pass
-        return False
+        return CheckpointPublication(False, False, "checkpoint publication failed")
+
+    try:
+        fsync_directory(workdir)
+    except OSError as exc:
+        # The rename is already the atomic publication point. Reporting this as
+        # unpublished would split live state from a restart that can read the
+        # new pointer. Keep the matching generation in memory and degrade health
+        # because crash durability is uncertain; old or new after a crash is
+        # safe because both pointers bind immutable digest-named indexes.
+        log("checkpoint published; directory fsync uncertain: %s" % safe_error(exc))
+        return CheckpointPublication(
+            True,
+            False,
+            "checkpoint published but directory fsync was not confirmed",
+        )
+    return CheckpointPublication(True, True)
 
 
 def corpus_signature(notes_dir: str, max_notes: int) -> str:
@@ -854,18 +981,9 @@ def corpus_signature(notes_dir: str, max_notes: int) -> str:
     instead.
     """
     try:
-        names = sorted(n for n in os.listdir(notes_dir) if n.endswith(".md"))
-    except OSError:
+        return corpus_boundary(notes_dir, max_notes)["signature"]
+    except ProtocolError:
         return "unreadable"
-    digest = hashlib.sha256()
-    for name in names[:max_notes]:
-        try:
-            st = os.stat(os.path.join(notes_dir, name))
-        except OSError:
-            digest.update(b"missing:" + name.encode("utf-8"))
-            continue
-        digest.update(("%s:%d:%d\n" % (name, st.st_size, st.st_mtime_ns)).encode("utf-8"))
-    return digest.hexdigest()
 
 
 # --------------------------------------------------------------------------
@@ -1023,13 +1141,14 @@ class Adapter:
                     return previous
                 raise
             except (OSError, sqlite3.Error) as exc:
-                message = "generation build failed: %s" % exc
+                message = "generation build failed: %s" % safe_error(exc)
                 with self.lock:
                     self.refresh_failure = message
                 if previous is not None:
                     return previous
                 raise ProtocolError(SOURCE_UNAVAILABLE, message) from exc
-            if not save_checkpoint(workdir, snap):
+            publication = save_checkpoint(workdir, snap)
+            if not publication.published:
                 message = "checkpoint publication failed; previous generation retained"
                 with self.lock:
                     self.checkpoint_ok = False
@@ -1041,8 +1160,8 @@ class Adapter:
                 self.snapshot = snap
                 self.generation = snap.generation
                 self.signature = snap.signature
-                self.checkpoint_ok = True
-                self.refresh_failure = ""
+                self.checkpoint_ok = publication.durable
+                self.refresh_failure = publication.diagnostic
             return snap
 
     # -- health ------------------------------------------------------------
@@ -1075,12 +1194,12 @@ class Adapter:
             refresh_failure = self.refresh_failure
             notes_dir = self.notes_dir
         diagnostics = {
-            "notes_dir": os.path.basename(notes_dir),
+            "notes_dir": safe_basename(notes_dir),
             "store_identity": store_identity(notes_dir),
         }
         status = "healthy"
         if snap.unreadable:
-            diagnostics["unreadable"] = snap.unreadable
+            diagnostics["unreadable"] = [one_line(str(name)) for name in snap.unreadable]
         if snap.truncated:
             diagnostics["listing_truncated"] = True
         if not checkpoint_ok:
@@ -1117,7 +1236,7 @@ class Adapter:
             "status": status,
             "checked_at": rfc3339(time.time()),
             "coverage": "unknown",
-            "diagnostics": {"reason": exc.message},
+            "diagnostics": {"reason": one_line(exc.message)},
         }
         with self.lock:
             snap = self.snapshot
@@ -1232,7 +1351,7 @@ class Adapter:
             "elapsed_ms": int((time.time() - started) * 1000),
         }
         if snap.unreadable:
-            diagnostics["unreadable"] = snap.unreadable
+            diagnostics["unreadable"] = [one_line(str(name)) for name in snap.unreadable]
         if snap.truncated:
             diagnostics["listing_truncated"] = True
         if unapplied:
@@ -1303,7 +1422,9 @@ class Adapter:
         try:
             return sqlite3.connect("file:%s?mode=ro" % path, uri=True)
         except sqlite3.Error as exc:
-            raise ProtocolError(SOURCE_UNAVAILABLE, "index is unreadable: %s" % exc) from exc
+            raise ProtocolError(
+                SOURCE_UNAVAILABLE, "index is unreadable: %s" % safe_error(exc)
+            ) from exc
 
     def candidate(self, hit, rank, source_id, floor, snap, term_count) -> dict:
         """Render one section for fusion.
@@ -1493,7 +1614,7 @@ _STDOUT_LOCK = threading.Lock()
 
 def log(message: str):
     """Free-form logging. stderr only, and never parsed by anyone."""
-    print("recall-notes: " + message, file=sys.stderr, flush=True)
+    print("recall-notes: " + one_line(str(message)), file=sys.stderr, flush=True)
 
 
 def _emit(frame: dict):
@@ -1611,7 +1732,11 @@ class Server:
 
 
 def error_frame(ident, code: int, message: str) -> dict:
-    return {"jsonrpc": "2.0", "id": ident, "error": {"code": code, "message": message}}
+    return {
+        "jsonrpc": "2.0",
+        "id": ident,
+        "error": {"code": code, "message": one_line(str(message))},
+    }
 
 
 def main(argv: list[str]) -> int:

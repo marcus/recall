@@ -119,6 +119,12 @@ Keep, and change only with a reason you can write down:
   the budget has already been spent.
 - A durable checkpoint publication pointer for immutable digest-bound index
   generations; a failed checkpoint keeps the prior generation answering.
+- The pre/read/post scan boundary: a source that changes while it is being read
+  publishes nothing, rather than pairing stale bytes with a fresh cache key.
+- Post-rename checkpoint semantics: uncertain directory fsync degrades the newly
+  published generation but never leaves live state disagreeing with restart.
+- `safe_basename` on every file or directory name that reaches health, errors,
+  or stderr. A base name is source text and can carry CR or ANSI controls.
 - The `--version` flag and the stderr-only logging.
 
 Throw away: the note format, the header keys, the section splitting, the field
