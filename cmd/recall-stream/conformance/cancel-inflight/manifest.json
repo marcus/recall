@@ -1,6 +1,6 @@
 {
   "case": "cancel-inflight",
-  "description": "Cancellation of a request that is still running. The settings block sets debug_stall_ms, which delays a search before it scans purely so this exchange can be recorded deterministically against a real process; it has no place in real configuration. The cancel notification carries no id of its own and expects no reply, so a replayer must send it without waiting for the search it abandons — that is the whole reason the lockstep rule exempts notifications. The adapter notices the cancelled context and returns, and the server renders the context error as budget_exceeded (-32006). It never answers with an empty successful search, which would be indistinguishable from a stream holding no matching events.",
+  "description": "A search cancelled while in flight. The adapter answers the cancel with an error rather than a late result. The code is -32007 deadline_exceeded: an abandoned request ran out of time, which is a different condition from an adapter declining a budget up front, and conflating them made one timeout report as SearchTimeout in process and SearchFailed over the wire.",
   "flow": "lockstep",
   "placeholders": {
     "FIXTURE": "absolute path of this case's fixture/ directory",

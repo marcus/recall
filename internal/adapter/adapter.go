@@ -256,6 +256,11 @@ func isTimeout(err error) bool {
 	if errors.As(err, &timeout) {
 		return true
 	}
+	// The wire code for the same condition, so a timeout reports identically
+	// whichever side of the process boundary noticed it.
+	if errors.Is(err, protocol.ErrDeadlineExceeded) {
+		return true
+	}
 	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 

@@ -6,7 +6,7 @@ import (
 )
 
 // Code is a JSON-RPC error code. The standard codes are the transport's own;
-// the -32000..-32006 block is Recall's, in the range JSON-RPC reserves for
+// the -32000..-32007 block is Recall's, in the range JSON-RPC reserves for
 // implementation-defined server errors.
 type Code int
 
@@ -39,8 +39,19 @@ const (
 	// CodeAsOfUnsupported means the historical boundary cannot be honored. A
 	// source never answers an as_of query from current state instead.
 	CodeAsOfUnsupported Code = -32005
-	// CodeBudgetExceeded means the request cannot be served within its budget.
+	// CodeBudgetExceeded means the adapter declined the request up front: it
+	// cannot be served within the budget offered.
 	CodeBudgetExceeded Code = -32006
+	// CodeDeadlineExceeded means the request ran out of time, or was abandoned
+	// by the caller while in flight.
+	//
+	// It is distinct from budget_exceeded, which was the only code available
+	// before and made one condition report two different ways: a timed-out
+	// adapter came back as SearchTimeout in process and as SearchFailed over
+	// the wire, purely because a different side of the process boundary
+	// noticed. Evaluation compares source outcomes exactly, so the same case
+	// scored differently depending on the transport.
+	CodeDeadlineExceeded Code = -32007
 )
 
 var codeNames = map[Code]string{
@@ -56,6 +67,7 @@ var codeNames = map[Code]string{
 	CodeSourceNotConfigured: "source_not_configured",
 	CodeAsOfUnsupported:     "as_of_unsupported",
 	CodeBudgetExceeded:      "budget_exceeded",
+	CodeDeadlineExceeded:    "deadline_exceeded",
 }
 
 // String renders the contract name of a code, so logs and diagnostics carry
@@ -94,6 +106,7 @@ var (
 	ErrSourceNotConfigured = &Error{Code: CodeSourceNotConfigured, Message: CodeSourceNotConfigured.String()}
 	ErrAsOfUnsupported     = &Error{Code: CodeAsOfUnsupported, Message: CodeAsOfUnsupported.String()}
 	ErrBudgetExceeded      = &Error{Code: CodeBudgetExceeded, Message: CodeBudgetExceeded.String()}
+	ErrDeadlineExceeded    = &Error{Code: CodeDeadlineExceeded, Message: CodeDeadlineExceeded.String()}
 )
 
 func (e *Error) Error() string {

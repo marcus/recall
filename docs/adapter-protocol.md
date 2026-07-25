@@ -82,7 +82,10 @@ JSON-RPC error codes, plus Recall codes in the implementation-defined range:
 -32003  locator_expired           source changed incompatibly
 -32004  source_not_configured     locator names an unconfigured source
 -32005  as_of_unsupported         historical boundary cannot be honored
--32006  budget_exceeded           request cannot be served in budget
+-32006  budget_exceeded           adapter declines up front: cannot serve in
+                                  the budget offered
+-32007  deadline_exceeded         the request ran out of time, or was abandoned
+                                  in flight
 ```
 
 Errors carry safe diagnostics only. A denied source must not leak record
@@ -221,7 +224,7 @@ Request:
 ```text
 locator              candidate reference
 detail               summary | excerpt | full | context
-budget               hard output limit in bytes
+budget_bytes         hard output limit in bytes
 deadline             absolute deadline
 ```
 
@@ -230,7 +233,9 @@ Response:
 ```text
 content              evidence text
 source_revision      revision the evidence was read from
-truncated            bool, with the boundary applied
+truncated            bool
+truncation_boundary  which limit applied, so a caller can tell a budget cut
+                     from a source-side limit
 provenance           path, range, or record reference
 ```
 

@@ -318,7 +318,11 @@ func AsError(err error) *Error {
 		return Errorf(CodeInvalidParams, "%s", verr.Error())
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return Errorf(CodeBudgetExceeded, "%s", err.Error())
+		// Not budget_exceeded: that means an adapter declined up front. Running
+		// out of time is its own condition, and rendering it as the other made
+		// the same timeout report as SearchTimeout in process and SearchFailed
+		// over the wire.
+		return Errorf(CodeDeadlineExceeded, "%s", err.Error())
 	}
 	return Errorf(CodeInternal, "%s", err.Error())
 }
