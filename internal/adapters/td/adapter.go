@@ -84,9 +84,11 @@ type Options struct {
 type settings struct {
 	Binary string `json:"binary"`
 
-	// Workspace overrides the identity derived from the location. It exists
-	// for the one case the default cannot serve: two repositories whose
-	// directories share a base name.
+	// Workspace asserts the identity this source expects to serve. It does not
+	// override it: a value disagreeing with the workspace td resolves the
+	// location to is refused at the handshake, because a name that came from
+	// configuration is a name nothing checked, and locators built from one can
+	// name a database this source does not read.
 	Workspace string `json:"workspace"`
 
 	Statuses []string `json:"statuses"`
@@ -155,7 +157,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	if err != nil {
 		return recall.Manifest{}, err
 	}
-	ws, err := resolveWorkspace(cfg.Location, set.Workspace)
+	ws, err := resolveWorkspace(cfg.Location, set.Workspace, set.Replay != "")
 	if err != nil {
 		return recall.Manifest{}, err
 	}
@@ -187,7 +189,12 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		}
 		runner = replay
 	default:
-		runner = ExecRunner{Binary: set.binary(), Root: ws.Root, Env: os.Environ()}
+		// td is pointed at the CONFIGURED location, not at the root resolved
+		// from it. The resolution in root.go is a mirror of td's and is allowed
+		// to be wrong; sending td somewhere the mirror chose would turn a wrong
+		// mirror into a wrong database, instead of into a health report saying
+		// the two disagree.
+		runner = ExecRunner{Binary: set.binary(), Root: ws.Location, Env: os.Environ()}
 	}
 
 	a.mu.Lock()
@@ -305,16 +312,57 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		RecordCount: info.Issues.Total,
 		Coverage:    recall.IndexComplete,
 		Diagnostics: map[string]any{
-			"workspace":      ws.Name,
-			"workspace_root": ws.Root,
-			"td_project":     info.Project,
-			"open":           info.Issues.Open,
-			"in_progress":    info.Issues.InProgress,
-			"blocked":        info.Issues.Blocked,
-			"in_review":      info.Issues.InReview,
-			"closed":         info.Issues.Closed,
-			"cli_wall_ms":    res.Elapsed.Milliseconds(),
+			"workspace":          ws.Name,
+			"workspace_location": ws.Location,
+			"workspace_root":     ws.Root,
+			"td_project":         info.Project,
+			"open":               info.Issues.Open,
+			"in_progress":        info.Issues.InProgress,
+			"blocked":            info.Issues.Blocked,
+			"in_review":          info.Issues.InReview,
+			"closed":             info.Issues.Closed,
+			"cli_wall_ms":        res.Elapsed.Milliseconds(),
 		},
+	}
+	if ws.Pinned {
+		// The identity was asserted by configuration as well as resolved, and
+		// the two agreed or this instance would not have finished its
+		// handshake. Reported so an operator reading diagnostics can tell an
+		// identity that was checked against a declaration from one that was
+		// only observed.
+		health.Diagnostics["workspace_asserted"] = true
+	}
+	switch {
+	case set.Replay != "":
+		// A recording is not a database. It claims no store — two sources may
+		// replay one transcript without either of them reading anything — and
+		// its recorded project name is whatever was recorded, so there is
+		// nothing here for the identity check to compare against.
+		health.Diagnostics["replay"] = true
+
+	case !strings.EqualFold(info.Project, ws.resolvedProject()):
+		// td opened a database in a directory this adapter did not predict, so
+		// every locator this instance would emit names a workspace that is not
+		// the one being read. Degraded rather than unavailable: the workspace
+		// answers, and the records are real — it is the IDENTITY that cannot be
+		// trusted, and a caller has to be able to tell those apart. Reaching
+		// this means td's resolution and the mirror in root.go have diverged,
+		// which is the failure that mirror is allowed to have.
+		health.Status = recall.HealthDegraded
+		health.Diagnostics["identity"] = fmt.Sprintf(
+			"td opened project %q, but the location %s resolves to %s; "+
+				"locators from this source would name a workspace it is not reading",
+			info.Project, ws.Location, ws.Root)
+
+	default:
+		// The store this instance opened, under the key `recall doctor` reads
+		// to find two sources reading one store. See docs/adapter-protocol.md.
+		// The resolved root is the honest value because it is what
+		// distinguishes two databases sharing a directory name, which td's
+		// project name alone cannot — and it is published only here, once the
+		// resolution has been confirmed against td's own answer, so a value
+		// nothing verified never reaches the check.
+		health.Diagnostics[protocol.DiagStoreIdentity] = ws.Root
 	}
 
 	// The listing is what a search reads, so probing it here is what makes
@@ -547,7 +595,7 @@ func settingsSchema() map[string]any {
 			},
 			"workspace": map[string]any{
 				"type":        "string",
-				"description": "Workspace identity carried in every locator. Defaults to the base name of the location. Set it when two configured workspaces would otherwise share a name.",
+				"description": "Asserts the workspace identity carried in every locator. The identity is the base name of the directory td resolves the location to, which is not always the location itself; setting this to anything else is refused, because a locator must name the database its source reads.",
 			},
 			"statuses": stringList("Restrict this source to issues in these td statuses.", knownStatuses),
 			"types":    stringList("Restrict this source to these td issue types.", knownTypes),

@@ -2,9 +2,13 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/cli"
+	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/internal/recall"
 )
 
 // doctor exists to fail before a query does. Each case below is a defect that
@@ -185,3 +189,122 @@ freshness_mode = "live"
 [profiles.work]
 sources = ["ghost"]
 `
+
+// oneAdapterTwoSourcesTOML is two instances of ONE adapter, which is a
+// perfectly ordinary configuration — until both of them turn out to be reading
+// the same store.
+const oneAdapterTwoSourcesTOML = `
+[defaults]
+profile = "work"
+timeout_ms = 2000
+
+[[sources]]
+source_uid = "01UIDWHOLE"
+source_id = "whole"
+adapter = "fakedocs"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[[sources]]
+source_uid = "01UIDINNER"
+source_id = "inner"
+adapter = "fakedocs"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[profiles.work]
+sources = ["whole", "inner"]
+max_sensitivity = "internal"
+`
+
+// Two enabled instances of one adapter reading one store is refused.
+//
+// This is the defect class that reached production three times by three
+// different routes — overlapping document roots, two catalog instances over one
+// server, and two td sources whose locations resolved to one database — and
+// every time it was invisible until someone read a ranking that looked wrong.
+// Lineage groups on source_uid plus source_record_id, so the duplicate arrives
+// as two independent pieces of evidence and is scored up for corroborating
+// itself. Only a check that sees every source at once can catch it, which is
+// why it is doctor's rather than any adapter's.
+func TestDoctorRefusesTwoSourcesOverOneStore(t *testing.T) {
+	sharing := func(identity string) *fake {
+		return &fake{
+			manifest: manifest(),
+			health: recall.Health{
+				Status:      recall.HealthHealthy,
+				Coverage:    recall.IndexComplete,
+				Diagnostics: map[string]any{protocol.DiagStoreIdentity: identity},
+			},
+		}
+	}
+
+	t.Run("one store, two sources", func(t *testing.T) {
+		h := newHarness(t, harnessOptions{
+			userTOML: oneAdapterTwoSourcesTOML,
+			adapters: fakeAdapters(map[string]*fake{"fakedocs": sharing("/store/one")}),
+		})
+		code, stdout, _ := h.run("doctor", "--json")
+		if code != cli.ExitError {
+			t.Fatalf("exit = %d, want %d\n%s", code, cli.ExitError, stdout)
+		}
+		var d cli.Diagnosis
+		if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+			t.Fatal(err)
+		}
+		if got := checkStatus(t, d, "store_isolation"); got != cli.CheckFail {
+			t.Fatalf("store_isolation = %q, want fail", got)
+		}
+		contains(t, stdout, "/store/one",
+			"an operator has to be told which store the two sources collided on")
+		for _, id := range []string{"whole", "inner"} {
+			contains(t, stdout, id, "both colliding sources have to be named")
+		}
+	})
+
+	// The other half of the check, and the reason it compares an identity
+	// rather than counting instances: two sources of one adapter are normal.
+	t.Run("two stores, two sources", func(t *testing.T) {
+		var n int
+		h := newHarness(t, harnessOptions{
+			userTOML: oneAdapterTwoSourcesTOML,
+			adapters: []cli.Adapter{{
+				Name:           "fakedocs",
+				FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
+				New: func() adapter.Adapter {
+					n++
+					return sharing(fmt.Sprintf("/store/%d", n))
+				},
+			}},
+		})
+		code, stdout, _ := h.run("doctor", "--json")
+		if code != cli.ExitOK {
+			t.Fatalf("exit = %d, want 0\n%s", code, stdout)
+		}
+		var d cli.Diagnosis
+		if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+			t.Fatal(err)
+		}
+		if got := checkStatus(t, d, "store_isolation"); got != cli.CheckPass {
+			t.Errorf("store_isolation = %q, want pass", got)
+		}
+	})
+
+	// An adapter that sets no identity claims no store. Silence has to be
+	// treated as "makes no claim" rather than as a clean bill of health, or
+	// the check would report a pass over sources it never compared.
+	t.Run("no adapter claims a store", func(t *testing.T) {
+		h := newHarness(t, harnessOptions{
+			userTOML: oneAdapterTwoSourcesTOML,
+			adapters: fakeAdapters(map[string]*fake{"fakedocs": {manifest: manifest()}}),
+		})
+		code, stdout, _ := h.run("doctor", "--json")
+		if code != cli.ExitOK {
+			t.Fatalf("exit = %d, want 0\n%s", code, stdout)
+		}
+		contains(t, stdout, "nothing to compare",
+			"a check that looked at nothing must not read as having cleared something")
+	})
+}

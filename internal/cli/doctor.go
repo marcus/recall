@@ -11,6 +11,7 @@ import (
 
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/conformance"
+	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -80,6 +81,7 @@ const (
 	checkIdentity      = "identity"
 	checkAccess        = "access"
 	checkHealth        = "health"
+	checkIsolation     = "store_isolation"
 	checkFreshness     = "freshness"
 	checkLineage       = "lineage"
 	checkConformance   = "conformance"
@@ -184,8 +186,9 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 	eligible := eligibleSources(cfg, profile)
 	d.add(accessCheck(eligible))
 
-	health, manifests := healthCheck(ctx, rt, eligible)
-	d.add(health, freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
+	health, manifests, healths := healthCheck(ctx, rt, eligible)
+	d.add(health, isolationCheck(eligible, healths),
+		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
 	return d.finish()
 }
 
@@ -464,9 +467,18 @@ func accessCheck(sources []*config.SourceInstance) Check {
 // healthCheck contacts every eligible source. An unreachable source is a
 // failure here so that it is a failure before a query, not a degraded answer
 // during one.
-func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInstance) (Check, map[string]recall.Manifest) {
+//
+// The healths it returns are what every later check reads. They are kept
+// separate from the manifests because a source can answer a probe and still
+// report something a query would suffer from — a stale generation, a partial
+// index, two instances over one store — and those are questions about the
+// deployment rather than about the adapter.
+func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInstance) (
+	Check, map[string]recall.Manifest, map[string]recall.Health,
+) {
 	var problems []Problem
 	manifests := make(map[string]recall.Manifest, len(sources))
+	healths := make(map[string]recall.Health, len(sources))
 
 	for _, s := range sources {
 		manifest, health, err := rt.probe(ctx, s)
@@ -485,10 +497,83 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 			continue
 		}
 		manifests[s.ID] = manifest
+		healths[s.ID] = health
 	}
 	return finishCheck(checkHealth,
 		fmt.Sprintf("%d of %d eligible sources answered a health probe", len(manifests), len(sources)),
-		problems), manifests
+		problems), manifests, healths
+}
+
+// isolationCheck refuses a profile in which two enabled instances of one
+// adapter are reading the same store.
+//
+// This is the check that would have caught three separate defects in this
+// system, each found only after it had been shipping: two document sources
+// over overlapping roots, two catalog instances over one server, and two td
+// sources whose locations resolved to one database. All three have the same
+// shape. Lineage groups on source_uid plus source_record_id, so one record
+// reaching the core through two instances arrives as two independent pieces of
+// evidence, and the corroboration bonus then promotes it for agreeing with
+// itself. Nothing downstream can see the duplication, because by the time the
+// core has the candidates the two instances are two legitimate sources.
+//
+// It reads [protocol.DiagStoreIdentity], which an adapter sets to name the
+// store it actually OPENED — not the one configuration asked for, which would
+// compare equal exactly when the configuration is already consistent.
+// Comparison is within one adapter only: two adapters are free to describe
+// their stores in the same words, and nothing about a shared string across
+// adapters means a shared store.
+//
+// An adapter that leaves the key unset makes no exclusivity claim and is not
+// checked. That is deliberate rather than a gap: for the ongoing catalog two
+// instances over one server is the intended configuration — "everything" and
+// "the things that need attention" are different questions — and its
+// candidates carry a content fingerprint that collapses them. Silence there is
+// the adapter saying the overlap is by design.
+func isolationCheck(sources []*config.SourceInstance, healths map[string]recall.Health) Check {
+	type claim struct{ adapter, identity string }
+	claimed := map[claim][]string{}
+	var order []claim
+	naming := 0
+
+	for _, s := range sources {
+		identity, ok := healths[s.ID].Diagnostics[protocol.DiagStoreIdentity].(string)
+		if !ok || identity == "" {
+			continue
+		}
+		naming++
+		c := claim{adapter: s.Adapter, identity: identity}
+		if len(claimed[c]) == 0 {
+			order = append(order, c)
+		}
+		claimed[c] = append(claimed[c], s.ID)
+	}
+
+	var problems []Problem
+	for _, c := range order {
+		ids := claimed[c]
+		if len(ids) < 2 {
+			continue
+		}
+		problems = append(problems, Problem{
+			SourceID: ids[0],
+			Key:      "location",
+			Message: fmt.Sprintf(
+				"%s all opened the same %s store %s; one record reaching the core through two "+
+					"sources is counted as two independent pieces of evidence and scored up for "+
+					"corroborating itself. Configure one instance, or point them at separate stores",
+				strings.Join(ids, ", "), c.adapter, c.identity),
+		})
+	}
+	detail := fmt.Sprintf("%d of %d probed sources named the store they opened, %s",
+		naming, len(healths), plural(len(order), "distinct store"))
+	if naming == 0 {
+		// Said plainly rather than reported as a clean pass over nothing: no
+		// adapter in this profile claims a store exclusively, so this check
+		// looked at nothing and must not read as having cleared anything.
+		detail = "no probed source claims a store exclusively; nothing to compare"
+	}
+	return finishCheck(checkIsolation, detail, problems)
 }
 
 // freshnessCheck compares what a source asks for against what its adapter says
@@ -589,6 +674,15 @@ func walk(edges map[string]string, start string) []string {
 		seen[next] = true
 		at = next
 	}
+}
+
+// plural renders a count with its noun, so a detail line does not read "1
+// distinct stores" at an operator who is already looking for something wrong.
+func plural(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func finishCheck(name, detail string, problems []Problem) Check {

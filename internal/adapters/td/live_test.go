@@ -336,3 +336,188 @@ func liveBinary(t *testing.T) string {
 	}
 	return path
 }
+
+// TestLiveOneDatabaseTwoInstances is the defect this adapter shipped with:
+// two configured locations that are one td database.
+//
+// td resolves its database by walking UPWARD from the directory it is given, so
+// a repository and any subdirectory of it reach the same SQLite file. Identity
+// taken from the configured path made those two instances `recall` and `docs`,
+// and the core — which groups lineage on source_uid plus source_record_id — then
+// counted one issue, in one file, as two independent pieces of evidence and
+// applied the corroboration bonus for it. `recall doctor` reported ok.
+//
+// The repository is real git here, deliberately. Without it td finds no marker
+// above the subdirectory and simply reports the workspace missing, so a test on
+// a bare temp directory would pass while the live configuration stayed broken.
+func TestLiveOneDatabaseTwoInstances(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: -short excludes tests that spawn the real td CLI")
+	}
+	binary := liveBinary(t)
+	root := liveWorkspace(t, binary, "recall", issueSpec{
+		title: "Workspace identity", priority: "P1",
+		description: "Identity comes from the database td opened.",
+	})
+	gitInit(t, root)
+	sub := filepath.Join(root, "docs")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	whole := newLiveAdapter(t, binary, "td-a", root)
+	inner := newLiveAdapter(t, binary, "td-sub", sub)
+
+	wholeHealth := health(t, whole)
+	innerHealth := health(t, inner)
+	for _, h := range []recall.Health{wholeHealth, innerHealth} {
+		if h.Status != recall.HealthHealthy {
+			t.Fatalf("status = %q (%v), want healthy", h.Status, h.Diagnostics)
+		}
+		if got := h.Diagnostics["workspace"]; got != "recall" {
+			t.Errorf("diagnostics[workspace] = %v, want the workspace td opened, not the configured directory", got)
+		}
+	}
+
+	// The check `recall doctor` runs: one store, named identically by both, so
+	// two instances over it are detectable before a query rather than after a
+	// ranking has already been distorted.
+	if a, b := wholeHealth.Diagnostics[protocol.DiagStoreIdentity], innerHealth.Diagnostics[protocol.DiagStoreIdentity]; a != b {
+		t.Errorf("store identities %v and %v differ for one database", a, b)
+	}
+
+	// And the evidence itself collapses: one issue read twice is one
+	// observation, so the corroboration bonus cannot be collected from it.
+	wholeHit := only(t, whole, "identity")
+	innerHit := only(t, inner, "identity")
+	if wholeHit.ContentFingerprint == "" {
+		t.Fatal("no content fingerprint: nothing would collapse the duplicate")
+	}
+	if wholeHit.ContentFingerprint != innerHit.ContentFingerprint {
+		t.Errorf("fingerprints %q and %q differ for one issue in one database",
+			wholeHit.ContentFingerprint, innerHit.ContentFingerprint)
+	}
+	if wholeHit.Locator.Local != innerHit.Locator.Local {
+		t.Errorf("locators %q and %q differ for one issue in one database",
+			wholeHit.Locator.Local, innerHit.Locator.Local)
+	}
+
+	// The false refusal, which was the same bug reached from the other side:
+	// the instance configured at the repository root used to reject a locator
+	// naming `docs`, for an issue held in the database it had itself opened.
+	if _, err := whole.Expand(context.Background(), recall.ExpandRequest{
+		Locator:  innerHit.Locator,
+		Detail:   recall.DetailFull,
+		Deadline: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Errorf("the root instance refused a locator from the database it opened: %v", err)
+	}
+}
+
+// TestLiveSameBaseNameTwoDatabases is the case the duplicate check must NOT
+// flag: two genuinely separate workspaces whose directories share a name.
+//
+// It is the counterpart to the test above, and it is what stops the fix from
+// being "call every pair of td sources a duplicate". They share an identity
+// string and share nothing else, so the store they name has to be what tells
+// them apart.
+func TestLiveSameBaseNameTwoDatabases(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: -short excludes tests that spawn the real td CLI")
+	}
+	binary := liveBinary(t)
+	work := liveWorkspace(t, binary, "api", issueSpec{
+		title: "Rate limiting", priority: "P1", description: "Token bucket per tenant.",
+	})
+	oss := liveWorkspace(t, binary, "api", issueSpec{
+		title: "Rate limiting", priority: "P1", description: "Token bucket per tenant.",
+	})
+	if work == oss {
+		t.Fatal("both workspaces landed in one directory")
+	}
+
+	workHealth := health(t, newLiveAdapter(t, binary, "td-work-api", work))
+	ossHealth := health(t, newLiveAdapter(t, binary, "td-oss-api", oss))
+
+	if workHealth.Diagnostics["workspace"] != "api" || ossHealth.Diagnostics["workspace"] != "api" {
+		t.Fatalf("workspaces %v and %v, want both named api",
+			workHealth.Diagnostics["workspace"], ossHealth.Diagnostics["workspace"])
+	}
+	if a, b := workHealth.Diagnostics[protocol.DiagStoreIdentity], ossHealth.Diagnostics[protocol.DiagStoreIdentity]; a == b {
+		t.Errorf("two separate databases both claim the store %v; the duplicate check would refuse a sound configuration", a)
+	}
+}
+
+// A `workspace` setting that names something other than the workspace td
+// resolves to is refused, rather than renaming that database for every locator
+// this source emits. This is the false ACCEPT from the report: a source
+// pointing at clara-home, configured `workspace = "recall"`, answered
+// `td:recall/td-224186` out of the wrong database entirely.
+func TestLiveAssertedWorkspaceMustMatchTheDatabase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: -short excludes tests that spawn the real td CLI")
+	}
+	binary := liveBinary(t)
+	root := liveWorkspace(t, binary, "clara-home", issueSpec{title: "Anything", priority: "P3"})
+
+	a := td.New(td.Options{})
+	_, err := a.Initialize(context.Background(), adapter.Config{
+		ProtocolVersionMin: protocol.MinVersion,
+		ProtocolVersionMax: protocol.MaxVersion,
+		Workdir:            t.TempDir(),
+		SourceID:           "td-mislabelled",
+		Location:           root,
+		Settings:           map[string]any{"binary": binary, "workspace": "recall"},
+	})
+	t.Cleanup(func() { _ = a.Close() })
+	if err == nil {
+		t.Fatal("a workspace name naming another database was accepted")
+	}
+	if !strings.Contains(err.Error(), "clara-home") || !strings.Contains(err.Error(), "recall") {
+		t.Errorf("error does not name both the asserted and the resolved workspace: %v", err)
+	}
+
+	// The same setting, naming what td actually opened, is fine — and is
+	// recorded as an identity that was asserted as well as observed.
+	agreed := newLiveAdapterWith(t, binary, "td-clara-home", root, map[string]any{"workspace": "clara-home"})
+	if got := health(t, agreed).Diagnostics["workspace_asserted"]; got != true {
+		t.Errorf("diagnostics[workspace_asserted] = %v, want true", got)
+	}
+}
+
+// gitInit makes dir a real repository, which is what lets td climb out of a
+// subdirectory of it the way it does in a real checkout.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "init", "--quiet", dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("skipping: git init failed (%v): %s", err, out)
+	}
+}
+
+func health(t *testing.T, a *td.Adapter) recall.Health {
+	t.Helper()
+	h, err := a.Health(context.Background())
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	return h
+}
+
+func newLiveAdapterWith(t *testing.T, binary, sourceID, root string, settings map[string]any) *td.Adapter {
+	t.Helper()
+	settings["binary"] = binary
+	a := td.New(td.Options{})
+	if _, err := a.Initialize(context.Background(), adapter.Config{
+		ProtocolVersionMin: protocol.MinVersion,
+		ProtocolVersionMax: protocol.MaxVersion,
+		Workdir:            t.TempDir(),
+		SourceID:           sourceID,
+		Location:           root,
+		Settings:           settings,
+	}); err != nil {
+		t.Fatalf("initialize %s: %v", sourceID, err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	return a
+}

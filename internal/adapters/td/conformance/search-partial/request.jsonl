@@ -1,2 +1,2 @@
-{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"td-recall","location":"${FIXTURE}","settings":{"workspace":"recall","replay":"."}}}
+{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"td-recall","location":"${FIXTURE}","settings":{"replay":"."}}}
 {"jsonrpc":"2.0","id":2,"method":"recall/search","params":{"query":"adapter corroboration","filters":{},"limit":10,"deadline":"2099-01-01T00:00:00Z"}}

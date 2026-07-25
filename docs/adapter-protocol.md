@@ -151,6 +151,41 @@ A partial source or index reports `healthy` only when its declared freshness
 policy permits that exact partial boundary. A recent index timestamp alone is
 not health.
 
+### `store_identity`
+
+One diagnostic key has a defined meaning across adapters:
+
+```text
+diagnostics.store_identity   the store THIS INSTANCE opened, named by the
+                             adapter; optional
+```
+
+`recall doctor` fails a profile in which two enabled instances of one adapter
+report the same value. The check exists because "two sources, one store" is a
+configuration error no single source can see: lineage groups on `source_uid`
+plus `source_record_id`, so one record reaching the core through two instances
+arrives as two independent pieces of evidence and collects the corroboration
+bonus for agreeing with itself.
+
+Three rules make the key mean something:
+
+- **It names what was opened, never what was configured.** A value copied from
+  the configured location compares equal exactly when the configuration is
+  already consistent, which is the case that was never in doubt. A td source
+  configured at a repository and another at a subdirectory of it are one
+  database, and only the resolved database says so.
+- **Setting it claims exclusivity.** An adapter for which two instances over
+  one store is a legitimate configuration — one serving different views of a
+  shared catalog, whose candidates collapse on a `content_fingerprint` — leaves
+  it unset. Absent means "makes no such claim", never "unknown".
+- **It is compared only within one adapter, and only for equality.** Its
+  content is otherwise opaque: a resolved path, a database identity, an
+  endpoint plus a namespace are all fine.
+
+An adapter that claims a store should also carry a `content_fingerprint` on its
+candidates, so that a duplicate configuration is corrected by the operator
+*and* harmless until they do.
+
 ## Search
 
 Request:

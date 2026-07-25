@@ -33,6 +33,35 @@ const (
 	DefaultDiagnosticLenCap = 4096
 )
 
+// DiagStoreIdentity is the health diagnostic under which an adapter names the
+// store one instance actually opened.
+//
+// It exists because "two sources, one store" is a configuration error that no
+// single source can see. Lineage groups on source_uid plus source_record_id,
+// so one record read twice through two instances arrives as two independent
+// pieces of evidence and collects the corroboration bonus for agreeing with
+// itself. That has now happened three times in this system — overlapping
+// document roots, two catalog instances over one server, and two td sources
+// resolving to one database — reached by three different routes, so the check
+// belongs somewhere that sees every source at once. `recall doctor` reads this
+// key and refuses a profile in which two enabled instances of one adapter
+// report the same value.
+//
+// Setting it is a CLAIM OF EXCLUSIVITY: this store is mine alone. An adapter
+// for which two instances over one store is a legitimate configuration — one
+// serving different views of a shared catalog, whose candidates collapse on a
+// content fingerprint — must leave it unset, because for that adapter the
+// overlap is the design rather than the defect. Absent means "makes no such
+// claim", never "unknown".
+//
+// The value is opaque and compared only for equality between instances of the
+// SAME adapter, so an adapter may use whatever names its store precisely: a
+// resolved filesystem path, a database identity, an endpoint plus a namespace.
+// It must name the store the adapter OPENED, never the one configuration asked
+// for — a value copied from configuration would compare equal exactly when the
+// configuration is consistent, which is the case that was never in doubt.
+const DiagStoreIdentity = "store_identity"
+
 // NewDiagnostics returns a bounded capture buffer.
 func NewDiagnostics() *Diagnostics {
 	return &Diagnostics{maxLines: DefaultDiagnosticLines, maxLine: DefaultDiagnosticLenCap}

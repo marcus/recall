@@ -2,6 +2,8 @@ package td
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -642,6 +644,17 @@ func (a *Adapter) candidate(
 		SourceRevision: mark,
 		Sensitivity:    floor,
 		Metadata:       s.rec.metadata(ws, hit),
+
+		// Two instances can resolve to ONE td database — a repository and a
+		// subdirectory of it name the same database, because td walks upward to
+		// find one. Lineage groups on source_uid plus source_record_id, so
+		// without this those instances hand the core one issue twice under two
+		// identities and it is counted as two independent pieces of evidence,
+		// collecting the corroboration bonus for agreeing with itself. One
+		// issue, read once, out of one database, is one observation. The
+		// fingerprint says so, and record_type plus content_fingerprint
+		// collapses them without the core needing to know anything about td.
+		ContentFingerprint: fingerprint(s.rec.ID, s.rec.UpdatedAt),
 	}
 	if s.confirmed {
 		// The listing enumerated this instance's whole scope, so a record it
@@ -651,6 +664,30 @@ func (a *Adapter) candidate(
 		c.ConfirmedAt = &observed
 	}
 	return c
+}
+
+// fingerprint identifies the observation: which issue, and which version of it.
+//
+// Everything that varies between two instances reading one database is
+// deliberately excluded. Not the workspace name, not the configured location,
+// not the resolved root — those are precisely what the two instances disagree
+// about, so a fingerprint built on any of them would differ for the same issue
+// and defeat its own purpose. They would also make the value depend on where a
+// checkout lives, which would put a machine's directory layout into every
+// recorded transcript.
+//
+// The issue's own updated_at is the version, in preference to the workspace
+// watermark. A watermark fingerprints the whole listing, so two instances
+// scoped to different statuses read different listings and produce different
+// watermarks for issues they both returned; updated_at is a property of the
+// record, so it is the same value in every scope that can see the record.
+//
+// Two different databases collide only by holding the same six-hex id updated
+// at the same nanosecond. td mints ids randomly per database, so that is not a
+// case worth trading the above for.
+func fingerprint(issueID string, updated time.Time) string {
+	sum := sha256.Sum256([]byte(issueID + "\x00" + updated.UTC().Format(time.RFC3339Nano)))
+	return hex.EncodeToString(sum[:])
 }
 
 // excerpt is the bounded preview: the rendered headline plus the opening of

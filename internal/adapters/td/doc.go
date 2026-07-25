@@ -26,6 +26,28 @@
 // Expanding a locator that names a different workspace is refused, not
 // answered from this one.
 //
+// # Identity comes from the database, not from the configuration
+//
+// The name is the base name of the directory td RESOLVES the location to, and
+// never of the location itself. The difference is not cosmetic: td walks
+// upward to find its database, so a repository and any subdirectory, worktree,
+// or submodule of it all open one SQLite file. Taking identity from the
+// configured path made two such instances `recall` and `docs`, and because
+// lineage groups on source_uid plus source_record_id, one issue in one file
+// arrived as two independent pieces of evidence and was scored up for
+// corroborating itself — while `recall doctor` reported ok. It failed the other
+// way too: an instance would refuse a locator naming an issue held in the
+// database it had itself opened.
+//
+// Three things hold the identity to the database now. [resolveRoot] resolves
+// the root the way td does and [Adapter.Health] checks its answer against the
+// project name `td info` reports, degrading the source when they disagree. The
+// `workspace` setting asserts an identity rather than overriding one, so no
+// configured string can rename another workspace's database. And every
+// candidate carries a content fingerprint over the issue's own identity and
+// version, so even a duplicate configuration cannot corroborate itself — which
+// is what makes the failure recoverable rather than silent.
+//
 // # Boundary
 //
 // Everything goes through the `td` executable and nothing reads
@@ -35,6 +57,13 @@
 // lifecycle semantics, and id minting; reimplementing any of it here would
 // mean disagreeing with td eventually. Only the read-only subcommands in
 // [readOnlyCommands] may be invoked, and [checkReadOnly] is the gate.
+//
+// [resolveRoot] is the one deliberate exception, and it is an exception in
+// form only: it mirrors td's resolution to learn WHICH database td will open,
+// never to open one, and nothing trusts its answer — td's own project name is
+// what confirms it on every probe. A mirror that drifts produces a source
+// reporting that it cannot confirm its identity, rather than one quietly
+// answering for the wrong workspace.
 //
 // The adapter owns no index: every search reads the workspace, which is why
 // the manifest declares only [recall.FreshnessLive].
