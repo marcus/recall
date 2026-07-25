@@ -180,7 +180,10 @@ func (s *server) invoke(ctx context.Context, method string, params json.RawMessa
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, Errorf(CodeInvalidParams, "%v", err)
 		}
-		ctx, cancel := withDeadline(ctx, req.Deadline)
+		ctx, cancel, err := withDeadline(ctx, req.Deadline)
+		if err != nil {
+			return nil, err
+		}
 		defer cancel()
 		resp, err := s.handler.Search(ctx, req)
 		if err != nil {
@@ -193,7 +196,10 @@ func (s *server) invoke(ctx context.Context, method string, params json.RawMessa
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, Errorf(CodeInvalidParams, "%v", err)
 		}
-		ctx, cancel := withDeadline(ctx, req.Deadline)
+		ctx, cancel, err := withDeadline(ctx, req.Deadline)
+		if err != nil {
+			return nil, err
+		}
 		defer cancel()
 		resp, err := s.handler.Expand(ctx, req)
 		if err != nil {
@@ -206,7 +212,10 @@ func (s *server) invoke(ctx context.Context, method string, params json.RawMessa
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, Errorf(CodeInvalidParams, "%v", err)
 		}
-		ctx, cancel := withDeadline(ctx, p.Deadline)
+		ctx, cancel, err := withDeadline(ctx, p.Deadline)
+		if err != nil {
+			return nil, err
+		}
 		defer cancel()
 		health, err := s.handler.Health(ctx)
 		if err != nil {
@@ -219,14 +228,20 @@ func (s *server) invoke(ctx context.Context, method string, params json.RawMessa
 	}
 }
 
-// withDeadline applies a request's own deadline. A zero deadline means the peer
-// declared none, which the schemas forbid, so it is treated as "no bound" here
-// rather than as an instant expiry.
-func withDeadline(ctx context.Context, at time.Time) (context.Context, context.CancelFunc) {
+// withDeadline applies a request's own deadline.
+//
+// A zero deadline is refused. The schemas cannot catch it: time.Time has no
+// omitempty, so an unset field marshals to "0001-01-01T00:00:00Z", which
+// satisfies both `required` and `format: date-time`. Treating that as "no
+// bound" would turn a caller's oversight into an unbounded adapter request —
+// the exact opposite of what a missing deadline should mean, and a path around
+// the guarantee that a hung source is reported rather than waited on.
+func withDeadline(ctx context.Context, at time.Time) (context.Context, context.CancelFunc, error) {
 	if at.IsZero() {
-		return context.WithCancel(ctx)
+		return nil, nil, Errorf(CodeInvalidParams, "request carries no deadline")
 	}
-	return context.WithDeadline(ctx, at)
+	ctx, cancel := context.WithDeadline(ctx, at)
+	return ctx, cancel, nil
 }
 
 func (s *server) reply(msg *Message) {

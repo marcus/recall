@@ -151,7 +151,7 @@ func TestDuplicateLineageScoresExactlyAsSingleSource(t *testing.T) {
 			if got.Score != alone.Score {
 				t.Errorf("score = %v, want exactly %v", got.Score, alone.Score)
 			}
-			if n := got.Explanation.Corroboration.DistinctLineages; n != 1 {
+			if n := got.Explanation.Corroboration.IndependentUnits; n != 1 {
 				t.Errorf("distinct lineages = %d, want 1", n)
 			}
 			if len(got.Members) != 1 {
@@ -169,7 +169,7 @@ func TestDuplicateLineageScoresExactlyAsSingleSource(t *testing.T) {
 // Two distinct records agreeing is real corroboration; ten are not ten times
 // the evidence. The cap is what keeps a chatty source from manufacturing
 // consensus with itself.
-func TestDistinctLineagesCorroborateUpToTheCap(t *testing.T) {
+func TestIndependentUnitsCorroborateUpToTheCap(t *testing.T) {
 	r := newRanker(t, nil)
 	person := []opt{kind(recall.RecordPerson), meta(ranking.MetaEntityID, "person-42")}
 
@@ -198,8 +198,8 @@ func TestDistinctLineagesCorroborateUpToTheCap(t *testing.T) {
 	if !corr.CapApplied {
 		t.Error("cap applied but not reported")
 	}
-	if corr.DistinctLineages != 3 {
-		t.Errorf("distinct lineages = %d, want 3", corr.DistinctLineages)
+	if corr.IndependentUnits != 3 {
+		t.Errorf("distinct lineages = %d, want 3", corr.IndependentUnits)
 	}
 	if corr.Cap != ranking.DefaultCorroborationCap {
 		t.Errorf("cap = %v, want the configured %v", corr.Cap, ranking.DefaultCorroborationCap)
@@ -377,7 +377,7 @@ func TestCompositeDoesNotCorroborateItsSources(t *testing.T) {
 		t.Errorf("score = %v, want %v: a restatement is not new evidence",
 			withSummary.Score, withoutSummary.Score)
 	}
-	if n := withSummary.Explanation.Corroboration.DistinctLineages; n != 2 {
+	if n := withSummary.Explanation.Corroboration.IndependentUnits; n != 2 {
 		t.Errorf("distinct lineages = %d, want 2", n)
 	}
 	// It is still shown: display and corroboration are different questions.
@@ -400,7 +400,7 @@ func TestMirrorSourceDoesNotCorroborate(t *testing.T) {
 	req.SourceDerivations = map[recall.SourceUID]recall.SourceUID{"uid-signals": "uid-tasks"}
 
 	got := single(t, fuse(t, r, req))
-	if n := got.Explanation.Corroboration.DistinctLineages; n != 1 {
+	if n := got.Explanation.Corroboration.IndependentUnits; n != 1 {
 		t.Errorf("distinct lineages = %d, want 1: a whole-source projection agrees with itself", n)
 	}
 	alone := single(t, fuse(t, r, request(cand("tasks", "td-1", 1, person...))))
@@ -418,7 +418,7 @@ func TestChunksOfOneRecordDoNotCorroborate(t *testing.T) {
 		cand("docs", "spec.md#lineage", 2, recordID("spec.md")),
 	)))
 
-	if n := got.Explanation.Corroboration.DistinctLineages; n != 1 {
+	if n := got.Explanation.Corroboration.IndependentUnits; n != 1 {
 		t.Errorf("distinct lineages = %d, want 1", n)
 	}
 	alone := single(t, fuse(t, r, request(cand("docs", "spec.md#ranking", 1, recordID("spec.md")))))
@@ -440,8 +440,8 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 			SourceID:  "tasks",
 			BasePrior: 1.0,
 			IntentPriors: []ranking.IntentPrior{
-				{Rule: "work_items_for_task_queries", QueryClass: "task", Effective: 1.5},
-				{Rule: "work_items_for_people", QueryClass: "person", Effective: 0.6},
+				{QueryClass: "task", Effective: 1.5},
+				{QueryClass: "person", Effective: 0.6},
 			},
 		}
 	})
@@ -467,8 +467,8 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 	if e.Prior.Base != 1.0 {
 		t.Errorf("base prior = %v, want 1.0", e.Prior.Base)
 	}
-	if e.Prior.Intent != 0.5 || e.Prior.Rule != "work_items_for_task_queries" {
-		t.Errorf("intent = %v by rule %q, want 0.5 by work_items_for_task_queries",
+	if e.Prior.Intent != 0.5 || e.Prior.Rule != "task" {
+		t.Errorf("intent = %v by rule %q, want 0.5 attributed to the task class",
 			e.Prior.Intent, e.Prior.Rule)
 	}
 	if e.Prior.Effective != 1.5 {
@@ -477,7 +477,7 @@ func TestExplanationCarriesEveryConfiguredValue(t *testing.T) {
 	if e.LineageRoot != "uid-tasks:td-1" {
 		t.Errorf("lineage root = %q", e.LineageRoot)
 	}
-	if e.Corroboration.Cap != 1.5 || e.Corroboration.DistinctLineages != 2 {
+	if e.Corroboration.Cap != 1.5 || e.Corroboration.IndependentUnits != 2 {
 		t.Errorf("corroboration = %+v, want cap 1.5 over 2 lineages", e.Corroboration)
 	}
 	if !e.ExactPromoted {
@@ -507,7 +507,7 @@ func TestIntentPriorOnlyAppliesToItsQueryClass(t *testing.T) {
 		c.Sources["uid-tasks"] = ranking.SourceConfig{
 			SourceID:     "tasks",
 			BasePrior:    1,
-			IntentPriors: []ranking.IntentPrior{{Rule: "people_queries", QueryClass: "person", Effective: 1.8}},
+			IntentPriors: []ranking.IntentPrior{{QueryClass: "person", Effective: 1.8}},
 		}
 	})
 
@@ -562,21 +562,39 @@ func TestLineageSuppressionAppliesToPreReplyOnly(t *testing.T) {
 	}
 }
 
-// Clustering keeps a task and a document apart even when they carry the same
-// text, because they are different records. Showing the same paragraph twice is
-// still a bad answer, so selection withholds the second one and says why.
-func TestNearDuplicateIsSuppressedWithAReason(t *testing.T) {
+// Showing the same paragraph twice is a bad answer, so selection withholds the
+// repeat and says why — but only within one source.
+//
+// Across sources it must not: suppression keyed on an advisory hash would let
+// any source remove another's evidence from a response by echoing its
+// fingerprint and scoring high enough to be considered first. Seeing the same
+// text from two sources is a cosmetic cost; silently dropping a source's
+// evidence on another source's say-so is not.
+func TestNearDuplicateIsSuppressedWithinASourceOnly(t *testing.T) {
 	r := newRanker(t, nil)
-	got := fuse(t, r, request(
+
+	withinOne := fuse(t, r, request(
+		cand("docs", "spec.md#1", 1, fingerprint("fp-same")),
+		cand("docs", "copy.md#1", 2, kind(recall.RecordTask), fingerprint("fp-same")),
+	))
+	if len(withinOne.Results) != 1 {
+		t.Fatalf("results = %v, want the source's own repeat withheld", order(withinOne))
+	}
+	if len(withinOne.Suppressed) != 1 || withinOne.Suppressed[0].Reason != recall.SuppressDuplicate {
+		t.Fatalf("suppressed = %+v, want one near_duplicate", withinOne.Suppressed)
+	}
+
+	acrossSources := fuse(t, r, request(
 		cand("docs", "spec.md#1", 1, fingerprint("fp-same")),
 		cand("tasks", "td-1", 1, kind(recall.RecordTask), fingerprint("fp-same")),
 	))
-
-	if len(got.Results) != 1 {
-		t.Fatalf("results = %v, want one shown", order(got))
+	if len(acrossSources.Results) != 2 {
+		t.Fatalf("results = %v, want both kept: one source may not hide another",
+			order(acrossSources))
 	}
-	if len(got.Suppressed) != 1 || got.Suppressed[0].Reason != recall.SuppressDuplicate {
-		t.Fatalf("suppressed = %+v, want one near_duplicate", got.Suppressed)
+	if len(acrossSources.Suppressed) != 0 {
+		t.Fatalf("suppressed = %+v, want nothing withheld across sources",
+			acrossSources.Suppressed)
 	}
 }
 

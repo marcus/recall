@@ -210,7 +210,7 @@ func fullQueryResponse() recall.QueryResponse {
 				},
 				LineageRoot: "01J8ZKQ4M7:sig-8891",
 				Corroboration: recall.CorroborationExplanation{
-					DistinctLineages: 2,
+					IndependentUnits: 2,
 					Sources:          []string{"tasks", "clara-signals"},
 					Cap:              2.0,
 					CapApplied:       false,

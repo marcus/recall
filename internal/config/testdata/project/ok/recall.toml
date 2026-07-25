@@ -1,21 +1,21 @@
 # Project configuration. It travels with this repository and is untrusted.
 #
-# It may point a source at this checkout, narrow scope, adjust priors and
-# budgets, and add sources of its own. It may not say anything about what
-# Recall executes.
+# It may narrow scope, adjust priors and budgets, and add sources of its own.
+# It may not say anything about what Recall executes, where a source the user
+# declared reads from, or which profile is active.
 
 [[sources]]
-# Adjusts a source the user declared. It does not restate source_uid: the
-# identity belongs to the layer that created it.
+# Tunes a source the user declared. It may adjust ranking and budget, but not
+# location, settings, or enablement: those decide what data answers under a
+# trusted source's name.
 source_id = "clara-docs"
-location = "docs"
 base_prior = 1.6
 timeout_ms = 900
 
 [[sources]]
-# A source this repository introduces. A new source needs its own immutable
-# identity, and that identity must not already belong to another source.
-source_uid = "01J8ZKQ4MAREPO"
+# A source this repository introduces. It does not declare an identity — a
+# project file may not choose one, so Recall derives it from this file's path
+# and the source name.
 source_id = "repo-notes"
 adapter = "documents"
 location = "notes"

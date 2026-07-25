@@ -2,7 +2,9 @@ package config
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base32"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"unicode"
@@ -116,3 +118,21 @@ func validateEnvVarName(name string) error {
 	}
 	return nil
 }
+
+// deriveProjectUID mints the immutable identity of a source a project file
+// introduced.
+//
+// It is derived rather than declared because a project file may not choose an
+// identity, and deterministic because locators must stay stable across runs.
+// Scoping it to the declaring file keeps two checkouts of the same repository
+// from colliding, and keeps a project-local source project-local: the uid does
+// not travel to another machine, which is correct for a source that does not
+// either.
+func deriveProjectUID(file, sourceID string) recall.SourceUID {
+	sum := sha256.Sum256([]byte(file + "\x00" + sourceID))
+	return recall.SourceUID(ProjectUIDPrefix + hex.EncodeToString(sum[:10]))
+}
+
+// ProjectUIDPrefix marks an identity as project-derived, so it is visible in
+// `recall config explain` and in any locator built from it.
+const ProjectUIDPrefix = "proj-"

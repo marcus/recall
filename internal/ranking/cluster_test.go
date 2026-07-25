@@ -140,12 +140,6 @@ func TestEntityMatchingMergesDeclaredIdentity(t *testing.T) {
 			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
 			b:    cand("mail", "m-1", 1, kind(recall.RecordPerson), title("M V"), meta(ranking.MetaAliases, []any{"Marcus Vorwaller"})),
 		},
-		{
-			name: "same fingerprint and record type",
-			why:  "the advisory hash collapses duplicates when nothing was declared",
-			a:    cand("docs", "a.md#1", 1, fingerprint("fp-1")),
-			b:    cand("mail", "m-1", 1, fingerprint("fp-1")),
-		},
 	}
 
 	r := newRanker(t, nil)
@@ -159,20 +153,41 @@ func TestEntityMatchingMergesDeclaredIdentity(t *testing.T) {
 	}
 }
 
-// Merging for scoring is not merging for retrieval. A fingerprint match is
-// advisory: the records stay separately addressable, and they stop
-// corroborating each other.
+// A fingerprint collapses corroboration and nothing else.
+//
+// It deliberately does not cluster: primary selection is by score, and a
+// local_rank of 1 is free to whoever is answering, so letting an advisory hash
+// merge across sources would let one source capture another's cluster and
+// become the record a person is shown. Two sources holding the same text stay
+// two results, and stop corroborating each other.
+func TestFingerprintCollapsesCorroborationWithoutClustering(t *testing.T) {
+	r := newRanker(t, nil)
+	got := fuse(t, r, request(
+		cand("docs", "a.md#1", 1, fingerprint("fp-1")),
+		cand("mail", "m-1", 1, fingerprint("fp-1")),
+	))
+
+	if len(got.Results) != 2 {
+		t.Fatalf("results = %v, want both records shown and addressable", order(got))
+	}
+	for _, res := range got.Results {
+		if n := res.Explanation.Corroboration.IndependentUnits; n != 1 {
+			t.Errorf("independent units = %d, want 1: identical text is one piece of evidence", n)
+		}
+	}
+}
+
 func TestFingerprintMergeKeepsRecordsAddressable(t *testing.T) {
 	r := newRanker(t, nil)
 	got := single(t, fuse(t, r, request(
-		cand("docs", "a.md#1", 1, fingerprint("fp-1")),
-		cand("mail", "m-1", 1, fingerprint("fp-1")),
+		cand("docs", "a.md#1", 1, fingerprint("fp-1"), meta(ranking.MetaEntityID, "e-1")),
+		cand("mail", "m-1", 1, fingerprint("fp-1"), meta(ranking.MetaEntityID, "e-1")),
 	)))
 
 	if len(got.Members) != 2 {
 		t.Errorf("members = %d, want both records expandable", len(got.Members))
 	}
-	if n := got.Explanation.Corroboration.DistinctLineages; n != 1 {
+	if n := got.Explanation.Corroboration.IndependentUnits; n != 1 {
 		t.Errorf("distinct lineages = %d, want 1: the same content is not two opinions", n)
 	}
 	alone := single(t, fuse(t, r, request(cand("docs", "a.md#1", 1, fingerprint("fp-1")))))

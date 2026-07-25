@@ -50,11 +50,15 @@ type PriorExplanation struct {
 	Effective float64 `json:"effective"`
 }
 
-// CorroborationExplanation shows how many independent records back a cluster.
-// Only distinct lineage roots count; two projections of one record are one
-// piece of evidence.
+// CorroborationExplanation shows how much independent evidence backs a
+// cluster.
+//
+// The unit is not the lineage root. Two chunks of one document and two
+// fingerprint-identical records have distinct roots but are one thing said
+// once, so roots first collapse into units and units are what count. A
+// three-chunk document is three roots and one unit.
 type CorroborationExplanation struct {
-	DistinctLineages int      `json:"distinct_lineages"`
+	IndependentUnits int      `json:"independent_units"`
 	Sources          []string `json:"sources,omitempty"`
 	Cap              float64  `json:"cap"`
 

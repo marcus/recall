@@ -546,3 +546,54 @@ func TestAdapterCannotIssueRequestsToTheCore(t *testing.T) {
 		t.Fatal("an adapter-issued request should be recorded as a violation")
 	}
 }
+
+// blockedWriter never completes a write, standing in for an adapter that has
+// stopped reading its own stdin and let the pipe buffer fill.
+type blockedWriter struct{ release chan struct{} }
+
+func (w *blockedWriter) Write([]byte) (int, error) {
+	<-w.release
+	return 0, io.ErrClosedPipe
+}
+
+func (w *blockedWriter) Close() error { return nil }
+
+// Not reading is a cheaper way to wedge the core than not answering, and it
+// used to work: the encode sat in front of the ctx.Done branch, so no cancel
+// was sent and no timeout was ever returned. The whole supervision ladder was
+// behind a blocking write.
+func TestCallTimesOutWhenTheAdapterStopsReading(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	t.Cleanup(func() { _ = serverWrites.Close() })
+
+	stuck := &blockedWriter{release: make(chan struct{})}
+	// Releasing the write is what terminating the process would do: stdin
+	// closes and the stuck write fails.
+	t.Cleanup(func() { close(stuck.release) })
+
+	c, err := protocol.NewClient(clientReads, stuck, protocol.ClientOptions{Closer: stuck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err = c.Call(ctx, protocol.MethodSearch, map[string]any{
+		"query":    "q",
+		"filters":  map[string]any{},
+		"limit":    5,
+		"deadline": time.Now().Add(time.Second).Format(time.RFC3339Nano),
+	}, &struct{}{})
+	elapsed := time.Since(start)
+
+	var timeout *protocol.CallTimeout
+	if !errors.As(err, &timeout) {
+		t.Fatalf("err = %v (%T), want CallTimeout", err, err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("call took %v; the deadline must bound the write too", elapsed)
+	}
+}

@@ -80,6 +80,15 @@ func writeFile(t *testing.T, path, body string) string {
 
 // writeProject puts a project file in its own directory, so a relative path
 // inside it has an unambiguous anchor.
+// writeHome builds a user-layer config home. Identity rules live in the user
+// layer now, so testing them needs a config.toml rather than a project file.
+func writeHome(t *testing.T, body string) string {
+	t.Helper()
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, "recall", "config.toml"), body)
+	return home
+}
+
 func writeProject(t *testing.T, body string) string {
 	t.Helper()
 	return writeFile(t, filepath.Join(t.TempDir(), config.ProjectFileName), body)
@@ -164,9 +173,16 @@ func TestProjectLayerOverridesUser(t *testing.T) {
 	}
 
 	// A source the project introduces is a full source instance, not a patch.
+	// Its identity is derived rather than declared: a project file may not
+	// choose one, or a saved reference could be made to resolve against
+	// repo-chosen data.
 	notes := source(t, cfg, "repo-notes")
-	if notes.UID != "01J8ZKQ4MAREPO" || notes.Adapter != "documents" {
+	if notes.Adapter != "documents" {
 		t.Errorf("repo-notes = %+v", notes)
+	}
+	if !strings.HasPrefix(string(notes.UID), config.ProjectUIDPrefix) {
+		t.Errorf("repo-notes uid = %q, want a derived %s… identity",
+			notes.UID, config.ProjectUIDPrefix)
 	}
 
 	// A source the project never mentioned is untouched.
@@ -193,24 +209,64 @@ func TestProjectLayerOverridesUser(t *testing.T) {
 	}
 }
 
-// An inherited default is resolved after every layer has spoken, so a project
-// changing defaults.timeout_ms reaches the sources the user declared. Baking
-// the default in when a source is first read would make the result depend on
-// which file happened to be parsed first.
+// An inherited default is resolved after every layer has spoken, not when a
+// source is first read — otherwise the result would depend on which file
+// happened to be parsed first.
 func TestDefaultsAreInheritedAfterAllLayersMerge(t *testing.T) {
-	body := `
-[defaults]
-timeout_ms = 3000
-`
-	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+	cfg := mustLoad(t, "testdata/home", "")
 
-	// clara-signals declares no timeout of its own, so it takes the project's.
-	if got := source(t, cfg, "clara-signals").Timeout; got != 3*time.Second {
-		t.Errorf("inherited timeout = %v, want the project's 3s", got)
+	// clara-signals declares no timeout of its own, so it takes the default.
+	if got := source(t, cfg, "clara-signals").Timeout; got != 1500*time.Millisecond {
+		t.Errorf("inherited timeout = %v, want the user default 1.5s", got)
 	}
 	// tasks declares one, so nothing inherited touches it.
 	if got := source(t, cfg, "tasks").Timeout; got != 500*time.Millisecond {
 		t.Errorf("declared timeout = %v, want the source's own 500ms", got)
+	}
+}
+
+// A project file may not raise a profile's ceiling — but selecting a *different*
+// profile reaches the same end without touching one. A cloned repository that
+// can point defaults.profile at a more permissive profile has escaped the
+// restriction the user configured, so [defaults] is user configuration.
+func TestProjectMayNotSelectTheActiveProfile(t *testing.T) {
+	body := `
+[defaults]
+profile = "default"
+`
+	_, err := load(t, "testdata/home", writeProject(t, body))
+	if !errors.Is(err, config.ErrTrustBoundary) {
+		t.Fatalf("err = %v, want ErrTrustBoundary", err)
+	}
+}
+
+// The same key is a denial-of-service lever in weaker form: a ten-minute
+// default timeout applies to every source, not only the project's own.
+func TestProjectMayNotSetMachineWideTimeouts(t *testing.T) {
+	body := `
+[defaults]
+timeout_ms = 600000
+`
+	_, err := load(t, "testdata/home", writeProject(t, body))
+	if !errors.Is(err, config.ErrTrustBoundary) {
+		t.Fatalf("err = %v, want ErrTrustBoundary", err)
+	}
+}
+
+// The catch-all profile is maximally permissive by construction: it has no
+// ceiling and every enabled source. Synthesizing it beside profiles a user
+// deliberately restricted would leave that permissive profile permanently
+// reachable, which is an escalation waiting for anything able to influence
+// profile selection.
+func TestCatchAllProfileExistsOnlyWhenNoProfileIsConfigured(t *testing.T) {
+	configured := mustLoad(t, "testdata/home", "")
+	if _, ok := configured.Profile(config.DefaultProfileName); ok {
+		t.Error("a catch-all profile was synthesized alongside configured profiles")
+	}
+
+	bare := mustLoad(t, t.TempDir(), "")
+	if _, ok := bare.Profile(config.DefaultProfileName); !ok {
+		t.Error("with nothing configured there must still be a profile to resolve")
 	}
 }
 
@@ -227,7 +283,6 @@ func TestRelativePathResolvesAgainstItsOwnFile(t *testing.T) {
 	cfg := mustLoad(t, home, filepath.Join(projectDir, "recall.toml"))
 
 	for _, tc := range []struct{ id, want string }{
-		{"clara-docs", filepath.Join(projectDir, "docs")},
 		{"repo-notes", filepath.Join(projectDir, "notes")},
 	} {
 		if got := source(t, cfg, tc.id).Location; got != tc.want {
@@ -246,11 +301,13 @@ func TestRelativePathResolvesAgainstItsOwnFile(t *testing.T) {
 func TestEndpointLocationIsNotTreatedAsAPath(t *testing.T) {
 	body := `
 [[sources]]
-source_id = "clara-docs"
+source_id = "repo-api"
+adapter = "documents"
+freshness_mode = "indexed"
 location = "https://notes.example/api/v1"
 `
 	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
-	if got := source(t, cfg, "clara-docs").Location; got != "https://notes.example/api/v1" {
+	if got := source(t, cfg, "repo-api").Location; got != "https://notes.example/api/v1" {
 		t.Errorf("location = %q, want it left as written", got)
 	}
 }
@@ -341,8 +398,11 @@ func TestProfileSourcesKeepDeclaredOrderAndDeniedMembers(t *testing.T) {
 	for _, s := range sources {
 		ids = append(ids, s.ID)
 	}
-	if want := "tasks,clara-docs,repo-notes"; strings.Join(ids, ",") != want {
-		t.Errorf("members = %v, want %s in declared order", ids, want)
+	// The user's members first, in the order they were declared, then what the
+	// project added. A project may add to a profile it did not build; it may
+	// not decide what that profile no longer contains.
+	if want := "tasks,clara-docs,clara-signals,repo-notes"; strings.Join(ids, ",") != want {
+		t.Errorf("members = %v, want %s", ids, want)
 	}
 
 	// An empty name selects the configured default profile.
@@ -381,7 +441,14 @@ func TestUnconfiguredSourceIsReportedNotInvented(t *testing.T) {
 // generate one during a load: a uid that appears by itself would differ per
 // machine, and every persisted reference would stop matching.
 func TestNewSourceWithoutAnIdentityFails(t *testing.T) {
-	_, err := load(t, "testdata/home", "testdata/project/missing-uid/recall.toml")
+	home := writeHome(t, `
+[[sources]]
+source_id = "notes"
+adapter = "documents"
+location = "/tmp/notes"
+freshness_mode = "indexed"
+`)
+	_, err := load(t, home, "")
 	if !errors.Is(err, config.ErrInvalid) {
 		t.Fatalf("err = %v, want ErrInvalid", err)
 	}
@@ -392,13 +459,28 @@ func TestNewSourceWithoutAnIdentityFails(t *testing.T) {
 
 // Two sources sharing an identity would collapse into one lineage namespace, so
 // a saved locator would expand against whichever answered first.
-func TestDuplicateSourceUIDAcrossLayersFails(t *testing.T) {
-	_, err := load(t, "testdata/home", "testdata/project/duplicate-uid/recall.toml")
+func TestDuplicateSourceUIDFails(t *testing.T) {
+	home := writeHome(t, `
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "tasks"
+adapter = "documents"
+location = "/tmp/a"
+freshness_mode = "indexed"
+
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "notes"
+adapter = "documents"
+location = "/tmp/b"
+freshness_mode = "indexed"
+`)
+	_, err := load(t, home, "")
 	if !errors.Is(err, config.ErrInvalid) {
 		t.Fatalf("err = %v, want ErrInvalid", err)
 	}
 	msg := err.Error()
-	for _, want := range []string{"01J8ZKQ4M7TASKS", "tasks", "repo-notes"} {
+	for _, want := range []string{"01J8ZKQ4M7TASKS", "tasks", "notes"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q does not name %q", msg, want)
 		}

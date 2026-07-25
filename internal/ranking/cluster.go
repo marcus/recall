@@ -92,8 +92,13 @@ func (r *Ranker) clusterGroups(groups []*group) []*cluster {
 	}
 	for i, g := range groups {
 		for _, key := range g.duplicateKeys() {
-			// A duplicate is also the same subject, so it links both relations.
+			// A record seen again is also the same subject, so a declared
+			// duplicate links both relations.
 			link(i, key, dup, same)
+		}
+		for _, key := range g.fingerprintKeys() {
+			// Advisory only: it collapses corroboration, never display.
+			link(i, key, dup)
 		}
 		for _, key := range g.entityKeys() {
 			link(i, key, same)
@@ -219,7 +224,7 @@ func (r *Ranker) scoreCluster(c *cluster) {
 	c.primary = primary.primary
 	c.explain = primary.explain
 	c.explain.Corroboration = recall.CorroborationExplanation{
-		DistinctLineages: corroborating,
+		IndependentUnits: corroborating,
 		Sources:          sortedNames(sources),
 		Cap:              r.cfg.CorroborationCap,
 		CapApplied:       capApplied,
@@ -279,9 +284,23 @@ func (g *group) duplicateKeys() []string {
 		if c.SourceRecordID != "" && c.SourceUID != "" {
 			keys = append(keys, key("record", string(c.SourceUID), c.SourceRecordID))
 		}
-		// The fingerprint is advisory: it collapses duplicates for scoring, and
-		// the candidates still expand separately. It is scoped by record type so
-		// a task and a document with identical text stay distinct records.
+	}
+	return dedupe(keys)
+}
+
+// fingerprintKeys are the advisory content hashes, deliberately not scoped by
+// source: two sources holding the same text are one piece of evidence and must
+// not corroborate each other.
+//
+// They collapse corroboration units and nothing else. Linking them into the
+// display relation as well let one source capture another's cluster — primary
+// selection is by score, and a local_rank of 1 is free to whoever is answering,
+// so the record a person was shown became the echoing source's and the honest
+// evidence was demoted to a member of it. Collapsing corroboration is safe in a
+// way clustering is not: its only effect is a lower score.
+func (g *group) fingerprintKeys() []string {
+	var keys []string
+	for _, c := range g.candidates {
 		if c.ContentFingerprint != "" {
 			keys = append(keys, key("fingerprint", string(c.RecordType), c.ContentFingerprint))
 		}

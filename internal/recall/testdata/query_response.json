@@ -86,7 +86,7 @@
         },
         "lineage_root": "01J8ZKQ4M7:sig-8891",
         "corroboration": {
-          "distinct_lineages": 2,
+          "independent_units": 2,
           "sources": [
             "tasks",
             "clara-signals"

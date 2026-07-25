@@ -130,12 +130,19 @@ func allSuppressed(c *cluster, suppress map[recall.LineageRoot]bool) bool {
 	return true
 }
 
+// fingerprints keys near-duplicate suppression, scoped by source.
+//
+// Unscoped, this was a second and cheaper lever for one source to remove
+// another's evidence from a response: echo the fingerprint, score high enough
+// to be considered first, and the honest cluster is silently suppressed as a
+// near-duplicate. Suppression is a display policy, so it may only ever hide a
+// source's repetition of itself.
 func fingerprints(c *cluster) []string {
 	var out []string
 	for _, g := range c.groups {
 		for _, cand := range g.candidates {
-			if cand.ContentFingerprint != "" {
-				out = append(out, cand.ContentFingerprint)
+			if cand.ContentFingerprint != "" && cand.SourceUID != "" {
+				out = append(out, key("fp", string(cand.SourceUID), cand.ContentFingerprint))
 			}
 		}
 	}

@@ -279,3 +279,101 @@ func TestZeroBudgetMeansUnbounded(t *testing.T) {
 		t.Errorf("an unset budget should not shape: %+v", got)
 	}
 }
+
+// The locator is the one field guaranteed to be rendered — it is what a person
+// copies and pastes back. A bidi override inside one makes it read as a
+// different record than it names, which is precisely the attack the control
+// stripping exists to stop.
+func TestLocatorLocalPartIsSanitized(t *testing.T) {
+	c := recall.Candidate{
+		Locator: recall.Locator{
+			SourceID:  "notes",
+			SourceUID: "uid-notes",
+			Local:     "report\u202egnp.exe\x1b[31m",
+		},
+		DerivedFrom: []recall.Locator{{SourceID: "tasks", Local: "td-1\x00\x07"}},
+	}
+	got, notes := evidence.Sanitize(c, evidence.DefaultLimits())
+
+	if got.Locator.Local != "reportgnp.exe" {
+		t.Errorf("locator local = %q, want it cleaned", got.Locator.Local)
+	}
+	// Cleaning must not disturb the reference structure, or it stops resolving.
+	if got.Locator.SourceID != "notes" || got.Locator.SourceUID != "uid-notes" {
+		t.Errorf("locator identity altered: %+v", got.Locator)
+	}
+	if got.DerivedFrom[0].Local != "td-1" {
+		t.Errorf("derived_from local = %q, want it cleaned", got.DerivedFrom[0].Local)
+	}
+	var reported bool
+	for _, n := range notes {
+		if n.Field == "locator" {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Error("locator cleaning should be reported like any other field")
+	}
+}
+
+func TestProvenanceFieldsAreBounded(t *testing.T) {
+	lim := evidence.DefaultLimits()
+	lim.Provenance = 10
+	c := recall.Candidate{
+		SourceRecordID: strings.Repeat("r", 100),
+		CandidateID:    strings.Repeat("c", 100),
+		SourceRevision: "rev\x1b[2J" + strings.Repeat("v", 100),
+	}
+	got, _ := evidence.Sanitize(c, lim)
+
+	for name, v := range map[string]string{
+		"source_record_id": got.SourceRecordID,
+		"candidate_id":     got.CandidateID,
+		"source_revision":  got.SourceRevision,
+	} {
+		if n := len([]rune(v)); n > 10 {
+			t.Errorf("%s is %d runes, limit 10", name, n)
+		}
+		if strings.ContainsRune(v, 0x1b) {
+			t.Errorf("%s still carries an escape: %q", name, v)
+		}
+	}
+}
+
+// Expansion returns the largest untrusted payload Recall handles, and the one
+// most likely to be pasted into a terminal or handed to a model.
+func TestExpandedEvidenceIsSanitized(t *testing.T) {
+	e := recall.ExpandResponse{
+		Content:        "before\x1b]0;pwned\x07after\u202espoofed",
+		Provenance:     "spec.md:10-20\x00",
+		SourceRevision: "abc123\x1b[31m",
+	}
+	got, _ := evidence.SanitizeEvidence(e, evidence.DefaultLimits())
+
+	if got.Content != "beforeafterspoofed" {
+		t.Errorf("content = %q, want control sequences removed", got.Content)
+	}
+	if got.Provenance != "spec.md:10-20" {
+		t.Errorf("provenance = %q", got.Provenance)
+	}
+	if got.SourceRevision != "abc123" {
+		t.Errorf("source revision = %q", got.SourceRevision)
+	}
+}
+
+// A field bounded here is truncated evidence whatever the adapter reported, so
+// the flag has to say so rather than leaving a caller to believe it has the
+// whole record.
+func TestSanitizeMarksEvidenceItTruncated(t *testing.T) {
+	lim := evidence.DefaultLimits()
+	lim.Content = 20
+	e := recall.ExpandResponse{Content: strings.Repeat("x", 500), Truncated: false}
+
+	got, _ := evidence.SanitizeEvidence(e, lim)
+	if !got.Truncated {
+		t.Error("bounding evidence must set Truncated")
+	}
+	if got.TruncationBoundary == "" {
+		t.Error("the boundary that applied should be named")
+	}
+}

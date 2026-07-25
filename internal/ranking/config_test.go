@@ -31,21 +31,14 @@ func TestConfigRejectsOutOfRangeValues(t *testing.T) {
 			Sources: sources(ranking.SourceConfig{
 				SourceID:     "tasks",
 				BasePrior:    1.8,
-				IntentPriors: []ranking.IntentPrior{{Rule: "boost", QueryClass: "task", Effective: 3.0}},
-			}),
-		},
-		"intent prior names no rule": {
-			Sources: sources(ranking.SourceConfig{
-				SourceID:     "tasks",
-				BasePrior:    1,
-				IntentPriors: []ranking.IntentPrior{{QueryClass: "task", Effective: 1.5}},
+				IntentPriors: []ranking.IntentPrior{{QueryClass: "task", Effective: 3.0}},
 			}),
 		},
 		"intent prior names no query class": {
 			Sources: sources(ranking.SourceConfig{
 				SourceID:     "tasks",
 				BasePrior:    1,
-				IntentPriors: []ranking.IntentPrior{{Rule: "boost", Effective: 1.5}},
+				IntentPriors: []ranking.IntentPrior{{Effective: 1.5}},
 			}),
 		},
 		"two rules for one query class": {
@@ -53,8 +46,8 @@ func TestConfigRejectsOutOfRangeValues(t *testing.T) {
 				SourceID:  "tasks",
 				BasePrior: 1,
 				IntentPriors: []ranking.IntentPrior{
-					{Rule: "first", QueryClass: "task", Effective: 1.2},
-					{Rule: "second", QueryClass: "task", Effective: 1.3},
+					{QueryClass: "task", Effective: 1.2},
+					{QueryClass: "task", Effective: 1.3},
 				},
 			}),
 		},

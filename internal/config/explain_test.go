@@ -22,9 +22,11 @@ func TestExplainNamesTheOriginOfEveryValue(t *testing.T) {
 	}{
 		// Replaced by the project file.
 		{"base_prior", config.LayerProject},
-		{"location", config.LayerProject},
 		{"timeout_ms", config.LayerProject},
-		// Kept from the user layer, which the project never mentioned.
+		// Kept from the user layer. A project may tune ranking and budget, but
+		// location and settings decide what data answers under this source's
+		// name, so they stay where they were declared.
+		{"location", config.LayerUser},
 		{"sensitivity", config.LayerUser},
 		{"source_uid", config.LayerUser},
 		{"adapter", config.LayerUser},

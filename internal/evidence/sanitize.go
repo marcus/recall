@@ -18,6 +18,22 @@ type Limits struct {
 	Excerpt        int
 	MetadataValue  int
 	MetadataFields int
+
+	// Locator bounds the adapter-defined local part. A locator is the one
+	// field guaranteed to be rendered — it is what a person copies and pastes
+	// back — so it needs the same treatment as any other source-controlled
+	// text, and more than most: a bidi override inside one can make it read as
+	// a different record than it names.
+	Locator int
+
+	// Provenance bounds the short identifiers that travel beside evidence:
+	// source revision, record id, candidate id.
+	Provenance int
+
+	// Content bounds expanded evidence. Expansion is budget-bounded by its
+	// caller, but the budget is about size, not about what the bytes can do to
+	// a terminal.
+	Content int
 }
 
 // DefaultLimits are deliberately modest: candidates are pointers, and anything
@@ -28,6 +44,9 @@ func DefaultLimits() Limits {
 		Excerpt:        1000,
 		MetadataValue:  200,
 		MetadataFields: 24,
+		Locator:        512,
+		Provenance:     256,
+		Content:        1 << 20,
 	}
 }
 
@@ -50,10 +69,51 @@ func Sanitize(c recall.Candidate, lim Limits) (recall.Candidate, []Note) {
 	c.Title, notes = cleanField(c.Title, "title", lim.Title, notes)
 	c.Excerpt, notes = cleanField(c.Excerpt, "excerpt", lim.Excerpt, notes)
 
+	// The locator's source part is assigned by the core, so only the
+	// adapter-defined local part is untrusted. Cleaning is applied to that
+	// alone, and never to the separator structure, or the reference would stop
+	// resolving.
+	c.Locator.Local, notes = cleanField(c.Locator.Local, "locator", lim.Locator, notes)
+	for i := range c.DerivedFrom {
+		c.DerivedFrom[i].Local, notes = cleanField(
+			c.DerivedFrom[i].Local, "derived_from", lim.Locator, notes)
+	}
+
+	c.SourceRecordID, notes = cleanField(c.SourceRecordID, "source_record_id", lim.Provenance, notes)
+	c.CandidateID, notes = cleanField(c.CandidateID, "candidate_id", lim.Provenance, notes)
+	c.SourceRevision, notes = cleanField(c.SourceRevision, "source_revision", lim.Provenance, notes)
+	c.ContentFingerprint, notes = cleanField(
+		c.ContentFingerprint, "content_fingerprint", lim.Provenance, notes)
+
 	if len(c.Metadata) > 0 {
 		c.Metadata, notes = cleanMetadata(c.Metadata, lim, notes)
 	}
 	return c, notes
+}
+
+// SanitizeEvidence enforces the same boundary on expanded evidence.
+//
+// Expansion returns the actual source text, which is the largest untrusted
+// payload Recall handles and the one most likely to be pasted into a terminal
+// or handed to a model. Its budget bounds size; this bounds what the bytes can
+// do.
+func SanitizeEvidence(e recall.ExpandResponse, lim Limits) (recall.ExpandResponse, []Note) {
+	var notes []Note
+	e.Content, notes = cleanField(e.Content, "content", lim.Content, notes)
+	e.Provenance, notes = cleanField(e.Provenance, "provenance", lim.Provenance, notes)
+	e.SourceRevision, notes = cleanField(e.SourceRevision, "source_revision", lim.Provenance, notes)
+	e.TruncationBoundary, notes = cleanField(
+		e.TruncationBoundary, "truncation_boundary", lim.Provenance, notes)
+
+	// A field bounded here is truncated evidence regardless of what the
+	// adapter reported, so the flag has to reflect it.
+	for _, n := range notes {
+		if n.Field == "content" && n.Action == "truncated" {
+			e.Truncated = true
+			e.TruncationBoundary = "recall_sanitize_limit"
+		}
+	}
+	return e, notes
 }
 
 func cleanField(s, field string, limit int, notes []Note) (string, []Note) {

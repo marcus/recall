@@ -238,8 +238,29 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 	}
 	defer c.unregister(id)
 
-	if err := c.enc.Encode(NewRequest(id, method, raw)); err != nil {
-		return fmt.Errorf("send %s: %w", method, err)
+	// The write itself has to be under the deadline, not in front of it.
+	//
+	// Encode does a blocking write to the child's stdin. An adapter that stops
+	// reading fills the pipe buffer, and a plain call would then block here
+	// forever — in front of the ctx.Done branch, so no cancel is sent, no
+	// CallTimeout is returned, and the whole cancel/SIGTERM/SIGKILL ladder
+	// never runs. Not reading is a cheaper way to wedge the core than not
+	// answering.
+	//
+	// The goroutine outlives a timed-out call by design: it is holding the
+	// encoder lock on a write that cannot complete. The supervisor escalates
+	// on the CallTimeout below and terminates the process, which closes stdin
+	// and lets every stuck write fail and drain.
+	sent := make(chan error, 1)
+	go func() { sent <- c.enc.Encode(NewRequest(id, method, raw)) }()
+
+	select {
+	case err := <-sent:
+		if err != nil {
+			return fmt.Errorf("send %s: %w", method, err)
+		}
+	case <-ctx.Done():
+		return &CallTimeout{Method: method, ID: id, Cause: ctx.Err()}
 	}
 
 	select {

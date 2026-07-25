@@ -126,6 +126,19 @@ func (c *Config) mergeDefaults(f sourceFile) error {
 	if d == nil {
 		return nil
 	}
+	// [defaults] is user-layer only, and `profile` is why.
+	//
+	// A project file is not allowed to raise a profile's ceiling, but selecting
+	// a *different* profile reaches the same end without touching one: point
+	// `defaults.profile` at a more permissive profile and the restriction the
+	// user configured simply stops applying. The other keys are here for the
+	// same reason in weaker form — a cloned repo setting a ten-minute default
+	// timeout is a denial-of-service lever over every source, not just its own.
+	// A project sets its own sources' timeouts per source.
+	if f.Origin.Layer == LayerProject {
+		return fmt.Errorf("%w: %s declares [defaults]; profile selection and "+
+			"machine-wide defaults are user configuration", ErrTrustBoundary, f.Origin.File)
+	}
 	if c.defaultOrigins == nil {
 		c.defaultOrigins = map[string]Origin{}
 	}
@@ -263,7 +276,25 @@ func (c *Config) newSource(f sourceFile, key, id string, raw rawSource) error {
 		declaredIn:  f.Origin,
 		declaredKey: key,
 	}
-	if raw.SourceUID != nil {
+	switch {
+	case f.Layer == LayerProject && raw.SourceUID != nil:
+		// Searching a repository's own documents is a legitimate reason for a
+		// project file to introduce a source. Choosing that source's immutable
+		// identity is not: a persisted locator or evaluation judgment keys on
+		// the uid, so a repo that picks one can make a saved reference resolve
+		// against repo-chosen data on a machine where the real source is
+		// absent.
+		return trustErrorf(f.Path, key+".source_uid",
+			"source %q is declared by a project file, which may not choose an identity; "+
+				"remove source_uid and one will be derived", id)
+	case f.Layer == LayerProject:
+		// Derived, not chosen, and deterministic so locators stay stable across
+		// runs. Scoping it to the declaring file keeps two checkouts from
+		// colliding and keeps a project-local source project-local.
+		inst.UID = deriveProjectUID(f.Path, id)
+		inst.origins["source_uid"] = f.Origin
+		inst.keys["source_uid"] = key + ".source_id"
+	case raw.SourceUID != nil:
 		inst.UID = recall.SourceUID(*raw.SourceUID)
 		inst.origins["source_uid"] = f.Origin
 		inst.keys["source_uid"] = key + ".source_uid"
@@ -290,6 +321,26 @@ func (c *Config) overlaySource(f sourceFile, key string, inst *SourceInstance, r
 	if raw.Sensitivity != nil && f.Layer == LayerProject {
 		if err := checkSensitivityFloor(f, key, inst, *raw.Sensitivity); err != nil {
 			probs.add(err)
+		}
+	}
+	if f.Layer == LayerProject {
+		// Where a source reads from, and how its adapter is configured, are the
+		// two levers that decide what data answers under a trusted source's
+		// name. `settings` is the sharper of the two: it is adapter-owned and
+		// unvalidated at load, so a key like `cli` can name a program without
+		// ever looking like an executable key to the trust scan.
+		for field, declared := range map[string]bool{
+			"location": raw.Location != nil,
+			"settings": raw.Settings != nil,
+			"enabled":  raw.Enabled != nil,
+		} {
+			if !declared {
+				continue
+			}
+			probs.add(trustErrorf(f.Path, key+"."+field,
+				"source %q was declared by %s; a project file may tune its priors, record "+
+					"types, and timeout, but may not change %s on a source it does not own",
+				inst.ID, inst.declaredIn, field))
 		}
 	}
 	probs.add(c.applyRaw(f, key, inst, raw))
@@ -421,7 +472,21 @@ func (c *Config) mergeProfiles(f sourceFile) error {
 				origins:        map[string]Origin{},
 			}
 		}
-		if raw.Sources != nil {
+		switch {
+		case raw.Sources == nil:
+		case exists && f.Layer == LayerProject:
+			// Additive, not replacing. A project may add its own sources to a
+			// profile the user built — that is the point of a project file —
+			// but replacing the list wholesale lets it decide what a trusted
+			// profile no longer contains, which is a way to hide the
+			// authoritative source for a question and leave only its own.
+			for _, id := range raw.Sources {
+				if !slices.Contains(p.SourceIDs, id) {
+					p.SourceIDs = append(p.SourceIDs, id)
+				}
+			}
+			p.origins["sources"] = f.Origin
+		default:
 			p.SourceIDs = slices.Clone(raw.Sources)
 			p.origins["sources"] = f.Origin
 		}
@@ -462,7 +527,13 @@ func (c *Config) finish() {
 		c.inferFreshnessMode(s)
 	}
 
-	if _, ok := c.Profiles[DefaultProfileName]; !ok {
+	// The catch-all profile exists only when nobody configured any profile.
+	//
+	// Synthesizing it alongside real profiles would leave a maximally
+	// permissive profile permanently reachable beside the restricted ones a
+	// user deliberately wrote, which is an escalation waiting for anything
+	// that can influence profile selection.
+	if len(c.Profiles) == 0 {
 		p := Profile{
 			Name:           DefaultProfileName,
 			MaxSensitivity: recall.SensitivityRestricted,

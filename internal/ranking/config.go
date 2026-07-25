@@ -80,14 +80,16 @@ type SourceConfig struct {
 	IntentPriors []IntentPrior
 }
 
-// IntentPrior is a bounded adjustment to a base prior for one named query
-// class.
+// IntentPrior is the prior in force for one named query class.
+//
+// The query class is also the rule name in an explanation. They were separate
+// fields until it became clear that configuration keys intent priors by class,
+// so a rule could never be named anything else — two fields, one writer. An
+// adjustment still cannot be applied without being attributable, because a
+// class with no configured prior fires nothing.
 type IntentPrior struct {
-	// Rule names the configured rule, and is reported in the explanation. An
-	// adjustment that cannot be attributed to a rule is not applied.
-	Rule string
-
-	// QueryClass is the request's declared class this rule answers to.
+	// QueryClass is the request's declared class this prior answers to, and
+	// the rule name reported in the explanation.
 	QueryClass string
 
 	// Effective replaces the base prior for this query class. It must stay in
@@ -153,17 +155,12 @@ func (sc SourceConfig) validate(uid recall.SourceUID) error {
 		case ip.QueryClass == "":
 			return fmt.Errorf("%w: source %q has an intent prior with no query class",
 				ErrConfig, uid)
-		case ip.Rule == "":
-			// An unattributable adjustment cannot be explained, and a value that
-			// cannot appear in an explanation does not exist.
-			return fmt.Errorf("%w: source %q intent prior for %q names no rule",
-				ErrConfig, uid, ip.QueryClass)
 		case seen[ip.QueryClass]:
 			return fmt.Errorf("%w: source %q has two intent priors for query class %q",
 				ErrConfig, uid, ip.QueryClass)
 		case !inPriorRange(ip.Effective):
-			return fmt.Errorf("%w: source %q rule %q gives effective prior %v, want [%v, %v]",
-				ErrConfig, uid, ip.Rule, ip.Effective, MinPrior, MaxPrior)
+			return fmt.Errorf("%w: source %q class %q gives effective prior %v, want [%v, %v]",
+				ErrConfig, uid, ip.QueryClass, ip.Effective, MinPrior, MaxPrior)
 		}
 		seen[ip.QueryClass] = true
 	}
@@ -192,7 +189,7 @@ func (c Config) prior(uid recall.SourceUID, class string) (recall.PriorExplanati
 		// changed rather than only where it landed.
 		p.Effective = ip.Effective
 		p.Intent = ip.Effective - sc.BasePrior
-		p.Rule = ip.Rule
+		p.Rule = ip.QueryClass
 		break
 	}
 	return p, nil

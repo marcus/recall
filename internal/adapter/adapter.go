@@ -71,6 +71,11 @@ const (
 	// DefaultProbeTimeout bounds a health probe whose caller supplied no
 	// deadline.
 	DefaultProbeTimeout = 5 * time.Second
+
+	// DefaultCallTimeout bounds a request whose caller set no deadline. Every
+	// request is supposed to carry one; this exists so that forgetting cannot
+	// mean "wait forever on a subprocess".
+	DefaultCallTimeout = 30 * time.Second
 )
 
 // ErrClosed reports use of an adapter that has been closed.

@@ -34,7 +34,7 @@
     },
     "as_of_support": { "$ref": "common.json#/$defs/as_of_support" },
     "derives_from": {
-      "description": "source_uid this source projects wholesale. The fallback lineage edge, used when record-level references are unavailable.",
+      "description": "source_id this source projects wholesale. A name, not an identity: an adapter cannot know another instance's generated source_uid. The core resolves it and drops the edge when the named source is not configured. The fallback lineage edge, used when record-level references are unavailable.",
       "type": "string"
     },
     "capabilities": {

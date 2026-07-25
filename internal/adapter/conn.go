@@ -151,9 +151,13 @@ func (c *Conn) acquire(ctx context.Context) (func(), error) {
 
 // deadlineCtx applies the request's own deadline. An elapsed deadline is left
 // to expire immediately rather than being silently extended.
+//
+// A zero deadline falls back to [DefaultCallTimeout] rather than to no bound.
+// An unset time.Time is a caller oversight, and the one interpretation that
+// must never follow from an oversight is "wait forever on a subprocess".
 func deadlineCtx(ctx context.Context, at time.Time) (context.Context, context.CancelFunc) {
 	if at.IsZero() {
-		return context.WithCancel(ctx)
+		return context.WithTimeout(ctx, DefaultCallTimeout)
 	}
 	return context.WithDeadline(ctx, at)
 }

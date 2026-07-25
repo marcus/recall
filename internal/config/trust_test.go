@@ -200,3 +200,98 @@ func assertErrorNames(t *testing.T, err error, wantKey string) {
 		t.Error("error names no file")
 	}
 }
+
+// Searching a repository's own documents is a legitimate reason for a project
+// file to introduce a source. Choosing that source's immutable identity is not:
+// a saved locator or evaluation judgment keys on the uid, so a repo that picks
+// one can make a persisted reference resolve against repo-chosen data on a
+// machine where the real source is absent.
+func TestProjectMayNotChooseAnIdentity(t *testing.T) {
+	body := `
+[[sources]]
+source_uid = "01J8ZKQ4M7TASKS"
+source_id = "repo-notes"
+adapter = "documents"
+location = "notes"
+freshness_mode = "indexed"
+`
+	_, err := load(t, "testdata/home", writeProject(t, body))
+	if !errors.Is(err, config.ErrTrustBoundary) {
+		t.Fatalf("err = %v, want ErrTrustBoundary", err)
+	}
+}
+
+// The source it introduces still works, under an identity Recall derived.
+func TestProjectSourceGetsADerivedIdentity(t *testing.T) {
+	cfg := mustLoad(t, "testdata/home", "testdata/project/ok/recall.toml")
+
+	notes := source(t, cfg, "repo-notes")
+	if !strings.HasPrefix(string(notes.UID), config.ProjectUIDPrefix) {
+		t.Errorf("uid = %q, want a derived identity", notes.UID)
+	}
+	// Deterministic, or every locator it prints would move between runs.
+	again := mustLoad(t, "testdata/home", "testdata/project/ok/recall.toml")
+	if source(t, again, "repo-notes").UID != notes.UID {
+		t.Error("a derived identity must be stable across loads")
+	}
+}
+
+// Where a source reads from, and how its adapter is configured, decide what
+// data answers under a trusted source's name. settings is the sharper of the
+// two: it is adapter-owned and unvalidated at load, so a key like `cli` names a
+// program without ever looking like an executable key to the trust scan.
+func TestProjectMayNotRepointASourceItDoesNotOwn(t *testing.T) {
+	tests := map[string]string{
+		"location": `
+[[sources]]
+source_id = "tasks"
+location = "/tmp/attacker/tasks.jsonl"
+`,
+		"settings": `
+[[sources]]
+source_id = "tasks"
+[sources.settings]
+cli = "/tmp/evil-td"
+`,
+		"enabled": `
+[[sources]]
+source_id = "tasks"
+enabled = false
+`,
+	}
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := load(t, "testdata/home", writeProject(t, body))
+			if !errors.Is(err, config.ErrTrustBoundary) {
+				t.Fatalf("err = %v, want ErrTrustBoundary", err)
+			}
+		})
+	}
+}
+
+// A project may add its own source to a profile the user built. Replacing the
+// list would let it decide what a trusted profile no longer contains, which
+// hides the authoritative source for a question and leaves only its own.
+func TestProjectProfileMembershipIsAdditive(t *testing.T) {
+	body := `
+[[sources]]
+source_id = "repo-notes"
+adapter = "documents"
+location = "notes"
+freshness_mode = "indexed"
+
+[profiles.work]
+sources = ["repo-notes"]
+`
+	cfg := mustLoad(t, "testdata/home", writeProject(t, body))
+
+	work, ok := cfg.Profile("work")
+	if !ok {
+		t.Fatal("profile work missing")
+	}
+	for _, want := range []string{"tasks", "clara-docs", "repo-notes"} {
+		if !work.Contains(want) {
+			t.Errorf("profile lost %q; project membership must add, not replace", want)
+		}
+	}
+}

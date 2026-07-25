@@ -279,10 +279,17 @@ Lineage identity is declared, never inferred:
    upstream records it projects. Primary edge.
 2. **Source-level.** A manifest declares `derives_from` when an entire source
    projects another. Used when record-level references are unavailable.
-3. **Content fingerprint (advisory).** A normalized content hash may collapse
-   candidates for corroboration counting when no declared edge exists. A
-   fingerprint match is never identity: it merges duplicates for scoring but
-   the merged candidates remain separate records for expansion.
+3. **Content fingerprint (advisory).** A normalized content hash collapses
+   candidates for corroboration counting when no declared edge exists, so two
+   sources holding the same text do not corroborate each other.
+
+   It does that and nothing else. A fingerprint never clusters candidates for
+   display, never selects a primary, and never suppresses one source's result
+   as a duplicate of another's. Primary selection is by score and a top local
+   rank is free to whoever is answering, so an advisory hash that merged across
+   sources would let any source capture another's cluster and become the record
+   a person is shown. Collapsing corroboration is safe in a way clustering is
+   not: its only effect is a lower score.
 
 The lineage root is the locator of the original record after following declared
 edges, expressed with `source_uid`. Edges are followed to a fixed depth
@@ -310,13 +317,34 @@ repository. Loading one must never be able to execute attacker-chosen code, and
 must never let the repository redirect an existing source. The project layer
 therefore also may not:
 
-- Reassign the `source_uid` of a source the user layer defined. Identity
-  reassignment is how a cloned repository would make its own data answer as a
-  trusted source.
+- Declare `[defaults]` at all. Selecting the active profile is the sharpest
+  case: a project cannot raise a ceiling, but pointing `defaults.profile` at a
+  more permissive profile reaches the same end without touching one.
+- Choose a `source_uid`, for a new source or an existing one. A project may
+  introduce a source — searching a repository's own documents is the point —
+  but its identity is derived from the declaring file and the source name, not
+  declared. A chosen uid can make a saved locator or an evaluation judgment
+  resolve against repo-chosen data on a machine where the real source is
+  absent.
+- Change `location`, `settings`, or `enabled` on a source the user layer
+  declared. Those decide what data answers under a trusted source's name, and
+  `settings` is the sharper of them: it is adapter-owned and unvalidated at
+  load, so a key like `cli` can name a program without ever looking like an
+  executable key.
 - Repoint a source at a different adapter.
+- Replace a profile's source list. Project membership is additive; deciding
+  what a trusted profile no longer contains would hide the authoritative source
+  for a question and leave only the repository's own.
 - Move a sensitivity floor or a profile ceiling in the permissive direction.
   Invariant 4 forbids an adapter lowering a floor; a project file is no more
   trusted than an adapter.
+
+A project may tune what is bounded and reversible: priors, intent priors,
+record types, timeouts, and its own sources' everything.
+
+The catch-all profile exists only when no profile is configured at all. It has
+no ceiling and every enabled source, so synthesizing it beside profiles a user
+deliberately restricted would leave a permissive profile permanently reachable.
 
 Executable keys are rejected by name anywhere in a project document, including
 inside the adapter-owned `settings` table, which is otherwise the natural place

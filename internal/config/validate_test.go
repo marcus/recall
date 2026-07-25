@@ -15,8 +15,12 @@ import (
 func TestValidationRejectsRatherThanRepairs(t *testing.T) {
 	tests := []struct {
 		name string
-		// project is a project recall.toml layered over testdata/home.
+		// project is a recall.toml layered over testdata/home, unless user is
+		// set, in which case it is a whole user-layer config.toml. Identity,
+		// adapter choice, and freshness support are user-layer facts, so those
+		// cases cannot be expressed as a project overlay.
 		project string
+		user    bool
 		wantKey string
 		// wantIn are fragments the message must contain, so the error is
 		// actionable without reading the source.
@@ -26,11 +30,13 @@ func TestValidationRejectsRatherThanRepairs(t *testing.T) {
 			// ":" separates the source from the adapter-local part of a locator.
 			// A name containing one makes every locator it prints ambiguous.
 			name: "source_id containing the locator separator",
+			user: true,
 			project: `
 [[sources]]
 source_uid = "01J8ZKQ4MCCOLON"
 source_id = "repo:notes"
 adapter = "documents"
+location = "/tmp/notes"
 freshness_mode = "indexed"
 `,
 			wantKey: "sources[0].source_id",
@@ -93,9 +99,13 @@ timeout_ms = -1
 			// the difference between a configuration error and a source that
 			// looks healthy and fails at query time.
 			name: "freshness mode the adapter does not support",
+			user: true,
 			project: `
 [[sources]]
+source_uid = "01J8ZKQ4MBDOCS"
 source_id = "clara-docs"
+adapter = "documents"
+location = "/tmp/docs"
 freshness_mode = "live"
 `,
 			wantKey: "sources[0].freshness_mode",
@@ -113,11 +123,13 @@ freshness_mode = "eventual"
 		},
 		{
 			name: "unregistered adapter",
+			user: true,
 			project: `
 [[sources]]
 source_uid = "01J8ZKQ4MDGHOST"
 source_id = "ghost"
 adapter = "not-registered"
+location = "/tmp/ghost"
 `,
 			wantKey: "sources[0].adapter",
 			wantIn:  []string{"not-registered", "not registered"},
@@ -161,7 +173,13 @@ source_id = "clara-docs"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := load(t, "testdata/home", writeProject(t, tt.project))
+			home, project := "testdata/home", ""
+			if tt.user {
+				home = writeHome(t, tt.project)
+			} else {
+				project = writeProject(t, tt.project)
+			}
+			cfg, err := load(t, home, project)
 			if cfg != nil {
 				t.Fatal("an invalid configuration must not be returned, not even partly")
 			}
