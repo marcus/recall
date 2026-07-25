@@ -1,0 +1,16 @@
+{
+  "case": "search-partial",
+  "description": "The catalog is mid-scan: the latest run is still running and has finished nothing. The search returns outcome 'partial' with coverage 'partial' rather than 'success', because a project absent from an unfinished pass is unknown and not gone, and health reports degraded for the same reason. Neither is a short candidate list left to imply it.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/candidates/*/observed_at",
+    "/result/diagnostics/elapsed_ms",
+    "/result/checked_at",
+    "/result/last_success_at"
+  ],
+  "responses": 3
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/conformance"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -26,9 +27,15 @@ Check everything that has to be true before a query means anything:
   freshness        each source's freshness mode is one its adapter serves
   lineage          declared source-level derivation has no cycle
 
+With --conformance, ask a different question entirely: replay one adapter's
+recorded transcripts against its command and diff every response. The suite is
+the adapter registration's ` + "`conformance`" + ` directory; see
+docs/adapter-protocol.md for its layout.
+
 flags:
-  --profile NAME    profile to resolve; default is the configured one
-  --json            emit the diagnosis as JSON
+  --profile NAME      profile to resolve; default is the configured one
+  --conformance NAME  replay a registered adapter's recorded transcripts
+  --json              emit the diagnosis as JSON
 
 ` + exitCodes
 
@@ -75,13 +82,15 @@ const (
 	checkHealth        = "health"
 	checkFreshness     = "freshness"
 	checkLineage       = "lineage"
+	checkConformance   = "conformance"
 )
 
 func runDoctor(ctx context.Context, env Env, args []string) int {
 	fs := newFlagSet("doctor")
 	var (
-		profile = fs.String("profile", "", "profile to resolve")
-		asJSON  = fs.Bool("json", false, "emit JSON")
+		profile    = fs.String("profile", "", "profile to resolve")
+		adapterFor = fs.String("conformance", "", "replay a registered adapter's recorded transcripts")
+		asJSON     = fs.Bool("json", false, "emit JSON")
 	)
 	if ok, code := parse(env, fs, doctorHelp, args); !ok {
 		return code
@@ -90,7 +99,18 @@ func runDoctor(ctx context.Context, env Env, args []string) int {
 		return usageErr(env, doctorHelp, fmt.Errorf("doctor takes no arguments"))
 	}
 
-	d := diagnose(ctx, env, *profile)
+	// --conformance asks a different question, so it gets a different
+	// diagnosis rather than an extra check appended to this one. Replaying
+	// recorded transcripts is about an adapter implementation; whether this
+	// machine's sources happen to be reachable has nothing to do with it, and
+	// letting a sleeping laptop fail a conformance run would make the answer
+	// mean something it does not.
+	d := func() Diagnosis {
+		if *adapterFor != "" {
+			return diagnoseConformance(ctx, env, *adapterFor)
+		}
+		return diagnose(ctx, env, *profile)
+	}()
 
 	if *asJSON {
 		if code := report(env, emitJSON(env.Stdout, d)); code != ExitOK {
@@ -167,6 +187,92 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 	health, manifests := healthCheck(ctx, rt, eligible)
 	d.add(health, freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
 	return d.finish()
+}
+
+// diagnoseConformance replays one registered adapter's recorded transcripts.
+//
+// It runs the three checks that have to hold for the question to be answerable
+// at all — the configuration loads, the project layer stayed inside the trust
+// boundary, and identities are one to one — and then the replay. The
+// source-probing checks are skipped and say so: a conformance run is a
+// statement about an adapter binary, and one that failed because a laptop was
+// asleep would be a statement about nothing.
+func diagnoseConformance(ctx context.Context, env Env, name string) Diagnosis {
+	var d Diagnosis
+
+	cfg, err := env.load()
+	if err != nil {
+		d.add(loadFailure(err)...)
+		d.add(Check{
+			Name:   checkConformance,
+			Status: CheckSkipped,
+			Detail: "configuration did not load",
+		})
+		return d.finish()
+	}
+	d.add(configurationCheck(cfg), trustCheck(cfg), identityCheck(cfg))
+	d.add(conformanceCheck(ctx, cfg, name))
+	return d.finish()
+}
+
+// conformanceCheck drives the suite and reports one problem per failing case.
+//
+// A case that differs is a problem, not an abort: someone fixing an adapter
+// should see every case that moved, in one pass, the same way every other
+// doctor check reports.
+func conformanceCheck(ctx context.Context, cfg *config.Config, name string) Check {
+	def, ok := cfg.Adapter(name)
+	switch {
+	case !ok:
+		return Check{Name: checkConformance, Status: CheckFail, Problems: []Problem{{
+			Key:     "adapters." + name,
+			Message: "no adapter by that name is registered",
+		}}}
+	case def.Builtin:
+		return Check{Name: checkConformance, Status: CheckFail, Problems: []Problem{{
+			Key: "adapters." + name,
+			Message: "adapter is built in, so there is no process to replay a transcript against; " +
+				"its conformance suite runs in the Go test suite instead",
+		}}}
+	case def.Conformance == "":
+		// Not a pass. An adapter with no recorded transcripts has not been
+		// shown to honor the contract, and reporting that as "checked" is the
+		// one answer a conformance run must never give for having checked
+		// nothing.
+		return Check{Name: checkConformance, Status: CheckFail, Problems: []Problem{{
+			Key: "adapters." + name + ".conformance",
+			Message: "adapter declares no conformance directory, so it ships no recorded " +
+				"transcripts to replay",
+		}}}
+	}
+
+	results, err := conformance.Verify(ctx, def.Conformance,
+		conformance.Command(def.Command, def.Args...), conformance.Options{})
+	if err != nil {
+		// The suite itself could not be run: an unreadable directory, a
+		// malformed manifest, a binary that will not start. That is a failure
+		// of the check, not a verdict about the adapter.
+		return Check{Name: checkConformance, Status: CheckFail, Problems: []Problem{{
+			Key:     "adapters." + name + ".conformance",
+			Message: err.Error(),
+		}}}
+	}
+
+	var problems []Problem
+	passed := 0
+	for _, res := range results {
+		if res.OK() {
+			passed++
+			continue
+		}
+		problems = append(problems, Problem{
+			Key:     "adapters." + name + ".conformance." + res.Case,
+			Message: res.Report(),
+		})
+	}
+	return finishCheck(checkConformance,
+		fmt.Sprintf("%s: %d of %d recorded cases replayed as recorded",
+			def.Command, passed, len(results)), problems)
 }
 
 func (d *Diagnosis) add(checks ...Check) { d.Checks = append(d.Checks, checks...) }

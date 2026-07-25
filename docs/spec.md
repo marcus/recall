@@ -384,7 +384,15 @@ been exchanged, so the record must restate the parts validation depends on:
 command                 executable, user layer only
 args, env               argv and environment, user layer only
 freshness_modes         modes this adapter can serve
+conformance             optional absolute directory of recorded transcripts,
+                        replayed by `recall doctor --conformance <adapter>`
 ```
+
+`conformance` is absolute for the same reason `command` is: a relative path
+resolves against whatever directory Recall was started in, and a conformance
+run that silently checked a different suite would be worse than one that
+checked nothing. A built-in adapter may not declare one — there is no process
+to replay a transcript against, and its suite runs in the Go test suite.
 
 A manifest that contradicts its registration fails the handshake. A source that
 omits `freshness_mode` inherits it only when the adapter supports exactly one.

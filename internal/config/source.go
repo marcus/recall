@@ -127,6 +127,18 @@ type AdapterDefinition struct {
 	// query time.
 	FreshnessModes []recall.FreshnessMode `json:"freshness_modes"`
 
+	// Conformance is the directory of recorded transcripts
+	// `recall doctor --conformance` replays against Command. It is absolute for
+	// the same reason Command is: a relative path would resolve against
+	// whatever directory Recall happened to be started in, and a conformance
+	// run that silently checked a different suite would be worse than one that
+	// checked nothing.
+	//
+	// docs/adapter-protocol.md fixes the layout inside it. An adapter that
+	// ships no transcripts declares nothing here and cannot be conformance
+	// checked, which is a fact about the adapter and is reported as one.
+	Conformance string `json:"conformance,omitempty"`
+
 	Origin Origin `json:"origin"`
 }
 

@@ -1,0 +1,11 @@
+{
+  "case": "expand-details",
+  "description": "One locator at every detail level, then the same locator under a budget it cannot fit. The levels widen rather than reshape: each one's output starts with the previous one's, so a caller comparing a summary against a full expansion sees added sections and not rewritten ones. summary is identity and classification, excerpt adds the owner's own decisions and the reasons in prose, full adds the same reasons as the comparisons ongoing actually made \u2014 input, value, comparison, threshold \u2014 plus every measurement stamped with when its collector last ran, and context adds the daily snapshot history, which is the only history this catalog has. The last response truncates at the budget and names the boundary that applied, so a budget cut stays distinguishable from a source-side limit.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 6
+}

@@ -21,6 +21,17 @@ Status: the first vertical slice is in. The CLI fuses two heterogeneous sources
 external adapter that exercises the wire protocol and evidence lineage, and an
 evaluation harness with a committed smoke pack.
 
+External adapters ship here as separate commands:
+
+- `recall-stream` — the reference implementation, and the smallest complete
+  thing an adapter author can copy: an append-only JSONL event source that
+  emits `derived_from` edges.
+- `recall-ongoing` — the ongoing project catalog over its HTTP API: every local
+  repository with its git, LOC, td, GitHub, and traffic measurements, and the
+  attention classifications ongoing computes over them, carried through with
+  the reasons behind each one. See `cmd/recall-ongoing/ongoing` for what it
+  declares and why.
+
 `eval/baselines/smoke.json` is documented in
 [evaluation.md](docs/evaluation.md) but is **not committed yet**, so
 `recall eval compare` has nothing to compare against and metric drift goes

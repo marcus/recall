@@ -1,0 +1,11 @@
+{
+  "case": "version-rejection",
+  "description": "A version range entirely above what this build speaks. The handshake fails explicitly instead of degrading to a version neither end implements, and no manifest is returned. Nothing is read from the fixture, which is present only so the replay directory resolves.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 1
+}

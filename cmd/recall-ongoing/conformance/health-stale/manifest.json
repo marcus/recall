@@ -1,0 +1,16 @@
+{
+  "case": "health-stale",
+  "description": "The recorded catalog's last complete scan finished six days before the response was generated, which is past ongoing's own 72-hour freshness rule \u2014 the rule under which a measurement satisfies no attention classification at all. Health reports degraded and says how old and against what, and the search still succeeds with complete coverage while saying the same thing in its diagnostics: the catalog answered completely, it is simply behind. Both ages are computed from the payload's own generatedAt and finishedAt, so this verdict does not depend on the clock of the machine replaying it and will read the same in ten years.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [
+    "/result/checked_at",
+    "/result/last_success_at",
+    "/result/candidates/*/observed_at",
+    "/result/diagnostics/elapsed_ms"
+  ],
+  "responses": 3
+}
