@@ -177,7 +177,9 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 
 		var msg mcpRequest
 		if err := json.Unmarshal(line, &msg); err != nil {
-			s.write(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: codeParse, Message: "message is not JSON-RPC"}})
+			if !s.write(runCtx, mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: codeParse, Message: "message is not JSON-RPC"}}) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 		if msg.JSONRPC != "2.0" || msg.Method == "" {
@@ -185,11 +187,13 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 				s.report("invalid notification: message must declare jsonrpc 2.0 and a method")
 				continue
 			}
-			s.write(mcpResponse{
+			if !s.write(runCtx, mcpResponse{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
 				Error:   &mcpError{Code: codeInvalidRequest, Message: "message must declare jsonrpc 2.0 and a method"},
-			})
+			}) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 		if msg.isNotification() {
@@ -200,22 +204,28 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 			continue
 		}
 		if msg.Method == "initialize" || msg.Method == "ping" {
-			s.write(s.dispatch(runCtx, msg))
+			if !s.write(runCtx, s.dispatch(runCtx, msg)) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 		if lifecycleErr := s.requireReady(); lifecycleErr != nil {
-			s.write(mcpResponse{JSONRPC: "2.0", ID: msg.ID, Error: lifecycleErr})
+			if !s.write(runCtx, mcpResponse{JSONRPC: "2.0", ID: msg.ID, Error: lifecycleErr}) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 		if !s.trySlot() {
-			s.write(mcpResponse{
+			if !s.write(runCtx, mcpResponse{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
 				Error: &mcpError{
 					Code:    codeServerBusy,
 					Message: fmt.Sprintf("server is busy: %d requests are already in flight", s.maxInFlight),
 				},
-			})
+			}) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 
@@ -223,11 +233,13 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 		if !s.register(msg.ID, cancel) {
 			cancel()
 			s.releaseSlot()
-			s.write(mcpResponse{
+			if !s.write(runCtx, mcpResponse{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
 				Error:   &mcpError{Code: codeInvalidRequest, Message: "request id is already in flight"},
-			})
+			}) {
+				return s.shutdown(cancelAll, &wg)
+			}
 			continue
 		}
 		wg.Add(1)
@@ -236,7 +248,7 @@ func (s *mcpServer) run(ctx context.Context, r io.Reader) error {
 			defer s.releaseSlot()
 			defer cancel()
 			defer s.unregister(msg.ID)
-			s.write(s.dispatch(requestCtx, msg))
+			s.write(requestCtx, s.dispatch(requestCtx, msg))
 		}()
 	}
 }
@@ -507,15 +519,28 @@ func (s *mcpServer) initialize(params json.RawMessage) (any, *mcpError) {
 	}, nil
 }
 
-// write serializes one message. The lock is what keeps two concurrent replies
-// from interleaving into a line no client can parse.
-func (s *mcpServer) write(msg mcpResponse) {
+// write applies bounded backpressure while the caller is still live. The
+// writer goroutine serializes encoding; this enqueue must never keep the read
+// loop or a request goroutine alive after its context has been cancelled.
+func (s *mcpServer) write(ctx context.Context, msg mcpResponse) bool {
 	if s.closed.Load() {
-		return
+		return false
+	}
+	// Preserve a response that can be accepted immediately, even when
+	// cancellation raced with completed work. Cancellation is the escape hatch
+	// for backpressure, not a reason to discard a response unnecessarily.
+	select {
+	case s.responses <- msg:
+		return true
+	default:
 	}
 	select {
 	case s.responses <- msg:
+		return true
+	case <-ctx.Done():
+		return false
 	case <-s.stopWriter:
+		return false
 	}
 }
 

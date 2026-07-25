@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -313,6 +314,87 @@ func TestMCPBlockedOutputCannotDefeatShutdownBound(t *testing.T) {
 	}
 	if !output.closed.Load() {
 		t.Fatal("shutdown timeout did not close blocked output")
+	}
+}
+
+func TestMCPSaturatedResponseQueueCannotDefeatShutdownBound(t *testing.T) {
+	const (
+		maxInFlight = 1
+		pingCount   = 10_000
+		shutdown    = 30 * time.Millisecond
+	)
+
+	output := newBlockingWriteCloser()
+	input, client := io.Pipe()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeMCP(ctx, input, output, MCPOptions{
+			Core:            &stubCore{},
+			MaxInFlight:     maxInFlight,
+			ShutdownTimeout: shutdown,
+		})
+	}()
+
+	saturated := make(chan struct{})
+	producerDone := make(chan error, 1)
+	go func() {
+		if _, err := io.WriteString(client,
+			"{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"+
+				"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n"); err != nil {
+			producerDone <- err
+			return
+		}
+		// One response is blocked in output.Write. The next
+		// maxInFlight+8 responses fill the bounded queue, and the following
+		// ping is consumed from stdin before the server blocks enqueueing its
+		// response. Reaching that write proves the exact saturation state.
+		for i := 0; i < pingCount; i++ {
+			if _, err := fmt.Fprintf(client,
+				"{\"jsonrpc\":\"2.0\",\"id\":\"ping-%d\",\"method\":\"ping\"}\n", i); err != nil {
+				producerDone <- err
+				return
+			}
+			if i == maxInFlight+8 {
+				close(saturated)
+			}
+		}
+		producerDone <- nil
+	}()
+
+	select {
+	case <-output.writeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("test did not block the output writer")
+	}
+	select {
+	case <-saturated:
+	case <-time.After(time.Second):
+		t.Fatal("test did not saturate the response queue")
+	}
+
+	began := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * shutdown):
+		t.Fatal("saturated response queue prevented bounded shutdown")
+	}
+	if elapsed := time.Since(began); elapsed > 8*shutdown {
+		t.Fatalf("saturated response queue held shutdown for %s", elapsed)
+	}
+	if !output.closed.Load() {
+		t.Fatal("shutdown timeout did not close saturated blocked output")
+	}
+
+	_ = client.Close()
+	select {
+	case <-producerDone:
+	case <-time.After(time.Second):
+		t.Fatal("input producer remained blocked after shutdown")
 	}
 }
 
