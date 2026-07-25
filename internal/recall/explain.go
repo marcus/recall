@@ -73,8 +73,14 @@ type FreshnessExplanation struct {
 	SourceRevision  string        `json:"source_revision,omitempty"`
 	IndexGeneration string        `json:"index_generation,omitempty"`
 	IndexModel      string        `json:"index_model,omitempty"`
-	ObservedAt      *time.Time    `json:"observed_at,omitempty"`
-	ConfirmedAt     *time.Time    `json:"confirmed_at,omitempty"`
+
+	// IndexConfig identifies the retrieval configuration the generation was
+	// built under. It travels with the result for the same reason it travels
+	// with health: a scoring change that nothing records is a ranking change
+	// nobody can attribute.
+	IndexConfig string     `json:"index_config,omitempty"`
+	ObservedAt  *time.Time `json:"observed_at,omitempty"`
+	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
 
 	// AsOfHonored records how the historical boundary was satisfied, when the
 	// request carried one.
