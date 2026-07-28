@@ -373,3 +373,93 @@ func TestScoresRejectsAResultForAnUnknownCase(t *testing.T) {
 		t.Fatal("accepted a result for a case the pack does not contain")
 	}
 }
+
+// A record reached through two source instances takes one result slot, and the
+// response says so. Scoring both of its roots as separate positions credits the
+// answer twice for one hit and measures everything behind it at a rank no
+// caller ever saw — which is how a fix that removed a duplicate read as a
+// ranking regression.
+func TestFusedViewsAreOneRankPosition(t *testing.T) {
+	c := eval.Case{
+		SchemaVersion:    eval.SchemaVersion,
+		CaseID:           "c",
+		Query:            "q",
+		Profile:          "smoke",
+		ExpectedBehavior: eval.BehaviorAnswer,
+	}
+	// Both views of the project are judged, as a pack grading evidence rather
+	// than results would write them, and so is a document further down.
+	judgments := []eval.Judgment{
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("project"), Relevance: eval.Authoritative, Required: true},
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("project-view"), Relevance: eval.Authoritative, Required: true},
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("doc"), Relevance: eval.Authoritative, Required: true},
+	}
+	ranked := roots("project", "project-view", "filler-1", "filler-2", "filler-3", "doc")
+
+	fused := eval.Score(c, judgments, eval.CaseResult{
+		CaseID:   "c",
+		Ranked:   ranked,
+		Behavior: eval.BehaviorAnswer,
+		Suppressions: []recall.Suppression{{
+			Reason:      recall.SuppressDuplicateView,
+			Count:       1,
+			LineageRoot: root("project-view"),
+			FusedInto:   root("project"),
+		}},
+	})
+	// Two records to find, both inside the caller's first five slots.
+	closeTo(t, "Recall@5", fused.Recall5.V, 1.0)
+
+	// Without the response saying they are one record, the document is scored
+	// at position six and the case looks like a miss.
+	split := eval.Score(c, judgments, eval.CaseResult{
+		CaseID: "c", Ranked: ranked, Behavior: eval.BehaviorAnswer,
+	})
+	closeTo(t, "Recall@5 unfused", split.Recall5.V, 2.0/3.0)
+
+	// Graded gain is the other half: a second view earns none of its own. The
+	// fused pair scores exactly what the same answer scores with the view never
+	// returned and never judged, which is lower than the split number above —
+	// that one was counting one record as two relevant hits, one of them at
+	// position two.
+	deduped := eval.Score(c, []eval.Judgment{
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("project"), Relevance: eval.Authoritative, Required: true},
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("doc"), Relevance: eval.Authoritative, Required: true},
+	}, eval.CaseResult{
+		CaseID:   "c",
+		Ranked:   roots("project", "filler-1", "filler-2", "filler-3", "doc"),
+		Behavior: eval.BehaviorAnswer,
+	})
+	closeTo(t, "nDCG@10", fused.NDCG10.V, deduped.NDCG10.V)
+	closeTo(t, "MRR@10", fused.MRR10.V, deduped.MRR10.V)
+}
+
+// The same mapping applies to evidence a pack forbids: a forbidden record
+// folded into a displayed result was still displayed, and reading the roots
+// literally would let fusion hide it.
+func TestFusedViewsCannotHideForbiddenEvidence(t *testing.T) {
+	c := eval.Case{
+		SchemaVersion:    eval.SchemaVersion,
+		CaseID:           "c",
+		Query:            "q",
+		Profile:          "smoke",
+		ExpectedBehavior: eval.BehaviorAnswer,
+	}
+	judgments := []eval.Judgment{
+		{SchemaVersion: 1, CaseID: "c", LineageRoot: root("secret-view"), Forbidden: true},
+	}
+	s := eval.Score(c, judgments, eval.CaseResult{
+		CaseID:   "c",
+		Ranked:   roots("shown"),
+		Behavior: eval.BehaviorAnswer,
+		Suppressions: []recall.Suppression{{
+			Reason:      recall.SuppressDuplicateView,
+			Count:       1,
+			LineageRoot: root("secret-view"),
+			FusedInto:   root("shown"),
+		}},
+	})
+	if !s.Forbidden5.OK || s.Forbidden5.V != 1 {
+		t.Errorf("Forbidden@5 = %+v, want a hit: the record was displayed under the other view", s.Forbidden5)
+	}
+}

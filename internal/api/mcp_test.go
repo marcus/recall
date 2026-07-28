@@ -669,3 +669,47 @@ func TestMCPToolResultFitsTheBudget(t *testing.T) {
 		})
 	}
 }
+
+// The tool result carries the same claim twice — once as text a model reads and
+// once as structure — and the two must agree about what corroborates. A record
+// reached through two source instances is one record: it has two members and
+// one independent unit, and the text follows the unit.
+func TestMCPFusedResultDoesNotClaimCorroboration(t *testing.T) {
+	core := &stubCore{query: recall.QueryResponse{
+		Outcome:  recall.OutcomeAnswered,
+		Coverage: recall.CoverageComplete,
+		Results: []recall.Result{{
+			Primary: recall.Candidate{Locator: recall.Locator{SourceID: "projects-attention", Local: "p-1"}},
+			Members: []recall.ClusterMember{
+				{LineageRoot: "uid-attention:p-1"},
+				{LineageRoot: "uid-projects:p-1"},
+			},
+			Explanation: recall.Explanation{
+				SourceID:      "projects-attention",
+				LineageRoot:   "uid-attention:p-1",
+				Corroboration: recall.CorroborationExplanation{IndependentUnits: 1},
+			},
+		}},
+		Suppressed: []recall.Suppression{{
+			Reason:      recall.SuppressDuplicateView,
+			Count:       1,
+			LineageRoot: "uid-projects:p-1",
+			FusedInto:   "uid-attention:p-1",
+		}},
+	}}
+	responses := runMCP(t, core,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"sidecar"}}}`,
+	)
+	var got callToolResult
+	decodeResult(t, responses["2"], &got)
+
+	text := got.Content[0].Text
+	if strings.Contains(text, "corroborated_by") {
+		t.Errorf("one record read twice claims corroboration in the tool text:\n%s", text)
+	}
+	if !strings.Contains(text, "Withheld 1 result(s): duplicate_view") {
+		t.Errorf("the withheld view is not reported to the model:\n%s", text)
+	}
+}

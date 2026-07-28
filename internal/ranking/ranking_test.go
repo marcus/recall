@@ -80,6 +80,7 @@ func title(s string) opt           { return func(c *recall.Candidate) { c.Title 
 func kind(t recall.RecordType) opt { return func(c *recall.Candidate) { c.RecordType = t } }
 func recordID(s string) opt        { return func(c *recall.Candidate) { c.SourceRecordID = s } }
 func fingerprint(s string) opt     { return func(c *recall.Candidate) { c.ContentFingerprint = s } }
+func revision(s string) opt        { return func(c *recall.Candidate) { c.SourceRevision = s } }
 
 func exact() opt {
 	return func(c *recall.Candidate) {

@@ -117,7 +117,48 @@ func Shape(resp recall.QueryResponse, budget recall.Budget, cost Cost) Shaped {
 		shaped.DroppedResults += len(results) - i
 		break
 	}
+	shaped.Suppressed = carried(shaped.Suppressed, shaped.Results)
 	return Shaped{Response: shaped, Tokens: tokens}
+}
+
+// carried drops the suppressions whose subject the shaped response no longer
+// holds.
+//
+// Only [recall.SuppressDuplicateView] can be one. It reports a view of a record
+// that is in the answer, named by FusedInto, so a budget that dropped that
+// result leaves it claiming a second view of something the caller never
+// received — the one shape of suppression that would read as more evidence
+// withheld than there was. Every other reason names a record withheld outright,
+// which stays true however the response was fitted, and none of them is dropped
+// here.
+//
+// It runs after the budget rather than before it, so a response is charged for
+// the lines the frame held when it was priced and prints no more than that.
+// Reconciling first would need the result set the reconciliation depends on.
+func carried(suppressed []recall.Suppression, results []recall.Result) []recall.Suppression {
+	shown := make(map[recall.LineageRoot]bool, len(results))
+	for _, r := range results {
+		shown[r.Explanation.LineageRoot] = true
+	}
+
+	keep := func(s recall.Suppression) bool {
+		return s.Reason != recall.SuppressDuplicateView || shown[s.FusedInto]
+	}
+	for _, s := range suppressed {
+		if keep(s) {
+			continue
+		}
+		// Copied rather than filtered in place: the slice is the caller's, and
+		// the unshaped response is still a legitimate view of the same run.
+		out := make([]recall.Suppression, 0, len(suppressed))
+		for _, s := range suppressed {
+			if keep(s) {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return suppressed
 }
 
 // starved reports whether the frame has to give way: it does not fit at all, or

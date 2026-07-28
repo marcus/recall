@@ -88,6 +88,23 @@ func (r *Ranker) selectResults(ordered []*cluster, req Request) Fusion {
 
 	out.Results = make([]recall.Result, 0, len(final))
 	for _, c := range final {
+		// Reported only for a cluster that is shown. A view of a record the
+		// caller never received is already accounted for by whatever withheld
+		// the cluster, and naming it twice would overstate what was held back.
+		for _, class := range c.viewClasses {
+			for _, g := range class[1:] {
+				out.Suppressed = append(out.Suppressed, recall.Suppression{
+					Reason: recall.SuppressDuplicateView,
+					// One slot, not one candidate. The group's candidates were
+					// already one record seen more than once and would never
+					// have been results of their own, so the answer is exactly
+					// one result shorter for each view folded into another.
+					Count:       1,
+					LineageRoot: g.root,
+					FusedInto:   c.explain.LineageRoot,
+				})
+			}
+		}
 		out.Results = append(out.Results, c.result())
 	}
 	slices.SortFunc(out.Suppressed, func(a, b recall.Suppression) int {
@@ -125,16 +142,30 @@ func (r *Ranker) diversify(kept []*cluster) (final []*cluster, demoted map[*clus
 	return append(head, tail...), demoted
 }
 
-// allSuppressed reports whether every lineage root in a cluster is one the host
-// has already shown. A cluster holding evidence the host has not seen is still
+// allSuppressed reports whether every record in a cluster is one the host has
+// already shown. A cluster holding evidence the host has not seen is still
 // worth showing, so suppression is all-or-nothing per cluster.
+//
+// Records, not roots: two views of one record are one thing, so showing either
+// one has shown it. Read root by root instead, a cluster whose displayed view
+// the host suppressed would keep its place on the strength of the other view's
+// root and re-display the record under the very view that was suppressed.
 func allSuppressed(c *cluster, suppress map[recall.LineageRoot]bool) bool {
-	for _, g := range c.groups {
-		if !suppress[g.root] {
+	for _, class := range c.viewClasses {
+		if !anySuppressed(class, suppress) {
 			return false
 		}
 	}
 	return true
+}
+
+func anySuppressed(class []*group, suppress map[recall.LineageRoot]bool) bool {
+	for _, g := range class {
+		if suppress[g.root] {
+			return true
+		}
+	}
+	return false
 }
 
 // fingerprints keys near-duplicate suppression, scoped by source.
@@ -181,8 +212,10 @@ func (f *Fusion) suppress(reason string, c *cluster) {
 }
 
 // result renders a cluster for the response. Members keep one entry per lineage
-// group: two members mean two records, and two candidates inside one member
-// mean one record seen twice.
+// group: two candidates inside one member mean one record seen twice, and two
+// members mean two roots — two records, unless one of them is reported as a
+// duplicate view of the other. What is independent evidence is the
+// corroboration count, never the member count.
 func (c *cluster) result() recall.Result {
 	members := make([]recall.ClusterMember, 0, len(c.groups))
 	for _, g := range c.groups {

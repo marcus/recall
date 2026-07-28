@@ -72,6 +72,24 @@ func TestEntityMatchingRefusesFalsePositives(t *testing.T) {
 			b:    cand("mail", "m-1", 1, kind(recall.RecordTask), fingerprint("fp-1")),
 		},
 		{
+			name: "same fingerprint and revision, different record ids",
+			why:  "two sources holding one text are still two records; a fingerprint alone is echoable",
+			a:    cand("docs", "a.md#1", 1, recordID("42"), fingerprint("fp-1"), revision("rev-1")),
+			b:    cand("mail", "m-1", 1, recordID("43"), fingerprint("fp-1"), revision("rev-1")),
+		},
+		{
+			name: "same record id and revision, different fingerprints",
+			why:  "two sources numbering from 1 agree on an identifier by accident, not on content",
+			a:    cand("docs", "a.md#1", 1, recordID("42"), fingerprint("fp-1"), revision("rev-1")),
+			b:    cand("mail", "m-1", 1, recordID("42"), fingerprint("fp-2"), revision("rev-1")),
+		},
+		{
+			name: "same record id and fingerprint, different revisions",
+			why:  "one catalog is one revision; disagreeing on it means these were not read together",
+			a:    cand("docs", "a.md#1", 1, recordID("42"), fingerprint("fp-1"), revision("rev-1")),
+			b:    cand("mail", "m-1", 1, recordID("42"), fingerprint("fp-1"), revision("rev-2")),
+		},
+		{
 			name: "alias shorter than the name",
 			why:  "an alias matches a whole name or not at all",
 			a:    cand("docs", "a.md#1", 1, kind(recall.RecordPerson), title("Marcus Vorwaller")),
@@ -193,5 +211,135 @@ func TestFingerprintMergeKeepsRecordsAddressable(t *testing.T) {
 	alone := single(t, fuse(t, r, request(cand("docs", "a.md#1", 1, fingerprint("fp-1")))))
 	if got.Score != alone.Score {
 		t.Errorf("score = %v, want %v", got.Score, alone.Score)
+	}
+}
+
+// Two source instances over one index — the same adapter twice, differing by a
+// filter — are not two records, and a caller asking one question must not spend
+// two of its slots on one project. Record identifier, content fingerprint and
+// source revision agreeing at once is what says so.
+func TestDuplicateViewsFuseAcrossSourceInstances(t *testing.T) {
+	r := newRanker(t, nil)
+	view := []opt{recordID("project_5668"), fingerprint("fp-1"), revision("scan-2c6e")}
+
+	// The better-ranked view of the record; the other trails it by a rank.
+	better := cand("docs", "project_5668", 1, view...)
+	worse := cand("mail", "project_5668", 2, view...)
+
+	got := fuse(t, r, request(better, worse))
+	res := single(t, got)
+
+	if res.Primary.CandidateID != better.CandidateID {
+		t.Errorf("primary = %s, want the better-ranked view %s",
+			res.Primary.CandidateID, better.CandidateID)
+	}
+	// Both roots stay: each is a true account of where the record was read, and
+	// either locator expands.
+	if len(res.Members) != 2 {
+		t.Errorf("members = %d, want both views expandable", len(res.Members))
+	}
+	// Fusing changes what is displayed, never what corroborates: a fingerprint
+	// already collapsed these into one unit and must not now count two.
+	if n := res.Explanation.Corroboration.IndependentUnits; n != 1 {
+		t.Errorf("independent units = %d, want 1: one record read twice", n)
+	}
+	alone := single(t, fuse(t, r, request(better)))
+	if res.Score != alone.Score {
+		t.Errorf("score = %v, want exactly %v: a second view is not more evidence",
+			res.Score, alone.Score)
+	}
+
+	// The view that did not take the slot is reported rather than vanishing,
+	// and names the result it was folded into so a reader can tell a record
+	// they still have from one they were denied.
+	want := recall.Suppression{
+		Reason:      recall.SuppressDuplicateView,
+		Count:       1,
+		LineageRoot: recall.LineageRoot("uid-mail:project_5668"),
+		FusedInto:   recall.LineageRoot("uid-docs:project_5668"),
+	}
+	if len(got.Suppressed) != 1 || got.Suppressed[0] != want {
+		t.Errorf("suppressed = %+v, want %+v", got.Suppressed, want)
+	}
+}
+
+// The count is result slots, not candidates. A view that arrived as a record
+// and a projection of it was always going to be one result, so folding it
+// costs the answer one slot and reporting two would overstate what is missing.
+func TestDuplicateViewCountsSlotsNotCandidates(t *testing.T) {
+	r := newRanker(t, nil)
+	view := []opt{recordID("project_5668"), fingerprint("fp-1"), revision("scan-2c6e")}
+
+	got := fuse(t, r, request(
+		cand("docs", "project_5668", 1, view...),
+		cand("mail", "project_5668", 2, view...),
+		// A third candidate projecting the weaker view: one more candidate in
+		// that lineage group, still the same one record.
+		cand("signals", "sig-1", 9, from("mail:project_5668")),
+	))
+	single(t, got)
+
+	if len(got.Suppressed) != 1 {
+		t.Fatalf("suppressed = %+v, want one withheld view", got.Suppressed)
+	}
+	if n := got.Suppressed[0].Count; n != 1 {
+		t.Errorf("count = %d, want 1: two candidates of one record cost one result slot", n)
+	}
+}
+
+// Pre-reply suppression is keyed on what the host has already shown, and a
+// fused cluster is one record under two roots. Naming either root has shown
+// the record, so the cluster must not come back under the other one.
+func TestDuplicateViewDoesNotDefeatLineageSuppression(t *testing.T) {
+	r := newRanker(t, nil)
+	view := []opt{recordID("project_5668"), fingerprint("fp-1"), revision("scan-2c6e")}
+	better := cand("docs", "project_5668", 1, view...)
+	worse := cand("mail", "project_5668", 2, view...)
+
+	// The second is the reviewer's case: the host suppressed the view that
+	// wins the slot, and the other view's root is the one nobody named.
+	for _, shown := range []recall.LineageRoot{"uid-mail:project_5668", "uid-docs:project_5668"} {
+		t.Run(string(shown), func(t *testing.T) {
+			req := request(better, worse)
+			req.Mode = recall.ModePreReply
+			req.SuppressLineages = []recall.LineageRoot{shown}
+
+			got := fuse(t, r, req)
+			if len(got.Results) != 0 {
+				t.Fatalf("results = %v, want none: the host has already been shown this record",
+					order(got))
+			}
+			if len(got.Suppressed) != 1 || got.Suppressed[0].Reason != recall.SuppressLineageSeen {
+				t.Errorf("suppressed = %+v, want one %s", got.Suppressed, recall.SuppressLineageSeen)
+			}
+		})
+	}
+}
+
+// Which view is shown is a function of the groups, not of the order the
+// adapters answered in.
+func TestDuplicateViewWinnerIsIndependentOfArrivalOrder(t *testing.T) {
+	r := newRanker(t, nil)
+	view := []opt{recordID("project_5668"), fingerprint("fp-1"), revision("scan-2c6e")}
+	better := cand("docs", "project_5668", 1, view...)
+	worse := cand("mail", "project_5668", 2, view...)
+
+	forward := single(t, fuse(t, r, request(better, worse)))
+	reverse := single(t, fuse(t, r, request(worse, better)))
+	if forward.Primary.CandidateID != reverse.Primary.CandidateID {
+		t.Errorf("primary = %s reversed, %s forward",
+			reverse.Primary.CandidateID, forward.Primary.CandidateID)
+	}
+
+	// Equal ranks leave score unable to decide, and the tie breaks on the root
+	// rather than on arrival.
+	tied := []opt{recordID("project_5668"), fingerprint("fp-2"), revision("scan-2c6e")}
+	a := cand("docs", "project_5668", 1, tied...)
+	b := cand("mail", "project_5668", 1, tied...)
+	first := single(t, fuse(t, r, request(a, b)))
+	second := single(t, fuse(t, r, request(b, a)))
+	if first.Primary.CandidateID != a.CandidateID || second.Primary.CandidateID != a.CandidateID {
+		t.Errorf("primary = %s and %s, want %s both times",
+			first.Primary.CandidateID, second.Primary.CandidateID, a.CandidateID)
 	}
 }

@@ -323,20 +323,30 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 		Cold:                  r.Cold,
 	}
 
-	s.NDCG10 = value(NDCGAt(r.Ranked, grades, ndcgK))
-	s.Recall5 = value(RecallAt(r.Ranked, required, recallK))
-	s.Recall20 = value(RecallAt(r.Ranked, required, recallDeepK))
-	s.MRR10 = value(MRRAt(r.Ranked, authoritative, mrrK))
+	// Ranking is measured over records, not roots: what a caller was handed is
+	// a list of positions, and two views of one record are one of them.
+	canon := records(r.Suppressions)
+	ranked := canonicalRoots(r.Ranked, canon)
+	grades = canonicalGrades(grades, canon)
+	required = canonicalSet(required, canon)
+	forbidden = canonicalSet(forbidden, canon)
+	useful = canonicalSet(useful, canon)
+	authoritative = canonicalSet(authoritative, canon)
+
+	s.NDCG10 = value(NDCGAt(ranked, grades, ndcgK))
+	s.Recall5 = value(RecallAt(ranked, required, recallK))
+	s.Recall20 = value(RecallAt(ranked, required, recallDeepK))
+	s.MRR10 = value(MRRAt(ranked, authoritative, mrrK))
 
 	// Success is measured against evidence the pack says is worth finding. A
 	// case with nothing useful to find cannot succeed or fail at finding it.
 	if len(useful) > 0 {
-		s.Success5 = boolValue(HitAt(r.Ranked, useful, successK))
+		s.Success5 = boolValue(HitAt(ranked, useful, successK))
 	}
 	// Likewise, a case that names no forbidden evidence was never at risk of
 	// surfacing any, and counting it as a clean pass would dilute the rate.
 	if len(forbidden) > 0 {
-		s.Forbidden5 = boolValue(HitAt(r.Ranked, forbidden, forbiddenK))
+		s.Forbidden5 = boolValue(HitAt(ranked, forbidden, forbiddenK))
 	}
 
 	if c.ExpectedBehavior.Valid() {
@@ -353,6 +363,88 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 }
 
 func value(v float64, ok bool) Value { return Value{V: v, OK: ok} }
+
+// records maps every lineage root the response reported as a folded view onto
+// the root of the result it was folded into.
+//
+// A `duplicate_view` suppression is the response saying two roots are one
+// record that took one result slot. The projection onto rank positions keeps
+// both — both are true accounts of where the record was read, and either one
+// expands — so scoring has to be told, or one caller-visible result is counted
+// twice: it takes two positions in the ranking, and every position behind it
+// is measured at a rank no caller ever saw.
+//
+// It is read from the run rather than declared by the pack because it is a
+// fact about the answer and not about the corpus. Both sides are mapped, so a
+// judgment naming either root credits or forbids the one slot displayed, and a
+// forbidden root folded into a shown result still reports as shown.
+func records(suppressions []recall.Suppression) map[recall.LineageRoot]recall.LineageRoot {
+	var canon map[recall.LineageRoot]recall.LineageRoot
+	for _, s := range suppressions {
+		if s.Reason != recall.SuppressDuplicateView || s.LineageRoot == "" || s.FusedInto == "" {
+			continue
+		}
+		if canon == nil {
+			canon = make(map[recall.LineageRoot]recall.LineageRoot, len(suppressions))
+		}
+		canon[s.LineageRoot] = s.FusedInto
+	}
+	return canon
+}
+
+// canonicalRoots rewrites a ranking in terms of records, keeping the first
+// position each one reached. A response that fused nothing is returned as it
+// stands.
+func canonicalRoots(ranked []recall.LineageRoot, canon map[recall.LineageRoot]recall.LineageRoot) []recall.LineageRoot {
+	if len(canon) == 0 {
+		return ranked
+	}
+	out := make([]recall.LineageRoot, 0, len(ranked))
+	seen := make(RootSet, len(ranked))
+	for _, root := range ranked {
+		if got, ok := canon[root]; ok {
+			root = got
+		}
+		if seen[root] {
+			continue
+		}
+		seen[root] = true
+		out = append(out, root)
+	}
+	return out
+}
+
+func canonicalSet(set RootSet, canon map[recall.LineageRoot]recall.LineageRoot) RootSet {
+	if len(canon) == 0 || len(set) == 0 {
+		return set
+	}
+	out := make(RootSet, len(set))
+	for root := range set {
+		if got, ok := canon[root]; ok {
+			root = got
+		}
+		out[root] = true
+	}
+	return out
+}
+
+// canonicalGrades takes the highest grade any view of a record was given: the
+// record is as relevant as the best account of it says it is.
+func canonicalGrades(grades Grades, canon map[recall.LineageRoot]recall.LineageRoot) Grades {
+	if len(canon) == 0 || len(grades) == 0 {
+		return grades
+	}
+	out := make(Grades, len(grades))
+	for root, g := range grades {
+		if got, ok := canon[root]; ok {
+			root = got
+		}
+		if prev, seen := out[root]; !seen || g > prev {
+			out[root] = g
+		}
+	}
+	return out
+}
 
 // coverageAccuracy checks degraded coverage was reported when and only when it
 // was true. Both directions are errors: claiming degradation that did not

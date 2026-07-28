@@ -200,9 +200,11 @@ type Result struct {
 	// Primary is the candidate chosen to represent the cluster.
 	Primary Candidate `json:"primary"`
 
-	// Members are the cluster's lineage groups. Two members mean two
-	// independent records; two candidates inside one member mean one record
-	// seen twice.
+	// Members are the cluster's lineage groups. Two candidates inside one
+	// member mean one record seen twice; two members mean two lineage roots,
+	// which is two records unless one of them is reported as a duplicate_view
+	// suppression. What is independent evidence is the corroboration count in
+	// the explanation, never the member count.
 	Members []ClusterMember `json:"members,omitempty"`
 
 	Explanation Explanation `json:"explanation"`
@@ -267,6 +269,14 @@ type Suppression struct {
 	Reason      string      `json:"reason"`
 	Count       int         `json:"count"`
 	LineageRoot LineageRoot `json:"lineage_root,omitempty"`
+
+	// FusedInto names the result this one was folded into, when the record is
+	// still in the answer under another view of it. It is what lets a consumer
+	// tell "withheld and gone" from "withheld because you already have it": a
+	// count alone cannot, and a reader that cannot tell has to assume the
+	// worse of the two. Set for SuppressDuplicateView and empty for every
+	// reason that withheld a record outright.
+	FusedInto LineageRoot `json:"fused_into,omitempty"`
 }
 
 // Suppression reasons.
@@ -275,4 +285,14 @@ const (
 	SuppressSensitivity = "sensitivity"
 	SuppressDuplicate   = "near_duplicate"
 	SuppressDiversity   = "diversity"
+
+	// SuppressDuplicateView names a second view of a record that is already in
+	// the answer: the same record identifier, content fingerprint, and source
+	// revision reached through a second source instance. It is the one reason
+	// whose record is still in the response, named by FusedInto — the view
+	// itself is a member of the cluster that absorbed it, until a response
+	// budget compresses that cluster to a pointer. What was withheld is the
+	// result slot, and saying so is what keeps a fused answer from reading as
+	// a corpus that held one copy.
+	SuppressDuplicateView = "duplicate_view"
 )

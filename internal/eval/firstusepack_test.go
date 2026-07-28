@@ -3,6 +3,7 @@ package eval_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -135,35 +136,48 @@ func TestFirstUseExpectedFailuresNameWhatTheyExcuseAndLeaveTheRestEnforced(t *te
 	}
 }
 
-// The two sidecar cases wait on different sets of tickets, and the pack is
-// only able to show movement on one ticket at a time if it says which
-// assertion belongs to which. This is the case that stops those two markings
-// from being flattened back into one.
-func TestFirstUseNaturalLanguageCaseSeparatesItsTwoTickets(t *testing.T) {
+// The two sidecar cases are the session's duplication finding, in its keyword
+// and its sentence form. td-87eecf fused two views of one catalog into one
+// result and both now hold, so the claims that were excused while it was open
+// are the ones that must stay declared: a count bound and a per-record bound
+// the fix is measured by, and which nothing else in the pack states.
+func TestFirstUseSidecarCasesStillClaimWhatTheDuplicateFixDelivered(t *testing.T) {
 	t.Parallel()
 	_, cases, _ := firstUseLoad(t)
 
+	want := map[string][]string{
+		"sidecar-004":         {"max_results_per_record"},
+		"sidecar-natural-006": {"max_results", "max_results_per_record"},
+	}
+	seen := map[string]bool{}
 	for _, c := range cases {
-		if c.CaseID != "sidecar-natural-006" {
+		claims, watched := want[c.CaseID]
+		if !watched {
 			continue
 		}
-		if c.ExpectedFail == nil {
-			t.Fatal("sidecar-natural-006 is no longer an expected failure")
+		seen[c.CaseID] = true
+		declared := c.Assertions.Declared()
+		for _, name := range claims {
+			if !declared[name] {
+				t.Errorf("case %q no longer declares %s, which is what the duplicate fix is measured by",
+					c.CaseID, name)
+			}
+			if c.ExpectedFail != nil && slices.Contains(c.ExpectedFail.Assertions, name) {
+				t.Errorf("case %q excuses %s again; it has held since td-87eecf", c.CaseID, name)
+			}
 		}
-		got := strings.Join(c.ExpectedFail.Assertions, ",")
-		if got != "max_results,max_results_per_record" {
-			t.Errorf("excused assertions = %q, want the count and the duplicate named "+
-				"separately so either ticket can show movement", got)
-		}
-		return
 	}
-	t.Fatal("sidecar-natural-006 is missing")
+	for id := range want {
+		if !seen[id] {
+			t.Errorf("case %q is missing", id)
+		}
+	}
 }
 
-// Two cases carry no expected-failure marking, and they are the reason the
-// pack is a regression guard rather than a bug list: they are what the session
-// found working, and the ranking changes this pack gates are what could break
-// them.
+// Four cases carry no expected-failure marking, and they are the reason the
+// pack is a regression guard rather than a bug list: two are what the session
+// found working, and two are what it found broken and a ticket has since
+// fixed. The ranking changes this pack gates are what could break either.
 func TestFirstUsePackGuardsWhatAlreadyWorks(t *testing.T) {
 	t.Parallel()
 	_, cases, _ := firstUseLoad(t)
@@ -174,9 +188,9 @@ func TestFirstUsePackGuardsWhatAlreadyWorks(t *testing.T) {
 			guards[c.CaseID] = true
 		}
 	}
-	for _, id := range []string{"bonnie-002", "fujifilm-003"} {
+	for _, id := range []string{"bonnie-002", "fujifilm-003", "sidecar-004", "sidecar-natural-006"} {
 		if !guards[id] {
-			t.Errorf("case %q is marked expected_fail; it passed in the session and must keep passing", id)
+			t.Errorf("case %q is marked expected_fail; it passes today and must keep passing", id)
 		}
 	}
 }

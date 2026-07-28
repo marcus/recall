@@ -355,9 +355,11 @@ func excerptIndent(kind recall.ExcerptKind) string {
 	}
 }
 
-// renderMembers shows the cluster's lineage groups. Two members mean two
-// independent records; two candidates inside one member mean one record seen
-// twice, and collapsing them would turn corroboration into repetition.
+// renderMembers shows the cluster's lineage groups. Two candidates inside one
+// member mean one record seen twice, and collapsing them would turn
+// corroboration into repetition. Two members mean two roots, which is two
+// records unless the suppression block reports one as a duplicate view of the
+// other; the corroborated count above is what says which.
 func renderMembers(o *out, members []recall.ClusterMember) {
 	for _, m := range members {
 		o.block("   ", "lineage "+string(m.LineageRoot))

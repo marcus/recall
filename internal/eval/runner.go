@@ -196,10 +196,13 @@ const defaultCaseLimit = 20
 
 // positions projects a cluster onto ranked positions.
 //
-// One position per independent record, not one per cluster: a cluster backed by
-// two distinct lineage roots contributed two pieces of evidence, and collapsing
-// them to one position would understate recall for exactly the fused results the
-// system exists to produce.
+// One position per lineage root the result displays, not one per cluster: a
+// cluster backed by two distinct records contributed two pieces of evidence,
+// and collapsing them to one position would understate recall for exactly the
+// fused results the system exists to produce. Two roots that are one record —
+// a view the response reported as `duplicate_view` — are the case this cannot
+// tell apart from here, and [Score] collapses them onto one position using
+// what the response said about them.
 func positions(res recall.Result) []recall.LineageRoot {
 	if len(res.Members) == 0 {
 		return []recall.LineageRoot{res.Explanation.LineageRoot}

@@ -554,3 +554,80 @@ func TestSanitizeDropsAnUnknownExcerptKind(t *testing.T) {
 		}
 	}
 }
+
+// A duplicate_view suppression is the one that names a record the response
+// still carries. A budget that dropped that result has to take the suppression
+// with it, or the response reports a second view of something the caller was
+// never handed — and a caller reading the block cannot tell that from a record
+// withheld outright.
+func TestShapeDropsSuppressionsForResultsItDropped(t *testing.T) {
+	resp := shapeable(3)
+	for i := range resp.Results {
+		resp.Results[i].Explanation.LineageRoot = recall.LineageRoot(fmt.Sprintf("uid:r%d", i))
+	}
+	resp.Suppressed = []recall.Suppression{
+		{Reason: recall.SuppressDuplicateView, Count: 1,
+			LineageRoot: "other:r0", FusedInto: "uid:r0"},
+		{Reason: recall.SuppressDuplicateView, Count: 1,
+			LineageRoot: "other:r2", FusedInto: "uid:r2"},
+		{Reason: recall.SuppressSensitivity, Count: 4},
+	}
+
+	// Room for the frame and one compressed result, and nothing else.
+	got := evidence.Shape(resp, recall.Budget{ResponseTokens: 30},
+		priced{frame: 20, full: 60, compressed: 10})
+
+	if len(got.Response.Results) != 1 || got.Response.DroppedResults != 2 {
+		t.Fatalf("kept %d results and dropped %d, want 1 and 2",
+			len(got.Response.Results), got.Response.DroppedResults)
+	}
+	var reasons []string
+	var roots []recall.LineageRoot
+	for _, s := range got.Response.Suppressed {
+		reasons = append(reasons, s.Reason)
+		roots = append(roots, s.LineageRoot)
+	}
+	if len(got.Response.Suppressed) != 2 {
+		t.Fatalf("suppressed = %v (%v), want the surviving view and the sensitivity count",
+			reasons, roots)
+	}
+	if got.Response.Suppressed[0].LineageRoot != "other:r0" {
+		t.Errorf("kept %q, want the view of the result that survived", roots[0])
+	}
+	if got.Response.Suppressed[1].Reason != recall.SuppressSensitivity {
+		t.Errorf("reasons = %v; a record withheld outright stays reported however the response was fitted",
+			reasons)
+	}
+
+	// The unshaped response is still a legitimate view of the same run.
+	if len(resp.Suppressed) != 3 {
+		t.Errorf("shaping edited the caller's response: %d suppressions left", len(resp.Suppressed))
+	}
+}
+
+// Compression takes the members with it, so the view is no longer carried —
+// but the record is, and that is what the suppression claims.
+func TestShapeKeepsSuppressionsForResultsItCompressed(t *testing.T) {
+	resp := shapeable(2)
+	for i := range resp.Results {
+		resp.Results[i].Explanation.LineageRoot = recall.LineageRoot(fmt.Sprintf("uid:r%d", i))
+		resp.Results[i].Members = []recall.ClusterMember{{LineageRoot: recall.LineageRoot(fmt.Sprintf("uid:r%d", i))}}
+	}
+	resp.Suppressed = []recall.Suppression{
+		{Reason: recall.SuppressDuplicateView, Count: 1, LineageRoot: "other:r1", FusedInto: "uid:r1"},
+	}
+
+	got := evidence.Shape(resp, recall.Budget{ResponseTokens: 45},
+		priced{frame: 20, full: 60, compressed: 10})
+
+	if len(got.Response.Results) != 2 {
+		t.Fatalf("kept %d results, want both compressed rather than dropped", len(got.Response.Results))
+	}
+	if got.Response.Results[1].Members != nil {
+		t.Fatal("the result was not compressed, so the case under test did not happen")
+	}
+	if len(got.Response.Suppressed) != 1 {
+		t.Errorf("suppressed = %+v, want the view kept: its record is still in the answer",
+			got.Response.Suppressed)
+	}
+}

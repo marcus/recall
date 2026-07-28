@@ -485,6 +485,42 @@ Lineage identity is declared, never inferred:
    a person is shown. Collapsing corroboration is safe in a way clustering is
    not: its only effect is a lower score.
 
+4. **Duplicate view.** Two candidates agreeing at once on `source_record_id`,
+   `content_fingerprint`, and `source_revision` are one record reached twice,
+   whatever their `source_uid`s. They cluster for display and collapse for
+   corroboration, and the view that does not take the result slot is reported
+   in `suppressed` with reason `duplicate_view`, keeping its own lineage root
+   and naming the result it was folded into in `fused_into`. The count is
+   result slots — one per folded view, whatever number of candidates that view
+   arrived as.
+
+   Two views are one record for every question asked of the cluster, not only
+   for display. Pre-reply suppression keyed on lineage roots reads them as one:
+   a host that has been shown either root has been shown the record, and the
+   cluster does not come back under the other. Scoring reads them as one
+   position: `fused_into` is what lets an evaluation credit a judgment naming
+   either root to the single slot the caller received, rather than counting one
+   result twice and measuring everything behind it at a rank nobody saw. A
+   response budget that drops the result drops the suppression with it, because
+   a withheld view of a record the caller never received would read as more
+   evidence held back than there was; one that compresses the result to a
+   pointer keeps it, and the folded view stops being expandable from the
+   response along with every other member.
+
+   This is the only cross-source agreement that reaches display, and it is
+   narrow deliberately. A source instance may be a view over another —
+   `projects` and `projects-attention` are one adapter over one catalog scan,
+   differing by a filter — and nothing in the two records distinguishes them, so
+   a caller asking one question spent two result slots on one project. Two
+   alternatives were considered: letting an instance declare in configuration
+   that it is a view of another, and simply not making both eligible in one
+   profile. The first adds vocabulary for a fact the records already state; the
+   second leaves the next overlapping pair to be found by hand. Three
+   simultaneous agreements are evidence, not a collision: an echoing source can
+   copy text, but copying the upstream record's native identifier and its
+   revision as well is being the same record. An adapter that knows two records
+   are one thing for a reason not listed here declares `entity_id`.
+
 The lineage root is the locator of the original record after following declared
 edges, expressed with `source_uid`. Edges are followed to a fixed depth
 (default 4).
@@ -795,8 +831,10 @@ Corroboration counts **units**, not lineage groups. Distinct lineage roots are
 not sufficient evidence of independence: two chunks of one document and two
 fingerprint-identical records have distinct roots but are one thing said once.
 Groups collapse into one unit when they share `source_uid` plus
-`source_record_id`, or `record_type` plus `content_fingerprint`. A unit's score
-is the maximum of its groups'.
+`source_record_id`, `record_type` plus `content_fingerprint`, or all of
+`source_record_id`, `content_fingerprint`, and `source_revision`. A unit's score
+is the maximum of its groups'. Only the last of the three also clusters for
+display; the reasoning is under Lineage above.
 
 ```text
 cluster_score = min(

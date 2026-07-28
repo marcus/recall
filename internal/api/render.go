@@ -61,11 +61,14 @@ func writeResultText(b *strings.Builder, rank int, r recall.Result) {
 		fmt.Fprintf(b, "  %s", oneLine(r.Primary.Title))
 	}
 	fmt.Fprintf(b, "\n   source=%s type=%s score=%.4f", r.Explanation.SourceID, r.Primary.RecordType, r.Score)
-	if len(r.Members) > 1 {
-		// Two members mean two independent records agreeing, which is a
-		// different thing from one record seen twice and is worth a reader's
-		// attention.
-		fmt.Fprintf(b, " corroborated_by=%d", len(r.Members))
+	if n := r.Explanation.Corroboration.IndependentUnits; n > 1 {
+		// Independent records agreeing is worth a reader's attention and is a
+		// different thing from one record seen twice. The corroboration count
+		// is what distinguishes them; the member count is not, because two
+		// members can be two chunks of one document or two views of one
+		// record, and this text would then contradict the structure it is a
+		// projection of.
+		fmt.Fprintf(b, " corroborated_by=%d", n)
 	}
 	b.WriteString("\n")
 	if r.Primary.Excerpt != "" {
