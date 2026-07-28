@@ -8,14 +8,16 @@ import (
 )
 
 // compareRelevance orders two clusters within one exactness partition: higher
-// score first, then the primary's locator and identity. The tail of the
-// comparison is a unique key, so no two clusters ever compare equal and the
-// order cannot depend on which adapter answered first.
+// score first, then the score-basis candidate's locator and identity. The
+// display representative is deliberately absent: choosing a more useful chunk
+// to show must not become a hidden reranker. The tail of the comparison is a
+// unique key, so no two clusters ever compare equal and the order cannot depend
+// on which adapter answered first.
 func compareRelevance(a, b *cluster) int {
 	return cmp.Or(
 		cmp.Compare(b.score, a.score),
-		cmp.Compare(a.primary.Locator.String(), b.primary.Locator.String()),
-		cmp.Compare(a.primary.CandidateID, b.primary.CandidateID),
+		cmp.Compare(a.scoreBasis.Locator.String(), b.scoreBasis.Locator.String()),
+		cmp.Compare(a.scoreBasis.CandidateID, b.scoreBasis.CandidateID),
 		cmp.Compare(a.explain.LineageRoot, b.explain.LineageRoot),
 	)
 }

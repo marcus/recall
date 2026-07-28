@@ -197,7 +197,10 @@ type SourceSummary struct {
 // Result is one cluster in final order: an entity or fact, the evidence
 // supporting it, and why it ranked where it did.
 type Result struct {
-	// Primary is the candidate chosen to represent the cluster.
+	// Primary is the candidate chosen to represent the cluster. For chunks of
+	// one document this may be a matched content chunk rather than the
+	// preview-only chunk that earned the record's score; Explanation names the
+	// score-producing evidence in that case.
 	Primary Candidate `json:"primary"`
 
 	// Members are the cluster's lineage groups. Two candidates inside one

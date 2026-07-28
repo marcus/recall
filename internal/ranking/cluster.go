@@ -56,7 +56,11 @@ type cluster struct {
 	// host has already been shown it.
 	viewClasses [][]*group
 
+	// primary is the display representative. scoreBasis is the candidate whose
+	// group earned the strongest unit's score and supplies the explanation.
+	// They normally agree; document-chunk representation may separate them.
 	primary       recall.Candidate
+	scoreBasis    recall.Candidate
 	explain       recall.Explanation
 	score         float64
 	exact         bool
@@ -270,15 +274,20 @@ func (r *Ranker) scoreCluster(c *cluster) {
 		c.score = capped
 	}
 
-	// The primary group of a cluster is its strongest unit's strongest group.
-	primary := c.units[0].groups[0]
+	// The score basis is the strongest unit's strongest group. It stays the
+	// score basis even when another chunk of that same document is a better
+	// thing to show: choosing a representative must not quietly rewrite the
+	// arithmetic that put the record here.
+	scoreBasis := c.units[0].groups[0]
 	for _, g := range c.units[0].groups {
-		if byStrength(g, primary) < 0 {
-			primary = g
+		if byStrength(g, scoreBasis) < 0 {
+			scoreBasis = g
 		}
 	}
-	c.primary = primary.primary
-	c.explain = primary.explain
+	representative := representativeGroup(c.units[0], scoreBasis)
+	c.primary = representative.primary
+	c.scoreBasis = scoreBasis.primary
+	c.explain = scoreBasis.explain
 	c.explain.Corroboration = recall.CorroborationExplanation{
 		IndependentUnits: corroborating,
 		Sources:          sortedNames(sources),
@@ -286,6 +295,40 @@ func (r *Ranker) scoreCluster(c *cluster) {
 		CapApplied:       capApplied,
 	}
 	c.explain.Score = c.score
+}
+
+// representativeGroup chooses what speaks for the strongest unit without
+// changing which group earned that unit's score.
+//
+// The preference is deliberately narrower than "matched beats preview". It
+// applies only to chunks of the same document in the same source. A preview
+// from tasks, ongoing, mail, or another structured source retains the ordinary
+// score-based representative; so does an empty ExcerptKind, which is a source
+// making no claim rather than a preview. Cross-source records and independent
+// documents remain separated by the existing unit and cluster boundaries.
+func representativeGroup(u unit, scoreBasis *group) *group {
+	basis := scoreBasis.primary
+	if basis.RecordType != recall.RecordDocument ||
+		basis.ExcerptKind != recall.ExcerptPreview ||
+		basis.SourceUID == "" ||
+		basis.SourceRecordID == "" {
+		return scoreBasis
+	}
+
+	representative := scoreBasis
+	for _, g := range u.groups {
+		candidate := g.primary
+		if candidate.RecordType != recall.RecordDocument ||
+			candidate.ExcerptKind != recall.ExcerptMatched ||
+			candidate.SourceUID != basis.SourceUID ||
+			candidate.SourceRecordID != basis.SourceRecordID {
+			continue
+		}
+		if representative == scoreBasis || byStrength(g, representative) < 0 {
+			representative = g
+		}
+	}
+	return representative
 }
 
 // corroborationOrder is the order units are offered to the corroboration

@@ -74,8 +74,9 @@ clean:
 # runs both.
 #
 # Both packs run, and a failure in either fails the target. smoke covers the
-# failure vocabulary a healthy corpus cannot produce; firstuse covers six real
-# queries over a pinned snapshot of the configured home profile, and is the
+# failure vocabulary a healthy corpus cannot produce; firstuse covers seven
+# observed queries, six over a pinned snapshot and one over a documented
+# synthetic reconstruction, and is the
 # gate every ranking and admission change has to pass. Run artifacts carry
 # excerpts, so they go to a temporary directory and never into the tree.
 #

@@ -438,6 +438,61 @@ func TestApplicationCorrelatesStableIdentifierToExactCandidate(t *testing.T) {
 	}
 }
 
+// The application core is the shared surface for CLI, API, MCP, and eval. A
+// ranking-only test is not enough for the document representative rule: source
+// identity stamping and response annotation happen here, after adapters answer.
+func TestApplicationShowsMatchedChunkWithoutReattributingDocumentScore(t *testing.T) {
+	headingRelevance, contentRelevance := 0.95, 0.40
+	headingObserved := time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC)
+	contentObserved := headingObserved.Add(time.Minute)
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{
+			cand("docs", "research.md#L1-L1", 1, func(c *recall.Candidate) {
+				c.SourceRecordID = "research.md"
+				c.ExcerptKind = recall.ExcerptPreview
+				c.Relevance = &headingRelevance
+				c.ObservedAt = &headingObserved
+			}),
+			cand("docs", "research.md#L20-L27", 2, func(c *recall.Candidate) {
+				c.SourceRecordID = "research.md"
+				c.ExcerptKind = recall.ExcerptMatched
+				c.Relevance = &contentRelevance
+				c.ObservedAt = &contentObserved
+			}),
+		}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("dentist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results = %d, want one clustered document", len(resp.Results))
+	}
+	got := resp.Results[0]
+	if got.Primary.Locator.Local != "research.md#L20-L27" {
+		t.Fatalf("primary = %s, want the matched content chunk", got.Primary.Locator.Local)
+	}
+	if got.Explanation.LineageRoot != "01UIDDOCS:research.md#L1-L1" ||
+		got.Explanation.LocalRank != 1 ||
+		got.Explanation.Relevance == nil ||
+		*got.Explanation.Relevance != headingRelevance {
+		t.Errorf("score basis = %+v, want the preview heading's scoring evidence",
+			got.Explanation)
+	}
+	if got.Explanation.Score != got.Score {
+		t.Errorf("explanation claims %v but result scored %v", got.Explanation.Score, got.Score)
+	}
+	if got.Explanation.Freshness.ObservedAt == nil ||
+		!got.Explanation.Freshness.ObservedAt.Equal(headingObserved) {
+		t.Errorf("score-basis observation = %v, want heading observation %v",
+			got.Explanation.Freshness.ObservedAt, headingObserved)
+	}
+	if len(got.Members) != 2 {
+		t.Errorf("members = %d, want both chunks retrievable", len(got.Members))
+	}
+}
+
 func checkpointManifest() recall.Manifest {
 	m := manifest(recall.RecordDocument)
 	m.Capabilities = append(m.Capabilities, recall.CapCheckpoint)

@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/marcus/recall/internal/lineage"
@@ -81,6 +82,9 @@ func kind(t recall.RecordType) opt { return func(c *recall.Candidate) { c.Record
 func recordID(s string) opt        { return func(c *recall.Candidate) { c.SourceRecordID = s } }
 func fingerprint(s string) opt     { return func(c *recall.Candidate) { c.ContentFingerprint = s } }
 func revision(s string) opt        { return func(c *recall.Candidate) { c.SourceRevision = s } }
+func excerptKind(k recall.ExcerptKind) opt {
+	return func(c *recall.Candidate) { c.ExcerptKind = k }
+}
 
 func exact() opt {
 	return func(c *recall.Candidate) {
@@ -592,6 +596,108 @@ func TestChunksOfOneRecordDoNotCorroborate(t *testing.T) {
 	}
 	if len(got.Members) != 2 {
 		t.Errorf("members = %d, want both chunks addressable", len(got.Members))
+	}
+}
+
+// A body-less heading is an excellent label and a poor answer. It may earn the
+// document's score — every query term can be concentrated in four words — but
+// a matched content chunk of that same record is the useful pointer to show.
+// Representation and scoring are separate decisions: the heading remains the
+// score basis, so the explanation never attributes its arithmetic to the
+// lower-scoring content chunk.
+func TestMatchedChunkRepresentsDocumentWithoutChangingScoreBasis(t *testing.T) {
+	r := newRanker(t, nil)
+	heading := cand("docs", "research.md#L1-L1", 1,
+		recordID("research.md"),
+		excerptKind(recall.ExcerptPreview),
+		relevance(0.95),
+	)
+	content := cand("docs", "research.md#L20-L27", 2,
+		recordID("research.md"),
+		excerptKind(recall.ExcerptMatched),
+		relevance(0.40),
+	)
+
+	got := single(t, fuse(t, r, request(heading, content)))
+	headingOnly := single(t, fuse(t, r, request(heading)))
+
+	if got.Primary.Locator != content.Locator {
+		t.Fatalf("primary = %s, want matched content chunk %s", got.Primary.Locator, content.Locator)
+	}
+	if got.Score != headingOnly.Score {
+		t.Errorf("score = %v, want heading-derived %v: representation must not rerank the record",
+			got.Score, headingOnly.Score)
+	}
+	if got.Explanation.LineageRoot != "uid-docs:research.md#L1-L1" ||
+		got.Explanation.LocalRank != heading.LocalRank ||
+		got.Explanation.Relevance == nil ||
+		*got.Explanation.Relevance != *heading.Relevance {
+		t.Errorf("score basis = %+v, want the heading's lineage, rank, and relevance",
+			got.Explanation)
+	}
+	if got.Explanation.Score != got.Score {
+		t.Errorf("explanation claims %v but result scored %v", got.Explanation.Score, got.Score)
+	}
+	if len(got.Members) != 2 {
+		t.Errorf("members = %d, want both chunks retrievable", len(got.Members))
+	}
+}
+
+func TestDocumentRepresentativePreferenceIsNarrow(t *testing.T) {
+	r := newRanker(t, nil)
+	tests := []struct {
+		name string
+		kind recall.RecordType
+		from recall.ExcerptKind
+		want string
+	}{
+		{
+			name: "structured record keeps score winner",
+			kind: recall.RecordTask,
+			from: recall.ExcerptPreview,
+			want: "record#label",
+		},
+		{
+			name: "empty excerpt kind is neutral",
+			kind: recall.RecordDocument,
+			from: "",
+			want: "record#label",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := single(t, fuse(t, r, request(
+				cand("docs", "record#label", 1,
+					kind(tc.kind), recordID("record"), excerptKind(tc.from), relevance(0.95)),
+				cand("docs", "record#content", 2,
+					kind(tc.kind), recordID("record"), excerptKind(recall.ExcerptMatched), relevance(0.40)),
+			)))
+			if got.Primary.Locator.Local != tc.want {
+				t.Errorf("primary = %s, want score winner %s", got.Primary.Locator.Local, tc.want)
+			}
+		})
+	}
+}
+
+func TestDocumentRepresentativeDoesNotBreakScoreTie(t *testing.T) {
+	r := newRanker(t, nil)
+	pool := []recall.Candidate{
+		cand("docs", "z.md#L1-L1", 1,
+			recordID("z.md"), excerptKind(recall.ExcerptPreview), relevance(0.5)),
+		cand("docs", "z.md#L20-L25", 2,
+			recordID("z.md"), excerptKind(recall.ExcerptMatched), relevance(0.2)),
+		cand("docs", "z.md#L10-L15", 1,
+			recordID("other.md"), excerptKind(recall.ExcerptMatched), relevance(0.5)),
+	}
+
+	want := []string{"docs:z.md#L20-L25", "docs:z.md#L10-L15"}
+	reversed := slices.Clone(pool)
+	slices.Reverse(reversed)
+	for _, in := range [][]recall.Candidate{pool, reversed} {
+		got := fuse(t, r, request(in...))
+		if order := order(got); !reflect.DeepEqual(order, want) {
+			t.Errorf("order = %v, want %v: display representative became a tie-breaker", order, want)
+		}
 	}
 }
 

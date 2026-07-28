@@ -298,10 +298,11 @@ func (a *App) derivations(plan source.Plan) map[recall.SourceUID]recall.SourceUI
 
 // annotate fills the explanation fields ranking cannot know.
 //
-// Freshness is a source-health fact, not a ranking one, so fusion leaves it
-// empty. Without this the freshness block would be missing from every
-// explanation, and invariant 6 would fail for exactly the fields that say
-// whether an answer is current.
+// Health-level freshness is an application fact, not a ranking one, so fusion
+// cannot fill the mode or index identity. Candidate-level timestamps already
+// belong to the score basis selected by ranking and stay untouched here: a
+// document may display a different matched chunk, and its timestamps must not
+// be reattributed as the evidence that earned the score.
 func (a *App) annotate(results []recall.Result, plan source.Plan, searches []searchResult) {
 	byUID := map[recall.SourceUID]searchResult{}
 	for _, s := range searches {
@@ -318,8 +319,6 @@ func (a *App) annotate(results []recall.Result, plan source.Plan, searches []sea
 		e.Freshness.IndexGeneration = s.health.IndexGeneration
 		e.Freshness.IndexModel = s.health.IndexModel
 		e.Freshness.IndexConfig = s.health.IndexConfig
-		e.Freshness.ObservedAt = results[i].Primary.ObservedAt
-		e.Freshness.ConfirmedAt = results[i].Primary.ConfirmedAt
 		e.Freshness.AsOfHonored = s.target.Manifest.AsOfSupport
 	}
 	_ = plan

@@ -45,21 +45,19 @@ answer/abstain/fail, unavailable/denied/partial/timed-out sources, expansion
 and locator revision checks, `as_of` against a source declaring `none`, the
 config trust boundary, and suppression.
 
-**First-use pack.** Committed, network-free, and not synthetic. Six queries an
-agent put to Recall on 2026-07-27 on its first use of the tool, against the
-configured home profile, plus the four things that session found wrong. Three
-cases are enforced outright — a single-term query reaching a person's profile, a
-clean abstention with complete coverage, and the excerpt case td-b94f6e closed,
-which asserts that the text shown for a hit contains the term that produced it.
-That last claim is made twice, on the two cases whose matching term sits in the
-middle of its chunk rather than at the head, because it is the one defect here
-that no ranking metric can see. Three cases remain marked `expected_fail`
-against the tickets that fix them: a document that uses a word in an example
-outranking the task that is one, one
-record rendered as two results by two source instances over one catalog, and a
-natural-language phrasing returning several times the results its keyword form
-does. A marking comes off the case the moment it stops failing; the
-`expected_failures_current` gate fails the run otherwise.
+**First-use pack.** Committed and network-free. Six queries an agent put to
+Recall on 2026-07-27 on its first use of the tool, against the configured home
+profile, plus one query sampled from the live profile while verifying a ranking
+fix the next day. The first six use pinned real records. The seventh uses an
+explicitly documented minimal synthetic document shape so the regression does
+not copy personal medical or geographic context from the live document. All seven cases are
+enforced outright. They cover a single-term profile hit, a clean abstention,
+cross-source relevance, excerpt selection, duplicate source views, sentence
+term coverage, and the matched chunk that should represent a document whose
+score was earned by a body-less heading. The excerpt assertions state what no
+ranking metric can: whether the text handed to the caller carries useful
+matched content. An `expected_fail` marking comes off the moment its defect is
+fixed; `expected_failures_current` fails if a stale marking remains.
 
 Its corpus is **pinned and committed**, which the development pack's is not, and
 the reason is what it gates. Every change to ranking or admission has to pass
@@ -69,12 +67,14 @@ tree: documents are `git show 3c9b4c6:<path>` from clara-home, chosen because
 that is the revision of `profile/TOOLS.md` holding the line the excerpt case is
 about, which is gone from the file today. Tasks and project records are real
 CLI and API output captured the same day and replayed. The corpus is trimmed to
-what the six cases need and scrubbed of anything they do not; `eval/packs/
+what the seven cases need and scrubbed of anything they do not; `eval/packs/
 firstuse/sources/config.toml` records exactly what was kept, what was replaced,
-and why. It is real prose nobody wrote to be retrieved, which is the one
-structural defence against fixtures tuned to rank well, and it is small enough
-that its ranking numbers are a regression baseline rather than a claim about
-retrieval quality.
+and why. Except for the documented body-less-heading reconstruction, it is real
+prose nobody wrote to be retrieved, which is the one structural defence against
+fixtures tuned to rank well. The reconstruction is intentionally minimal,
+region-neutral, and contains no personal medical detail. The corpus is small
+enough that its ranking numbers are a regression baseline rather than a claim
+about retrieval quality.
 
 **Development pack.** Real questions from the configured system, over the two
 sources of the first vertical slice: indexed project documents and live
@@ -253,7 +253,7 @@ most result slots one record may occupy
 substrings a named result's excerpt must contain
 ```
 
-The last four came with the first-use pack, because they are what its six
+The last four came with the first-use pack, because they are what its seven
 queries are about and no ranking metric can state any of them. Graded metrics
 score the shape of a whole list, so none of them says which single record is
 the answer. A count is not a rank: the caller pays for every result, and a
@@ -405,7 +405,7 @@ done
 
 A change to ranking or admission has to pass that target. The smoke pack covers
 the failure vocabulary a healthy corpus cannot produce; the first-use pack
-covers six real queries whose answers a person checked, which is the only thing
+covers seven observed queries whose answers a person checked, which is the only thing
 that catches a change improving synthetic retrieval while making a real
 question worse.
 

@@ -221,8 +221,12 @@ degradation, and it is not an abstention either: what the corpus said is
 decided before shaping. See Response Budget.
 
 Each result carries its primary candidate, cluster members with lineage roots,
-a structured score explanation, and a locator. Leading results include
-excerpts; trailing results compress to one line plus locator. The same
+a structured score explanation, and a locator. The primary is the record's
+display representative; the explanation names the evidence that produced its
+score. Those are normally the same candidate. They can differ when one
+document's preview-only chunk earned the record's score but another chunk of
+that same document carries a matched excerpt worth showing. Leading results
+include excerpts; trailing results compress to one line plus locator. The same
 structure serializes to JSON and renders as tiered text. Neither surface gets
 extra fields, and neither may assert what the structure does not say.
 
@@ -822,7 +826,7 @@ the ordering it had before the field existed.
 ### 3. Lineage Grouping
 
 Group candidates by lineage root. Within a group keep the best `local_rank` per
-source and select a primary candidate: highest source prior, ties broken by
+source and select a score-basis candidate: highest source prior, ties broken by
 locator sort for determinism.
 
 ```text
@@ -858,6 +862,17 @@ Groups collapse into one unit when they share `source_uid` plus
 `source_record_id`, `content_fingerprint`, and `source_revision`. A unit's score
 is the maximum of its groups'. Only the last of the three also clusters for
 display; the reasoning is under Lineage above.
+
+The strongest unit still decides the cluster score and score explanation.
+Normally its strongest group also represents the result. One narrow display
+rule applies to document chunks: when that group offers only a `preview` and a
+different chunk of the same `source_uid` plus `source_record_id` offers a
+`matched` excerpt, the strongest such matched chunk represents the document.
+The preview chunk still earns the score and remains in the members, so no
+heading term becomes unreachable and no score is attributed to evidence that
+did not produce it. Empty `excerpt_kind` is neutral, not a preview. The rule
+does not cross source-record boundaries and does not apply to structured
+records.
 
 ```text
 cluster_score = min(

@@ -24,12 +24,15 @@ import (
 
 const firstUsePackRel = "../../eval/packs/firstuse"
 
-// firstUseQueries is the session of 2026-07-27, verbatim.
+// firstUseQueries preserves the six questions from the 2026-07-27 first-use
+// session plus the live `retina` query sampled while verifying a ranking fix
+// the next day.
 //
 // It is written out here so that editing a query is a test change and not a
 // quiet one. A real question reformulated until it passes deletes the finding
-// the pack exists to preserve, and these six are the whole reason the pack is
-// not synthetic.
+// the pack exists to preserve. The first six cases use pinned real records;
+// the seventh deliberately reconstructs its observed failure with a synthetic
+// document that carries no personal context from the live source.
 var firstUseQueries = map[string]string{
 	"dentist-001":         "dentist",
 	"bonnie-002":          "bonnie",
@@ -37,6 +40,7 @@ var firstUseQueries = map[string]string{
 	"sidecar-004":         "sidecar",
 	"blog-005":            "blog",
 	"sidecar-natural-006": "what is the sidecar project for",
+	"retina-heading-007":  "retina",
 }
 
 func firstUseLoad(t *testing.T) (*eval.Pack, []eval.Case, []eval.Judgment) {
@@ -81,9 +85,9 @@ func TestFirstUsePackLoadsAndValidates(t *testing.T) {
 	}
 }
 
-// The six queries are the pack's subject. Quietly editing one until it passes
+// The seven observed queries are the pack's subject. Quietly editing one until it passes
 // would leave the pack green and the finding gone.
-func TestFirstUsePackAsksTheSessionsQuestions(t *testing.T) {
+func TestFirstUsePackAsksTheObservedQuestions(t *testing.T) {
 	t.Parallel()
 	_, cases, _ := firstUseLoad(t)
 
@@ -93,11 +97,11 @@ func TestFirstUsePackAsksTheSessionsQuestions(t *testing.T) {
 	for _, c := range cases {
 		want, known := firstUseQueries[c.CaseID]
 		if !known {
-			t.Errorf("case %q is not one of the session's queries", c.CaseID)
+			t.Errorf("case %q is not one of the recorded queries", c.CaseID)
 			continue
 		}
 		if c.Query != want {
-			t.Errorf("case %q asks %q, the session asked %q", c.CaseID, c.Query, want)
+			t.Errorf("case %q asks %q, the recorded query was %q", c.CaseID, c.Query, want)
 		}
 	}
 }
@@ -194,6 +198,54 @@ func TestFirstUsePackGuardsWhatAlreadyWorks(t *testing.T) {
 	for _, id := range []string{"bonnie-002", "fujifilm-003", "sidecar-004", "sidecar-natural-006"} {
 		if !guards[id] {
 			t.Errorf("case %q is marked expected_fail; it passes today and must keep passing", id)
+		}
+	}
+}
+
+func TestFirstUseBodylessHeadingCaseKeepsItsPrivacyAndRegressionShape(t *testing.T) {
+	t.Parallel()
+	_, cases, _ := firstUseLoad(t)
+
+	const (
+		caseID = "retina-heading-007"
+		root   = recall.LineageRoot("E7X8CPNFN4YRK81H:research/retina-specialists.md#L1-L1")
+	)
+	var found *eval.Case
+	for i := range cases {
+		if cases[i].CaseID == caseID {
+			found = &cases[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("case %q is missing", caseID)
+	}
+	if found.Assertions == nil || !slices.Equal(
+		found.Assertions.ExcerptContains[root],
+		[]string{"fellowship-trained", "retina"},
+	) {
+		t.Errorf("case excerpt assertion = %+v, want matched content on the score-basis root",
+			found.Assertions)
+	}
+	if !strings.Contains(found.Notes, "BEFORE") || !strings.Contains(found.Notes, "AFTER") {
+		t.Error("case note does not preserve its measured before/after")
+	}
+
+	raw, err := os.ReadFile(filepath.Join(firstUsePackRel, "sources", "clara-home",
+		"research", "retina-specialists.md"))
+	if err != nil {
+		t.Fatalf("read body-less-heading fixture: %v", err)
+	}
+	text := string(raw)
+	if !strings.HasPrefix(text, "# Retina Specialists — Drivable Range\n\n## Nearby area\n\n###") {
+		t.Errorf("fixture no longer begins with two body-less heading chunks:\n%s", text)
+	}
+	if strings.Count(strings.ToLower(text), "drivable") != 1 {
+		t.Error("drivable must remain a heading-only term")
+	}
+	for _, personal := range []string{"bonnie", "boise"} {
+		if strings.Contains(strings.ToLower(text), personal) {
+			t.Errorf("synthetic fixture contains personal context %q", personal)
 		}
 	}
 }

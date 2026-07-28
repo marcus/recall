@@ -2,9 +2,12 @@ package recall
 
 import "time"
 
-// Explanation is why a result ranked where it did. It is a structure, not a
-// rendered string: text output derives from it, and evaluation gates assert on
-// its fields.
+// Explanation is why a result ranked where it did. Its source, rank, signals,
+// prior, relevance, lineage, and freshness describe the score-producing
+// evidence, which may differ from Result.Primary when a more useful chunk of
+// that same document is chosen to represent the record. It is a structure, not
+// a rendered string: text output derives from it, and evaluation gates assert
+// on its fields.
 //
 // Every configured value that affected a result appears here. A setting that
 // cannot appear in an explanation does not exist, and internal/explain has a

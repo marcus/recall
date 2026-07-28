@@ -637,6 +637,57 @@ func TestExcerptShowsTheSpanThatMatched(t *testing.T) {
 	}
 }
 
+// A heading immediately followed by another heading is still an addressable
+// chunk. It names the document and can be the densest lexical hit, but it has
+// no body to answer with. The adapter must keep it reachable and distinguish
+// its preview from a later chunk whose body actually matched; fusion uses that
+// distinction when choosing which chunk speaks for the document.
+func TestBodylessHeadingAndMatchedContentStayDistinguishable(t *testing.T) {
+	t.Parallel()
+	root := cleanCorpus(t)
+	dir := filepath.Join(root, "research")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create research directory: %v", err)
+	}
+	body := "# Retina specialists — drivable range\n\n" +
+		"## Boise area\n\n" +
+		"### Best first call\n\n" +
+		"The practice has a fellowship-trained retina surgeon and an emergency policy.\n"
+	if err := os.WriteFile(filepath.Join(dir, "specialists.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write document: %v", err)
+	}
+	a, _ := newAdapter(t, root, nil)
+
+	resp := search(t, a, "retina")
+	var preview, matched bool
+	for _, c := range resp.Candidates {
+		if c.SourceRecordID != "research/specialists.md" {
+			continue
+		}
+		switch c.ExcerptKind {
+		case recall.ExcerptPreview:
+			preview = preview || c.Locator.Local == "research/specialists.md#L3-L3"
+		case recall.ExcerptMatched:
+			matched = matched || strings.Contains(strings.ToLower(c.Excerpt), "retina")
+		}
+	}
+	if !preview || !matched {
+		t.Fatalf("retina candidates preview=%v matched=%v; want the body-less heading and content",
+			preview, matched)
+	}
+
+	// "drivable" appears only in the H1. Descendant chunks inherit that
+	// heading path, so the record remains reachable even though none can claim
+	// a matched body excerpt.
+	headingOnly := search(t, a, "drivable")
+	if len(headingOnly.Candidates) == 0 {
+		t.Fatal("heading-only term became unreachable")
+	}
+	if firstFrom(t, headingOnly, "research/specialists.md").ExcerptKind != recall.ExcerptPreview {
+		t.Error("heading-only query claimed a matched body excerpt")
+	}
+}
+
 // TestExcerptIsStableAcrossSearches. Eval runs compare excerpts between runs,
 // so the same query against the same generation has to select the same window.
 func TestExcerptIsStableAcrossSearches(t *testing.T) {
