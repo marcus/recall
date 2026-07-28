@@ -144,3 +144,50 @@ func TestRelevanceOverCountsIsNumberBlindOnceResolved(t *testing.T) {
 		t.Errorf("unresolved relevance = %v, want 0", got)
 	}
 }
+
+// Findings from the independent review of this rule, each one an input the
+// original tests did not cover.
+func TestNumberVariantsRefuseTheReviewedFalseMerges(t *testing.T) {
+	t.Parallel()
+	// "lens" is not a plural, and "len" is a word every corpus near code holds.
+	if got := recall.NumberVariants("lens"); slices.Contains(got, "len") {
+		t.Errorf("NumberVariants(\"lens\") = %v, must not reach a length", got)
+	}
+	if got := recall.NumberVariants("news"); slices.Contains(got, "new") {
+		t.Errorf("NumberVariants(\"news\") = %v, must not reach \"new\"", got)
+	}
+	// A short -ies word is an -s plural of an -ie word, not a -y one.
+	for _, tc := range []struct{ query, want, unwanted string }{
+		{"ties", "tie", "ty"},
+		{"lies", "lie", "ly"},
+		{"dies", "die", "dy"},
+	} {
+		got := recall.NumberVariants(tc.query)
+		if !slices.Contains(got, tc.want) {
+			t.Errorf("NumberVariants(%q) = %v, missing %q", tc.query, got, tc.want)
+		}
+		if slices.Contains(got, tc.unwanted) {
+			t.Errorf("NumberVariants(%q) = %v, must not contain %q", tc.query, got, tc.unwanted)
+		}
+	}
+	// The -y rule still applies where the word is long enough to be one.
+	if got := recall.NumberVariants("cities"); !slices.Contains(got, "city") {
+		t.Errorf("NumberVariants(\"cities\") = %v, missing \"city\"", got)
+	}
+}
+
+// A term repeated in a query is probed once: holds() is a scan of a source's
+// whole vocabulary, and walking it twice for one answer is pure cost.
+func TestResolveTermVariantsProbesARepeatedTermOnce(t *testing.T) {
+	t.Parallel()
+	probes := 0
+	holds := func(string) bool { probes++; return false }
+	recall.ResolveTermVariants([]string{"zxqv", "zxqv", "zxqv"}, holds)
+	first := probes
+
+	probes = 0
+	recall.ResolveTermVariants([]string{"zxqv"}, holds)
+	if probes != first {
+		t.Errorf("three copies of one term cost %d probes, one costs %d", first, probes)
+	}
+}

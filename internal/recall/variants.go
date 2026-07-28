@@ -11,13 +11,17 @@ import "strings"
 // NumberVariantWeight is the share of a term's own weight that a number variant
 // of it contributes to a source's LOCAL score.
 //
-// Half, so that the caller's own spelling always wins its own query: a record
-// carrying "goldeneyes" is found by "goldeneye" and still ranks below one
-// carrying "goldeneye", which is the ordering a caller who typed the singular
-// expects. It is deliberately not applied to [Relevance] — a plural is exactly
-// as much ABOUT the query as the singular is, and relevance is the one number
-// compared across sources, so discounting it there would export a ranking
-// opinion as a measurement.
+// Half, so that a term the caller spelled the corpus's way outweighs one the
+// corpus spells differently. Within one source the gate means the two spellings
+// never compete — a source holding "goldeneye" never expands it, so no record
+// is reached by both — and the discount is what orders a MULTI-term query:
+// "goldeneye photos" against a corpus that writes "goldeneyes" and "photos"
+// scores the term it has as written above the one it does not.
+//
+// It is deliberately not applied to [Relevance] — a plural is exactly as much
+// ABOUT the query as the singular is, and relevance is the one number compared
+// across sources, so discounting it there would export a ranking opinion as a
+// measurement.
 const NumberVariantWeight = 0.5
 
 // minVariantRunes is the shortest token that may be derived from or derived to.
@@ -81,16 +85,42 @@ func NumberVariants(term string) []string {
 	// this rule does damage: "notes" would yield "not", which is common enough
 	// in any English corpus to match everything.
 	switch {
-	case strings.HasSuffix(term, "ies"):
+	case strings.HasSuffix(term, "ies") && len(term) >= minIESRunes:
 		add(strings.TrimSuffix(term, "ies") + "y")
 	case strings.HasSuffix(term, "es") && sibilantEnding(strings.TrimSuffix(term, "es")):
 		add(strings.TrimSuffix(term, "es"))
 		add(strings.TrimSuffix(term, "s"))
-	case strings.HasSuffix(term, "s") && !latinSingular(term):
+	case strings.HasSuffix(term, "s") && !latinSingular(term) && !nonPlural[term]:
 		add(strings.TrimSuffix(term, "s"))
 	}
 	return out
 }
+
+// minIESRunes is the shortest word the -ies rule may rewrite.
+//
+// Below it the rule is describing the wrong word: "ties" and "lies" are "tie"
+// and "lie" with an -s, not "ty" and "ly" with an -ies, and the unguarded rule
+// produced the latter and then found nothing. Six characters is where the -ies
+// spelling starts being the -y-to-ies rule — "cities", "entries", "policies" —
+// and anything shorter falls through to the plain -s case, which is right for
+// all of them.
+const minIESRunes = 6
+
+// nonPlural names the -s words whose trailing s is not a plural marker AND
+// whose stem is itself an ordinary English word, which is the pair that makes
+// the derivation damaging rather than merely useless.
+//
+// "lens" is the case that matters: derive "len" and, in any corpus near code,
+// a query for a camera lens matches every mention of a length. "news" gives
+// "new" the same way. Everything else this rule can produce is a fragment —
+// "analysi", "statu", "thi" — which no corpus holds, so the lookup fails and
+// costs nothing.
+//
+// The list is deliberately two words long and is not trying to be a dictionary.
+// It names the cases observed to do damage; a third one gets added when it is
+// observed, not guessed at, because a long list of exceptions is a stemmer
+// wearing a different hat.
+var nonPlural = map[string]bool{"lens": true, "news": true}
 
 // latinSingular reports the -s endings that are not plural markers, so nothing
 // is stripped off them.
@@ -152,8 +182,17 @@ type TermVariants map[string][]string
 // the other way is admitted beside the ones that spell it the caller's way.
 func ResolveTermVariants(terms []string, holds func(string) bool) TermVariants {
 	var out TermVariants
+	// A term repeated in a query is probed once. holds() is a scan of the
+	// source's whole vocabulary in every adapter that implements it, and a
+	// query naming the same absent word twice would walk the corpus twice for
+	// the same answer.
+	probed := make(map[string]bool, len(terms))
 	for _, term := range terms {
-		if _, done := out[term]; done || holds(term) {
+		if probed[term] {
+			continue
+		}
+		probed[term] = true
+		if holds(term) {
 			continue
 		}
 		if v := VariantsIn(term, holds); len(v) > 0 {

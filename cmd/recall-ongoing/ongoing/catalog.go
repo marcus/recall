@@ -48,19 +48,25 @@ func knownView(key string) bool { return viewLabels[key] != "" }
 // Only the fields this adapter reads are declared. Unknown fields are ignored
 // rather than rejected: the catalog is a source Recall does not own, and a
 // field added on the ongoing side must not take this source down.
-// holds reports whether any project in this catalog uses a term. It is the
-// source-wide membership test number-variant resolution needs: only a term this
-// source spells nowhere is looked for under another number.
+// vocabulary is every token this catalog's searchable text contains.
 //
-// The catalog is a page model already in memory and a query carries a handful
-// of terms, so this is a walk over the same fields a search reads anyway.
-func (c *catalog) holds(term string) bool {
+// It is built once per search and read as the source-wide membership test
+// number-variant resolution needs: only a term this source spells nowhere is
+// looked for under another number. Built once, and not probed per term, because
+// this source keeps no index — weigh() re-tokenizes a project's whole field
+// list on every call, so a per-term probe walked the entire catalog once for
+// each term and once again for each spelling it tried.
+func (c *catalog) vocabulary() func(string) bool {
+	seen := map[string]struct{}{}
 	for i := range c.Projects {
-		if _, ok := weigh(&c.Projects[i])[term]; ok {
-			return true
+		for token := range weigh(&c.Projects[i]) {
+			seen[token] = struct{}{}
 		}
 	}
-	return false
+	return func(term string) bool {
+		_, ok := seen[term]
+		return ok
+	}
 }
 
 type catalog struct {

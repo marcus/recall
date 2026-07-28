@@ -214,3 +214,68 @@ func TestProseGluedToALocatorByADashSurvives(t *testing.T) {
 		}
 	}
 }
+
+// Findings from the independent review, each an input the first tests missed.
+func TestLocatorsFoundByReview(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		line string
+		gone []string
+		kept []string
+	}{{
+		// A reference definition is the one destination the inline rule cannot
+		// see, and the one most likely to be a bare relative path.
+		name: "reference definition",
+		line: "prose above\n\n[spec]: ./secret-target.md",
+		gone: []string{"secret", "target"},
+		kept: []string{"prose", "above", "spec"},
+	}, {
+		name: "reference definition to a URL",
+		line: "[r]: https://example.com/blog/post",
+		gone: []string{"blog", "example"},
+		kept: []string{"r"},
+	}, {
+		// A line that merely starts with a bracket and has prose after a colon
+		// is not a definition.
+		name: "not a definition",
+		line: "[note]: this sentence is ordinary prose about blogging",
+		kept: []string{"note", "sentence", "ordinary", "prose", "blogging"},
+	}, {
+		name: "table cell wall",
+		line: "|important|https://e.test/blog|other|",
+		gone: []string{"blog"},
+		kept: []string{"important", "other"},
+	}, {
+		name: "html attribute",
+		line: `<a href="https://e.test/blog">important</a>`,
+		gone: []string{"blog"},
+		kept: []string{"important"},
+	}, {
+		name: "ideographic space",
+		line: "important　https://e.test/blog",
+		gone: []string{"blog"},
+		kept: []string{"important"},
+	}, {
+		name: "escaped parenthesis in a destination",
+		line: `[x](https://e.test/a\)secret-token) after`,
+		gone: []string{"secret", "token"},
+		kept: []string{"x", "after"},
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tokenize(withoutLocators(tc.line))
+			for _, want := range tc.kept {
+				if !slices.Contains(got, want) {
+					t.Errorf("terms %v lost %q, which is prose", got, want)
+				}
+			}
+			for _, unwanted := range tc.gone {
+				if slices.Contains(got, unwanted) {
+					t.Errorf("terms %v kept %q, which is only in a locator", got, unwanted)
+				}
+			}
+		})
+	}
+}

@@ -86,7 +86,10 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	terms := tokenize(req.Query)
 	// Resolved once per search over the whole catalog, never per project: see
 	// [recall.ResolveTermVariants] for why the gate is source-wide.
-	variants := recall.ResolveTermVariants(terms, cat.holds)
+	var variants recall.TermVariants
+	if len(terms) > 0 {
+		variants = recall.ResolveTermVariants(terms, cat.vocabulary())
+	}
 	var (
 		hits     []hit
 		anyExact bool

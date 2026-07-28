@@ -225,8 +225,23 @@ func (t termGroup) cited(chunk indexedChunk) int {
 }
 
 // groupTerms resolves each query term against the generation's vocabulary.
+//
+// A function word is never expanded. It is already barred from proving
+// relevance by itself, and a variant of one would slip past that: scoring runs
+// over the RAW query once any content term reaches the index (see
+// preserveRankingAfterContentMatch), so "what does goldeneye eat" would resolve
+// "does" to "doe" against a corpus that has the animal and not the auxiliary,
+// and every mention of a doe would raise a chunk's score — invisibly, because
+// admission, relevance, and the excerpt read the content terms and would never
+// see it.
 func groupTerms(g *generation, terms []string) []termGroup {
-	variants := recall.ResolveTermVariants(terms, g.holds)
+	content := make([]string, 0, len(terms))
+	for _, term := range terms {
+		if !isEnglishFunctionWord(term) {
+			content = append(content, term)
+		}
+	}
+	variants := recall.ResolveTermVariants(content, g.holds)
 	out := make([]termGroup, 0, len(terms))
 	for _, term := range terms {
 		out = append(out, termGroup{term: term, variants: variants[term]})

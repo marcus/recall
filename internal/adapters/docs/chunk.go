@@ -47,8 +47,11 @@ func (c parsedChunk) terms() (map[string]int, int) {
 	return countTerms(tokens)
 }
 
-// cited are the tokens this chunk holds ONLY inside a quotation: a
-// double-quoted span or an inline code span in the body.
+// cited are the tokens this chunk holds inside a quotation: a double-quoted
+// span, or a backtick-delimited one — which is an inline code span, and by the
+// same pairing the contents of a ``` fence. A ~~~ fence is not recognized,
+// which is the honest limit of a rule written on backtick pairing rather than
+// on a Markdown parse.
 //
 // They are counted, not removed. Whether a citation is evidence depends on what
 // the corpus is — a note quoting a decision is the decision, while a manual

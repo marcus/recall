@@ -1,6 +1,9 @@
 package docs
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // Locators are removed from the text a document corpus is searched by.
 //
@@ -12,9 +15,14 @@ import "strings"
 // on a corpus where exactly one document is about writing a blog post.
 //
 // The rule is about the shape of the token and not about where it sits, because
-// the same locator arrives written four ways — as a link destination, inside an
-// autolink, inside a code span, and bare in a sentence — and a rule that only
-// caught one of them would leave the same match under a different spelling. Link
+// the same locator arrives written five ways — as an inline link destination, as
+// a reference definition, inside an autolink, inside a code span, and bare in a
+// sentence — and a rule that only caught one of them would leave the same match
+// under a different spelling.
+//
+// It is a set of lexical rules and not a Markdown parse, and the limits are
+// worth stating: inside a fenced code block a literal `](` is still read as a
+// link destination, and a non-ASCII host is not recognized as one. Link
 // TEXT stays indexed: somebody wrote it to describe what is on the other end,
 // and that is prose. A link whose text is itself a URL therefore drops too,
 // which is the point: `[ollama.com/blog/claude](https://ollama.com/blog/claude)`
@@ -41,13 +49,14 @@ import "strings"
 // which is the whole failure inverted. A blank line ends it because a quotation
 // that reached the next paragraph was never one.
 //
-// A fenced block reads as a run of code spans under the same pairing, so its
+// A ``` fence reads as a run of code spans under the same pairing, so its
 // contents count as quotation. That is intended — a command shown as an example
-// is being displayed, not asserted — and it is also the bound on what a
-// mis-paired backtick can cost: the only thing this decides is whether an
-// occurrence counts toward aboutness in a source that declared
-// examples_quote_queries. Nothing here removes a term from the index or from a
-// query's reach.
+// is being displayed, not asserted — but it is a consequence of the pairing
+// rather than a parse, so a ~~~ fence does not, and an odd backtick shifts
+// which side of a pair the following text lands on. That is also the bound on
+// what any of it can cost: the only thing this decides is whether an occurrence
+// counts toward aboutness in a source that declared examples_quote_queries.
+// Nothing here removes a term from the index or from a query's reach.
 func quotedRuns(text string) string {
 	var b strings.Builder
 	for _, paragraph := range strings.Split(text, "\n\n") {
@@ -84,7 +93,37 @@ func matchingQuote(open rune) rune {
 // It replaces rather than deletes so that token boundaries are preserved: the
 // words on either side of a dropped locator must not become one token.
 func withoutLocators(text string) string {
-	return dropURLRuns(dropLinkDestinations(text))
+	return dropURLRuns(dropReferenceDefinitions(dropLinkDestinations(text)))
+}
+
+// dropReferenceDefinitions removes the destination of a reference-style link
+// definition: a line whose whole content is `[label]: destination`.
+//
+// It is the one destination the inline rule cannot see, and the one most likely
+// to be a bare relative path — `[spec]: ./adapter-protocol.md` — which the
+// URL-shape test deliberately leaves alone so that a corpus can name its own
+// documents by path. The label stays: the prose above it wrote that.
+//
+// A definition's destination is a single run, so a line whose remainder is
+// several words is a title, a sentence, or not a definition at all, and is left
+// alone.
+func dropReferenceDefinitions(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if !strings.HasPrefix(trimmed, "[") {
+			continue
+		}
+		label := strings.Index(trimmed, "]:")
+		if label < 1 {
+			continue
+		}
+		if fields := strings.Fields(trimmed[label+2:]); len(fields) != 1 {
+			continue
+		}
+		lines[i] = line[:len(line)-len(trimmed)] + trimmed[:label+2] + " "
+	}
+	return strings.Join(lines, "\n")
 }
 
 // dropLinkDestinations removes the `(...)` of an inline link or image.
@@ -122,6 +161,11 @@ func closingParen(text string, open int) (int, bool) {
 	depth := 0
 	for i := open; i < len(text); i++ {
 		switch text[i] {
+		case '\\':
+			// An escaped parenthesis belongs to the destination rather than
+			// ending it. Skipping the escaped byte keeps `[x](https://h/a\)b)`
+			// one destination instead of leaving `b)` behind as prose.
+			i++
 		case '(':
 			depth++
 		case ')':
@@ -185,12 +229,19 @@ func dropURLRuns(text string) string {
 // isRunBreak reports the characters that cannot appear inside a locator and do
 // appear between one and the prose around it.
 func isRunBreak(r rune) bool {
+	if unicode.IsSpace(r) {
+		return true
+	}
 	switch r {
-	case ' ', '\t', '\n', '\r', '\v', '\f',
-		' ', // non-breaking space
-		'–', // en dash
-		'—', // em dash
-		'…': // ellipsis
+	case '\u00a0', '\u3000': // non-breaking and ideographic space
+		return true
+	case '\u2013', '\u2014', '\u2026': // en dash, em dash, ellipsis
+		return true
+	case '|', '<', '>', '"':
+		// A table cell wall, an HTML attribute, an autolink bracket. None can
+		// appear unescaped inside a URL, and each of them is written hard
+		// against one: `|prose|https://host/path|` dropped the whole row, and
+		// `href="https://host/path">prose` dropped the prose on both sides.
 		return true
 	}
 	return false
