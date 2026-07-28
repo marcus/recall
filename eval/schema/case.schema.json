@@ -56,7 +56,10 @@
     "expected_fail": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reason", "assertions"],
+      "required": [
+        "reason",
+        "assertions"
+      ],
       "description": "Which of this case's assertions are known to fail today, and what has to land before they can hold. It names assertions rather than excusing the case, because a case-wide exemption also excuses regressions nobody predicted, and because a case waiting on two tickets must be able to show movement when either one lands. Every assertion the case declares and does not name here is enforced as on any other case. A run in which a named assertion stopped failing fails the expected_failures_current gate, so a marking cannot outlive its defect.",
       "properties": {
         "reason": {
@@ -244,6 +247,17 @@
             "$ref": "#/$defs/lineage_root"
           }
         },
+        "withheld_lineages": {
+          "type": "object",
+          "description": "Lineage roots that must be reported as withheld, keyed to the suppression reason that must have withheld them. suppressed_lineages asks only about the host's own already-shown list; this asks about any rule that removes a result, so a rule whose whole job is to withhold something can be measured doing it rather than inferred from a smaller count.",
+          "propertyNames": {
+            "$ref": "#/$defs/lineage_root"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "visible_lineages": {
           "type": "array",
           "uniqueItems": true,
@@ -256,7 +270,7 @@
         },
         "expected_top_lineage": {
           "$ref": "#/$defs/lineage_root",
-          "description": "The lineage root that must rank first. Graded metrics score the shape of a whole list, so none of them can say which single record is the answer — which is the entire claim some queries make, and the one a caller reading only the first result sees."
+          "description": "The lineage root that must rank first. Graded metrics score the shape of a whole list, so none of them can say which single record is the answer \u2014 which is the entire claim some queries make, and the one a caller reading only the first result sees."
         },
         "min_results": {
           "type": "integer",

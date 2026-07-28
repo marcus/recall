@@ -66,9 +66,11 @@ type Defaults struct {
 	// request that named no limit receives. Zero is unbounded.
 	MaxResults int `json:"max_results"`
 
-	// RelevanceFloor is the least candidate relevance that reaches fusion, on
-	// the one definition every source computes the same way. Zero admits
-	// everything a source returned.
+	// RelevanceFloor is the least relevance a shown result must reach, on the
+	// one definition every source computes the same way. It is a selection rule
+	// applied to results after fusion, not an admission rule over candidates,
+	// and it stands down rather than empty an answer — internal/ranking states
+	// both and why. Zero shows everything the sources returned.
 	RelevanceFloor float64 `json:"relevance_floor"`
 }
 
@@ -117,7 +119,7 @@ const (
 	//
 	// What it buys, on the live home profile with the result budget disabled:
 	// "what is the sidecar project for" 108 results to 92, "how do i run the
-	// eval packs" 59 to 29, and a question the corpus knows nothing about — "how
+	// eval packs" 59 to 40, and a question the corpus knows nothing about — "how
 	// do submarines maintain buoyancy at depth" — 21 to 13. The part that is not
 	// a matter of degree is the bottom of those lists: records a source itself
 	// reports as matching none of the query's terms, which the home profile

@@ -164,6 +164,9 @@ func checkAssertions(c Case) []error {
 	for _, root := range c.Assertions.SuppressedLineages {
 		report("suppressed_lineages", root)
 	}
+	for root := range c.Assertions.WithheldLineages {
+		report("withheld_lineages", root)
+	}
 	for _, root := range c.Assertions.VisibleLineages {
 		report("visible_lineages", root)
 	}

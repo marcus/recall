@@ -611,8 +611,9 @@ timeout_ms          per-source query budget for sources declaring none
 fusion_reserve_ms   held back so fusion runs inside the request deadline
 max_results         result budget for a request that named no limit; 0 is
                     unbounded
-relevance_floor     least relevance a shown result must reach, in [0, 1);
-                    0 shows everything the sources returned
+relevance_floor     in [0, 1). Withholds a result nothing in which reaches
+                    it — unless that is every result, in which case it
+                    withholds nothing (Ranking §7). 0 shows everything.
 ```
 
 `max_results` and `relevance_floor` are the two rules of Ranking §7, and they
@@ -981,9 +982,20 @@ Three rules bound what it may do. An `exact_identifier` match is exempt,
 because a record named outright need not describe itself. A candidate reporting
 no relevance, or an unusable number, reads as 1.0 and is never withheld by a
 rule written in something it did not assert. And **a floor may withhold but
-never abstain**: when nothing clears it, it withholds nothing, because an empty
-answer is read everywhere as a claim about the corpus and a configured
-threshold may not make that claim with the corpus unchanged.
+never abstain**: when nothing else would be shown, it withholds nothing,
+because an empty answer is read everywhere as a claim about the corpus and a
+configured threshold may not make that claim with the corpus unchanged. The
+test is against what survived the other selection rules, not against the whole
+list, because the rules compose — a floor holding back its one weak result
+while suppression removes the strong one has still emptied the answer between
+them.
+
+A consequence worth stating, because it looks like a defect from outside: the
+rule is **not monotonic in the floor**. Raising a floor can return more results,
+since a floor high enough to catch everything catches nothing. The same is true
+of the corpus at a fixed floor — deleting the one record above the floor
+restores every record below it. Both follow from the exemption, and the
+alternative is a threshold that can assert absence.
 
 `max_results` is the profile's result budget, filled in fused order across
 every source at once. Without one, an answer's length is the profile's
@@ -996,6 +1008,13 @@ still reported; what these decide is how much of the answer is shown. The floor
 counts what it withheld in `suppressed`, naming each result's lineage root; the
 budget counts what it dropped in `truncated` / `dropped`. Neither touches
 `coverage`.
+
+Both sit above the response budget, which cuts again and by a different measure
+(§Response Budget). A caller whose token budget already binds — a serialized or
+tool response at the default ceiling — was receiving a handful of results before
+these rules and receives the same handful after; what changed for it is which
+records those are. The result count moves where the token budget is loose: the
+pointer rendering, and any caller that raises or removes the ceiling.
 
 ## Explainability
 

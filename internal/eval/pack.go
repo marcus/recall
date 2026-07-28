@@ -237,6 +237,7 @@ func (a *Assertions) Declared() map[string]bool {
 	set("max_expansion_bytes", a.MaxExpansionBytes > 0)
 	set("expected_revisions", len(a.ExpectedRevisions) > 0)
 	set("suppressed_lineages", len(a.SuppressedLineages) > 0)
+	set("withheld_lineages", len(a.WithheldLineages) > 0)
 	set("visible_lineages", len(a.VisibleLineages) > 0)
 	set("expected_top_lineage", a.ExpectedTopLineage != "")
 	set("min_results", a.MinResults != nil)
@@ -276,6 +277,17 @@ type Assertions struct {
 
 	SuppressedLineages []recall.LineageRoot `json:"suppressed_lineages,omitempty"`
 	VisibleLineages    []recall.LineageRoot `json:"visible_lineages,omitempty"`
+
+	// WithheldLineages are roots that must be reported as withheld, keyed to
+	// the reason that must have withheld them.
+	//
+	// SuppressedLineages asks only about the host's own already-shown list.
+	// This asks about any rule that removes a result, because a rule whose
+	// whole job is to withhold something can otherwise only be measured by a
+	// count that went down — and a count is satisfied by anything else that
+	// shrinks the case, including the rule being deleted and the corpus
+	// shifting under it.
+	WithheldLineages map[recall.LineageRoot]string `json:"withheld_lineages,omitempty"`
 
 	// ExpectedTopLineage demands that one lineage root rank first. Graded
 	// metrics score the shape of a whole list, so none of them can say "this

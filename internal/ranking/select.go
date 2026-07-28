@@ -58,6 +58,13 @@ func (r *Ranker) selectResults(ordered []*cluster, req Request) Fusion {
 		// makes the question "is this answer empty because of the floor", which
 		// is the question the rule is about. It costs a second pass over a list
 		// that is already known to be empty.
+		//
+		// The exemption makes the rule non-monotonic, and that is the intended
+		// shape rather than an oversight: raising a floor can return MORE
+		// results, because a floor high enough to catch everything catches
+		// nothing. Deleting the last record above a fixed floor does the same to
+		// every record below it. Both read as a bug from outside, and the
+		// alternative is a configured number that can assert absence.
 		kept, withheld = r.withhold(ordered, suppress, 0)
 	}
 	out.Suppressed = withheld

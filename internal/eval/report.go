@@ -601,6 +601,29 @@ func caseAssertionViolations(c Case, r CaseResult) []string {
 				root, recall.SuppressLineageSeen))
 		}
 	}
+	// Keyed by root AND reason: "withheld" without saying by what is satisfied
+	// by any rule that happens to remove the record, which is the ambiguity this
+	// assertion exists to close.
+	withheldBy := make(map[recall.LineageRoot]string, len(r.Suppressions))
+	for _, suppression := range r.Suppressions {
+		if suppression.Count > 0 && suppression.LineageRoot != "" {
+			withheldBy[suppression.LineageRoot] = suppression.Reason
+		}
+	}
+	for _, root := range sortedRoots(a.WithheldLineages) {
+		want := a.WithheldLineages[root]
+		switch got := withheldBy[root]; {
+		case ranked[root]:
+			failures = append(failures, fmt.Sprintf(
+				"withheld_lineages: returned %s", root))
+		case got == "":
+			failures = append(failures, fmt.Sprintf(
+				"withheld_lineages: no suppression telemetry for %s", root))
+		case got != want:
+			failures = append(failures, fmt.Sprintf(
+				"withheld_lineages: %s withheld as %s, want %s", root, got, want))
+		}
+	}
 	for _, root := range a.VisibleLineages {
 		if !ranked[root] {
 			failures = append(failures, fmt.Sprintf(
@@ -805,5 +828,16 @@ func MacroOf(groups map[string]Metrics) Macro {
 			*rf.mean(&out.Rates) = Mean{Value: sum / float64(n), N: n}
 		}
 	}
+	return out
+}
+
+// sortedRoots orders a root-keyed assertion map, so a case with two failures
+// reports them in the same order on every run.
+func sortedRoots(m map[recall.LineageRoot]string) []recall.LineageRoot {
+	out := make([]recall.LineageRoot, 0, len(m))
+	for root := range m {
+		out = append(out, root)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
