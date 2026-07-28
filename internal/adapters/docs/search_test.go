@@ -219,7 +219,7 @@ func TestNaturalQuestionAndKeywordFormShareRetrieval(t *testing.T) {
 	}
 
 	question := search(t, a, "what is the wifi password")
-	if got := question.Diagnostics["query_analyzer"]; got != "alnum-fold+english-function-words-v2" {
+	if got := question.Diagnostics["query_analyzer"]; got != "alnum-fold+english-function-words-v2+number-variants-v1" {
 		t.Errorf("query analyzer diagnostic = %v", got)
 	}
 	if got := question.Diagnostics["query_terms_removed"]; got != 3 {

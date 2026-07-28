@@ -48,6 +48,21 @@ func knownView(key string) bool { return viewLabels[key] != "" }
 // Only the fields this adapter reads are declared. Unknown fields are ignored
 // rather than rejected: the catalog is a source Recall does not own, and a
 // field added on the ongoing side must not take this source down.
+// holds reports whether any project in this catalog uses a term. It is the
+// source-wide membership test number-variant resolution needs: only a term this
+// source spells nowhere is looked for under another number.
+//
+// The catalog is a page model already in memory and a query carries a handful
+// of terms, so this is a walk over the same fields a search reads anyway.
+func (c *catalog) holds(term string) bool {
+	for i := range c.Projects {
+		if _, ok := weigh(&c.Projects[i])[term]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 type catalog struct {
 	GeneratedAt time.Time `json:"generatedAt"`
 	HiddenCount int       `json:"hiddenCount"`

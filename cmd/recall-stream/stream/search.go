@@ -51,6 +51,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	terms := tokenize(req.Query)
+	// Resolved once per search over the whole snapshot, never per record: see
+	// [recall.ResolveTermVariants] for why the gate is store-wide.
+	variants := recall.ResolveTermVariants(terms, snap.holds)
 	var (
 		hits     []hit
 		anyExact bool
@@ -62,7 +65,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		if !inWindow(rec, req) || !wantedType(rec, req.Filters.RecordTypes) {
 			continue
 		}
-		score, exact := match(rec, terms)
+		score, exact := match(rec, terms, variants)
 		if len(terms) > 0 && score == 0 && !exact {
 			continue
 		}
@@ -93,7 +96,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		hits = hits[:limit]
 	}
 
-	p := pass{snap: snap, set: set, sourceID: sourceID, floor: floor, termList: terms}
+	p := pass{snap: snap, set: set, sourceID: sourceID, floor: floor, termList: terms, variants: variants}
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
 		candidates = append(candidates, p.candidate(h, i+1))
@@ -144,6 +147,7 @@ type pass struct {
 	sourceID string
 	floor    recall.Sensitivity
 	termList []string
+	variants recall.TermVariants
 }
 
 // candidate renders one record for fusion. The locator, the derivation edges,
@@ -161,7 +165,7 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 	}
 
 	local := h.score
-	rel := relevanceOf(rec, p.termList)
+	rel := relevanceOf(rec, p.termList, p.variants)
 	c := recall.Candidate{
 		CandidateID:    rec.local(),
 		SourceRecordID: rec.id,
@@ -250,20 +254,23 @@ func wantedType(rec record, want []recall.RecordType) bool {
 // match scores a record against the query terms and reports whether any term
 // matched a stable identifier at a token boundary. The score is the mean
 // weight per term, so a long query is not scored above a precise one.
-func match(rec record, terms []string) (score float64, exact bool) {
+//
+// A term is weighed under its own spelling or a discounted number variant of
+// it, on the one definition every source shares: see [recall.WeighTerm].
+func match(rec record, terms []string, variants recall.TermVariants) (score float64, exact bool) {
 	if len(terms) == 0 {
 		return 0, false
 	}
 	for _, term := range terms {
 		exact = exact || rec.identifies(term)
-		score += rec.weights[term]
+		score += variants.Weigh(rec.weights, term)
 	}
 	return score / float64(len(terms)), exact
 }
 
 // relevanceOf is [recall.Candidate.Relevance] for one stream record.
-func relevanceOf(rec record, terms []string) float64 {
-	return recall.RelevanceOverCounts(terms, rec.counts, rec.length)
+func relevanceOf(rec record, terms []string, variants recall.TermVariants) float64 {
+	return variants.RelevanceOverCounts(terms, rec.counts, rec.length)
 }
 
 // tokenize splits on anything that cannot appear inside an identifier.

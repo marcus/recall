@@ -50,6 +50,11 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	terms := tokenize(req.Query)
+	// Resolved once per search over the whole snapshot, never per record: the
+	// gate is "this store does not use that word", and asking it per record
+	// would admit every record that spells a common noun the other way. See
+	// [recall.ResolveTermVariants].
+	variants := recall.ResolveTermVariants(terms, snap.holds)
 	// A request that names a time window is asking a historical question, and
 	// docs/spec.md#decay says such a question retrieves old evidence without a
 	// recency penalty. The records were already selected by the window;
@@ -68,7 +73,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		if !inWindow(it, req) || !wantedType(it, req.Filters.RecordTypes) {
 			continue
 		}
-		score, exact := match(it, terms, windowed)
+		score, exact := match(it, terms, variants, windowed)
 		if len(terms) > 0 && score == 0 && !exact {
 			continue
 		}
@@ -103,7 +108,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
-		candidates = append(candidates, candidateOf(h, i+1, snap, s, terms))
+		candidates = append(candidates, candidateOf(h, i+1, snap, s, terms, variants))
 	}
 
 	outcome := recall.SearchSuccess
@@ -161,7 +166,7 @@ type hit struct {
 // candidateOf renders one item for fusion. The locator, the derivation edges,
 // and the timestamps are the whole of what this source contributes; identity is
 // stamped by the core.
-func candidateOf(h hit, rank int, snap *snapshot, s session, terms []string) recall.Candidate {
+func candidateOf(h hit, rank int, snap *snapshot, s session, terms []string, variants recall.TermVariants) recall.Candidate {
 	it := h.item
 	signals := []recall.MatchSignal{recall.MatchLexical}
 	switch {
@@ -173,7 +178,7 @@ func candidateOf(h hit, rank int, snap *snapshot, s session, terms []string) rec
 	}
 
 	local := h.score
-	rel := relevanceOf(h.item, terms)
+	rel := relevanceOf(h.item, terms, variants)
 	meta := make(map[string]any, len(it.metadata))
 	for k, v := range it.metadata {
 		meta[k] = v
@@ -254,7 +259,7 @@ func wantedType(it *item, want []recall.RecordType) bool {
 // which is where Clara's effective weight enters ranking — and only ranking:
 // fusion consumes local rank, so a decayed weight never reaches a cross-source
 // comparison.
-func match(it *item, terms []string, windowed bool) (score float64, exact bool) {
+func match(it *item, terms []string, variants recall.TermVariants, windowed bool) (score float64, exact bool) {
 	if len(terms) == 0 {
 		// A browse. Memory answers by what currently carries weight, signals by
 		// recency, which the sort already applies.
@@ -265,7 +270,7 @@ func match(it *item, terms []string, windowed bool) (score float64, exact bool) 
 	}
 	for _, term := range terms {
 		exact = exact || it.identifies(term)
-		score += it.weights[term]
+		score += variants.Weigh(it.weights, term)
 	}
 	score /= float64(len(terms))
 	if it.decays && !windowed {
@@ -280,8 +285,8 @@ func match(it *item, terms []string, windowed bool) (score float64, exact bool) 
 // whose weight has faded is still exactly as much ABOUT the query as it was
 // when written. Folding decay in here would export this source's own ordering
 // opinion as a cross-source measurement.
-func relevanceOf(it *item, terms []string) float64 {
-	return recall.RelevanceOverCounts(terms, it.counts, it.length)
+func relevanceOf(it *item, terms []string, variants recall.TermVariants) float64 {
+	return variants.RelevanceOverCounts(terms, it.counts, it.length)
 }
 
 // identifies reports whether term is one of this record's stable identifiers,

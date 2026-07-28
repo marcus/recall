@@ -28,6 +28,10 @@ type scannedToken struct {
 // is not a baseline anything can be evaluated against. Splitting on every
 // non-alphanumeric rune also gives token boundaries for free, which is what
 // exact-identifier matching needs.
+//
+// Grammatical number is reconciled at query time instead, against the terms
+// this index already holds, so a singular reaches a plural without either side
+// being rewritten into a form nobody typed: see [recall.NumberVariants].
 func tokenize(s string) []string {
 	scanned := scanTokens(s, false)
 	out := make([]string, 0, len(scanned))
@@ -89,7 +93,16 @@ type queryAnalysis struct {
 	scoringWithScaffolding bool
 }
 
-const queryAnalyzer = "alnum-fold+english-function-words-v2"
+// queryAnalyzer names what a query is turned into before it is matched. It is
+// reported in every search's diagnostics and inside the generation's index
+// config, so a change to matching is observable without reading this file.
+//
+// The number-variant suffix is deliberately part of the query analyzer and not
+// of the tokenizer: nothing about the INDEX changed, and a generation built
+// before this rule existed answers a variant query correctly, because the
+// variant is resolved against that generation's own vocabulary at query time.
+// See [recall.NumberVariants].
+const queryAnalyzer = "alnum-fold+english-function-words-v2+number-variants-v1"
 
 // analyzeQuery removes English grammatical scaffolding from lexical scoring
 // while preserving the exact text semantics that need it.

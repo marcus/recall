@@ -174,6 +174,24 @@ type snapshot struct {
 
 func (s *snapshot) generation() string { return fmt.Sprintf("gen-%d", s.gen) }
 
+// holds reports whether any record in this snapshot uses a term.
+//
+// It is the store-wide membership test number-variant resolution needs: a term
+// this store spells the caller's way is matched as written, and only a term it
+// spells nowhere is looked for under another number. It scans rather than
+// keeping an inverted index because a snapshot is a slice of records already in
+// memory and a query carries a handful of terms — this is a map lookup per
+// record per term, once per search, against a store whose whole point is that
+// it is small.
+func (s *snapshot) holds(term string) bool {
+	for i := range s.items {
+		if _, ok := s.items[i].weights[term]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // watermark is freshness evidence a caller can compare between two searches.
 //
 // Clara publishes no revision of its own, so the deterministic digest is the

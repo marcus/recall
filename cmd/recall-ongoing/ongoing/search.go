@@ -84,6 +84,9 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	terms := tokenize(req.Query)
+	// Resolved once per search over the whole catalog, never per project: see
+	// [recall.ResolveTermVariants] for why the gate is source-wide.
+	variants := recall.ResolveTermVariants(terms, cat.holds)
 	var (
 		hits     []hit
 		anyExact bool
@@ -93,7 +96,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		if !set.keeps(p) || !keepsRequest(p, req.Filters) {
 			continue
 		}
-		score, exact := match(p, terms)
+		score, exact := match(p, terms, variants)
 		if len(terms) > 0 && score == 0 && !exact {
 			continue
 		}
@@ -123,7 +126,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	observed := a.now()
-	p := pass{cat: cat, sourceID: sourceID, floor: floor, termList: terms, observed: observed}
+	p := pass{cat: cat, sourceID: sourceID, floor: floor, termList: terms, variants: variants, observed: observed}
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
 		candidates = append(candidates, p.candidate(h, i+1))
@@ -191,6 +194,7 @@ type pass struct {
 	sourceID string
 	floor    recall.Sensitivity
 	termList []string
+	variants recall.TermVariants
 	observed time.Time
 }
 
@@ -208,7 +212,7 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 	}
 
 	local := h.score
-	rel := relevance(proj, p.termList)
+	rel := relevance(proj, p.termList, p.variants)
 	c := recall.Candidate{
 		CandidateID:    proj.ID,
 		SourceRecordID: proj.ID,
@@ -463,14 +467,17 @@ func mentionsEntity(p *project, entities []string) bool {
 // match scores a project against the query terms and reports whether any term
 // matched a stable identifier at a token boundary. The score is the mean weight
 // per term, so a long query is not scored above a precise one.
-func match(p *project, terms []string) (score float64, exact bool) {
+//
+// A term is weighed under its own spelling or a discounted number variant of
+// it, on the one definition every source shares: see [recall.WeighTerm].
+func match(p *project, terms []string, variants recall.TermVariants) (score float64, exact bool) {
 	if len(terms) == 0 {
 		return 0, false
 	}
 	weights := weigh(p)
 	for _, term := range terms {
 		exact = exact || identifies(p, term)
-		score += weights[term]
+		score += variants.Weigh(weights, term)
 	}
 	return score / float64(len(terms)), exact
 }
@@ -554,9 +561,9 @@ func weighAndCount(p *project) (weights map[string]float64, counts map[string]in
 // This is the number whose absence let five unrelated projects outrank the
 // document answering a question about a retinal detachment: this source scored
 // them 0.08 and had no way to say so across the boundary.
-func relevance(p *project, terms []string) float64 {
+func relevance(p *project, terms []string, variants recall.TermVariants) float64 {
 	_, counts, length := weighAndCount(p)
-	return recall.RelevanceOverCounts(terms, counts, length)
+	return variants.RelevanceOverCounts(terms, counts, length)
 }
 
 // newerCommit orders two projects by most recent commit, then by name, then by

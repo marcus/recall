@@ -200,6 +200,17 @@ type generation struct {
 	avgLen   float64
 }
 
+// holds reports whether this generation's vocabulary contains a term. It is the
+// membership test number-variant resolution is written against, so the only
+// spellings a query can be expanded to are ones the corpus itself uses.
+func (g *generation) holds(term string) bool { return len(g.postings[term]) > 0 }
+
+// reaches reports whether a query term touches this generation at all, under
+// its own spelling or a number variant of it.
+func (g *generation) reaches(term string) bool {
+	return g.holds(term) || len(recall.VariantsIn(term, g.holds)) > 0
+}
+
 func (g *generation) doc(path string) (indexedDoc, bool) {
 	i, ok := g.docAt[path]
 	if !ok {

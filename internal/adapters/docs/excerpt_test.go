@@ -162,7 +162,9 @@ func TestExcerptWindowReportsNoMatch(t *testing.T) {
 // scaffolding cannot anchor a window on a word nobody asked about.
 func TestExcerptTermsExcludeFunctionWords(t *testing.T) {
 	t.Parallel()
-	got := excerptTerms(analyzeQuery("what is the wifi password"))
+	// An empty generation holds no vocabulary, so no number variant resolves and
+	// the set is exactly the query's retained terms.
+	got := excerptTerms(&generation{postings: map[string][]posting{}}, analyzeQuery("what is the wifi password"))
 
 	for _, want := range []string{"wifi", "password"} {
 		if !got[want] {

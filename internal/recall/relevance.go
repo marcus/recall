@@ -62,9 +62,18 @@ func Relevance(matched, retained, hits, length int) float64 {
 // `len(terms) == 0` themselves and two relied on [Relevance] to return 1. One
 // definition means one answer.
 func RelevanceOverCounts(terms []string, counts map[string]int, length int) float64 {
+	return TermVariants(nil).RelevanceOverCounts(terms, counts, length)
+}
+
+// RelevanceOverCounts is [RelevanceOverCounts] for a source that resolved number
+// variants for this query. A term is covered by its own spelling or by a
+// resolved variant of it, at full weight either way: see [NumberVariantWeight]
+// for why the discount belongs to a source's local score and not to this number,
+// which is the one thing compared across sources.
+func (v TermVariants) RelevanceOverCounts(terms []string, counts map[string]int, length int) float64 {
 	covered, hits := 0, 0
 	for _, term := range terms {
-		if n := counts[term]; n > 0 {
+		if n := v.Count(counts, term); n > 0 {
 			covered++
 			hits += n
 		}

@@ -179,6 +179,18 @@ type checkpoint struct {
 // snapshot is one published index generation. It is immutable once published:
 // a build produces a new one and swaps the pointer, so a search in flight
 // keeps reading the generation it started on.
+// holds reports whether any record in this snapshot uses a term. It is the
+// store-wide membership test number-variant resolution needs: only a term this
+// source spells nowhere is looked for under another number.
+func (s *snapshot) holds(term string) bool {
+	for i := range s.records {
+		if _, ok := s.records[i].weights[term]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 type snapshot struct {
 	gen       int64
 	records   []record

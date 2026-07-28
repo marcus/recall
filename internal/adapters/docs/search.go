@@ -99,7 +99,7 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 
 	scores := map[int]float64{}
 	if len(query.terms) > 0 && len(g.chunks) > 0 {
-		scoreBM25(g, uniqueTerms(query.terms), allowed, scores)
+		scoreBM25(g, groupTerms(g, uniqueTerms(query.terms)), allowed, scores)
 	}
 
 	// Exact identifiers deliberately use the raw token stream. A path, alias,
@@ -110,7 +110,7 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 	// One coverage measurement per chunk, used twice: as the admission floor and
 	// as the coordination factor BM25 does not have. Both read the content
 	// terms, so scaffolding pays for neither.
-	coverage := newQueryCoverage(query)
+	coverage := newQueryCoverage(g, query)
 
 	// An exact identifier match must surface the document even when its text
 	// shares no term with the query: "docs/spec.md" names a file rather than
@@ -138,7 +138,7 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 			score:     score,
 			exact:     exact[c.Path],
 			alias:     alias[c.Path],
-			relevance: recall.Relevance(covered, len(coverage.terms), coverage.hits(c), c.Length),
+			relevance: recall.Relevance(covered, len(coverage.groups), coverage.hits(c), c.Length),
 		})
 	}
 
@@ -174,7 +174,7 @@ func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryA
 		return query
 	}
 	for _, term := range query.terms {
-		if len(g.postings[term]) == 0 {
+		if !g.reaches(term) {
 			continue
 		}
 		query.terms = append(query.terms[:0], query.raw...)
@@ -182,6 +182,60 @@ func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryA
 		return query
 	}
 	return query
+}
+
+// termGroup is one query term and the spellings of it this generation holds:
+// the term itself when the corpus has it, plus any number variant of it that
+// the corpus has. See [recall.NumberVariants] for why the expansion is a lookup
+// into the corpus's own vocabulary rather than a stem applied to both sides.
+//
+// The group is the unit of coverage as well as of scoring, which is what keeps
+// the two consistent: a chunk that matched "goldeneyes" for the query
+// "goldeneye" covered that term, and a chunk that matched neither did not. The
+// alternative — expanding the term list — would count one asked-for word twice
+// in the denominator and make a query harder to cover the more spellings the
+// corpus happens to hold.
+type termGroup struct {
+	term     string
+	variants []string
+}
+
+// spellings is every form this group matches, own spelling first.
+func (t termGroup) spellings() []string {
+	return append([]string{t.term}, t.variants...)
+}
+
+// count is how many occurrences of this group a chunk holds, across spellings.
+func (t termGroup) count(chunk indexedChunk) int {
+	n := chunk.Terms[t.term]
+	for _, v := range t.variants {
+		n += chunk.Terms[v]
+	}
+	return n
+}
+
+// groupTerms resolves each query term against the generation's vocabulary.
+func groupTerms(g *generation, terms []string) []termGroup {
+	variants := recall.ResolveTermVariants(terms, g.holds)
+	out := make([]termGroup, 0, len(terms))
+	for _, term := range terms {
+		out = append(out, termGroup{term: term, variants: variants[term]})
+	}
+	return out
+}
+
+// variantCount is how many query terms were reached through a variant spelling
+// rather than their own. It is reported in the diagnostics: a result the corpus
+// spells differently from the query is a match the caller did not literally ask
+// for, and the analyzer string alone does not say whether it happened here.
+func variantCount(groups []termGroup) int {
+	n := 0
+	for _, group := range groups {
+		if len(group.variants) > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // contentTerms are the terms a candidate has to answer for: the retained ones
@@ -204,28 +258,36 @@ func contentTerms(query queryAnalysis) []string {
 // scoring — a different one again for the same corpus under a project or time
 // filter. The requirement is a property of what was asked.
 type queryCoverage struct {
-	terms    []string
+	groups   []termGroup
 	required int
 }
 
-func newQueryCoverage(query queryAnalysis) queryCoverage {
-	cov := queryCoverage{terms: uniqueTerms(contentTerms(query))}
+func newQueryCoverage(g *generation, query queryAnalysis) queryCoverage {
+	cov := queryCoverage{groups: groupTerms(g, uniqueTerms(contentTerms(query)))}
 	if query.normalized {
-		cov.required = min(len(cov.terms), minimumQueryTerms)
+		cov.required = min(len(cov.groups), minimumQueryTerms)
 	}
 	return cov
 }
 
 func (c queryCoverage) covered(chunk indexedChunk) int {
 	n := 0
-	for _, term := range c.terms {
-		if chunk.Terms[term] > 0 {
+	for _, group := range c.groups {
+		if group.count(chunk) > 0 {
 			n++
 		}
 	}
 	return n
 }
 
+// admits applies the admission floor.
+//
+// A number variant counts toward it, and has to: the variant only exists at all
+// where the corpus does not hold the caller's spelling of that term (see
+// [recall.ResolveTermVariants]), so refusing it here would mean a question
+// naming something the corpus spells only in the plural could never satisfy the
+// floor — the exact false abstention this is meant to remove, moved one rule
+// along.
 func (c queryCoverage) admits(covered int) bool {
 	return covered >= c.required
 }
@@ -236,8 +298,8 @@ func (c queryCoverage) admits(covered int) bool {
 // equally about it.
 func (c queryCoverage) hits(chunk indexedChunk) int {
 	n := 0
-	for _, term := range c.terms {
-		n += chunk.Terms[term]
+	for _, group := range c.groups {
+		n += group.count(chunk)
 	}
 	return n
 }
@@ -246,10 +308,10 @@ func (c queryCoverage) hits(chunk indexedChunk) int {
 // nothing is being measured, and a zero here would silently score a whole
 // source to nothing.
 func (c queryCoverage) share(covered int) float64 {
-	if len(c.terms) == 0 {
+	if len(c.groups) == 0 {
 		return 1
 	}
-	return float64(covered) / float64(len(c.terms))
+	return float64(covered) / float64(len(c.groups))
 }
 
 // scoreBM25 accumulates Okapi BM25 over the postings.
@@ -260,23 +322,35 @@ func (c queryCoverage) share(covered int) float64 {
 // It is written out here rather than pulled in as a dependency: this is the
 // whole of a lexical baseline, and a baseline the project cannot read is not a
 // baseline it can defend.
-func scoreBM25(g *generation, terms []string, allowed func(indexedChunk) bool, out map[int]float64) {
+//
+// A number variant of a query term is scored as its own posting list at
+// [recall.NumberVariantWeight], never merged into the term's statistics. Merging
+// would change the document frequency of both spellings and therefore the idf
+// of a word nobody typed, so a corpus that happens to hold a plural would
+// quietly re-weight the singular's own results.
+func scoreBM25(g *generation, groups []termGroup, allowed func(indexedChunk) bool, out map[int]float64) {
 	n := float64(len(g.chunks))
-	for _, term := range terms {
-		postings := g.postings[term]
-		if len(postings) == 0 {
-			continue
-		}
-		df := float64(len(postings))
-		idf := math.Log(1 + (n-df+0.5)/(df+0.5))
-		for _, p := range postings {
-			c := g.chunks[p.chunk]
-			if !allowed(c) {
+	for _, group := range groups {
+		for i, spelling := range group.spellings() {
+			weight := 1.0
+			if i > 0 {
+				weight = recall.NumberVariantWeight
+			}
+			postings := g.postings[spelling]
+			if len(postings) == 0 {
 				continue
 			}
-			tf := float64(p.tf)
-			norm := 1 - bm25B + bm25B*float64(c.Length)/g.avgLen
-			out[p.chunk] += idf * tf / (tf + bm25K1*norm)
+			df := float64(len(postings))
+			idf := math.Log(1 + (n-df+0.5)/(df+0.5))
+			for _, p := range postings {
+				c := g.chunks[p.chunk]
+				if !allowed(c) {
+					continue
+				}
+				tf := float64(p.tf)
+				norm := 1 - bm25B + bm25B*float64(c.Length)/g.avgLen
+				out[p.chunk] += weight * idf * tf / (tf + bm25K1*norm)
+			}
 		}
 	}
 }
@@ -410,7 +484,7 @@ func candidates(
 	}
 	confirmed := g.confirmedAt()
 	observed := g.header.BuiltAt
-	terms := excerptTerms(query)
+	terms := excerptTerms(g, query)
 	unavailable := 0
 
 	out := make([]recall.Candidate, 0, len(hits))
@@ -518,12 +592,19 @@ func searchDiagnostics(
 		"chunk_count":      len(g.chunks),
 		"elapsed_ms":       elapsed.Milliseconds(),
 	}
+	coverage := newQueryCoverage(g, query)
 	if query.normalized {
 		diag["query_terms_removed"] = query.removed
 		// How many of the query's terms a candidate had to carry. A question
 		// that admitted less than the caller expected is then a stated rule
 		// rather than a thin corpus.
-		diag["query_terms_required"] = newQueryCoverage(query).required
+		diag["query_terms_required"] = coverage.required
+	}
+	if n := variantCount(coverage.groups); n > 0 {
+		// How many terms this corpus answered under a different number than the
+		// caller wrote. Without it a caller reading the analyzer string knows
+		// the rule exists; this says it fired on their query.
+		diag["query_terms_number_variant"] = n
 	}
 	if query.scoringWithScaffolding {
 		diag["query_scoring"] = "full_query_over_content_candidates"
@@ -558,11 +639,19 @@ func queryRetainedTermCount(query queryAnalysis) int {
 // diagnostics describe is the query the excerpt was selected against. Function
 // words are excluded for the same reason they are excluded from proving
 // relevance: a window anchored on "the" shows a match nobody asked about.
-func excerptTerms(query queryAnalysis) map[string]bool {
+//
+// Number variants are included, and have to be: a chunk admitted because it
+// says "goldeneyes" holds no occurrence of "goldeneye", so anchoring on the
+// query's own spelling alone would show the head of the record and mark it a
+// preview — telling the caller nothing in the text matched, on a result the
+// same rule just admitted.
+func excerptTerms(g *generation, query queryAnalysis) map[string]bool {
 	terms := contentTerms(query)
 	out := make(map[string]bool, len(terms))
-	for _, t := range terms {
-		out[t] = true
+	for _, group := range groupTerms(g, terms) {
+		for _, spelling := range group.spellings() {
+			out[spelling] = true
+		}
 	}
 	return out
 }
