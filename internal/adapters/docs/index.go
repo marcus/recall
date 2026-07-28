@@ -32,10 +32,15 @@ import (
 // either the previous generation or the new one, never a half-written index —
 // which is why an interrupted build costs freshness and nothing else.
 const (
-	// indexFormat 2 added the chunk body digest. A generation without it cannot
-	// prove that a live document still holds the bytes that were ranked, so it
-	// is rebuilt rather than read.
-	indexFormat  = 2
+	// indexFormat 3 removed link destinations and URL-shaped runs from the
+	// terms a chunk is indexed under. A generation built before it holds the
+	// words inside every link target as ordinary prose, so it is rebuilt rather
+	// than read: the alternative is one profile answering a common noun with
+	// its own Sources sections and another not, depending on when each source
+	// was last built. Format 2 added the chunk body digest, without which a
+	// generation cannot prove that a live document still holds the bytes that
+	// were ranked.
+	indexFormat  = 3
 	indexFile    = "index.jsonl"
 	currentFile  = "current"
 	genPrefix    = "gen-"
@@ -98,6 +103,16 @@ type indexedChunk struct {
 
 	Length int            `json:"length"`
 	Terms  map[string]int `json:"terms,omitempty"`
+
+	// Cited counts the occurrences that fall inside a quotation, and
+	// CitedLength is how many of Length they account for. A source that
+	// declares examples_quote_queries subtracts both when it measures how much
+	// a chunk is ABOUT a query; every other source ignores them. Recorded
+	// unconditionally because they are a fact about the text rather than a
+	// ranking choice, so toggling the setting does not change what the corpus
+	// says about itself.
+	Cited       map[string]int `json:"cited,omitempty"`
+	CitedLength int            `json:"cited_length,omitempty"`
 }
 
 // Local is this chunk's locator local part: path plus line range, which is
@@ -405,6 +420,7 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 	chunks := make([]indexedChunk, 0, len(parsed))
 	for _, c := range parsed {
 		terms, length := c.terms()
+		cited, citedLength := c.cited()
 		chunks = append(chunks, indexedChunk{
 			Path:        ref.Path,
 			Ord:         c.Ord,
@@ -417,6 +433,8 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 			BodyDigest:  bodyDigest(c.Body),
 			Length:      length,
 			Terms:       terms,
+			Cited:       cited,
+			CitedLength: citedLength,
 		})
 	}
 	return doc, chunks, nil

@@ -48,6 +48,29 @@ type Settings struct {
 	// then the copies genuinely are distinct records.
 	ExcludeNestedRepos bool
 
+	// ExamplesQuoteQueries declares that this corpus quotes realistic user
+	// queries as worked examples.
+	//
+	// Documentation does this deliberately and should: the relevance section of
+	// docs/adapter-protocol.md is easier to read because it argues over "make a
+	// dentist appointment" rather than over foo and bar. The cost is that a
+	// corpus quoting user queries matches those queries, and half the answer to
+	// `recall query dentist` was the retrieval system discussing the retrieval
+	// of dentists.
+	//
+	// Where it is set, an occurrence inside a quotation does not count toward
+	// how much a chunk is ABOUT the query. It stays indexed and stays findable:
+	// somebody asking how relevance is defined must still reach that section,
+	// and a chunk withheld for a low relevance is reported as a suppression
+	// rather than dropped. What changes is that the chunk stops competing, on a
+	// query about the thing it was quoting, with records that are that thing.
+	//
+	// It is declared per source rather than inferred because only the corpus
+	// knows: a note quoting a decision IS the decision, and the same rule
+	// applied there would discount the strongest evidence a personal corpus
+	// holds.
+	ExamplesQuoteQueries bool
+
 	// Aliases are declared stable names for a document, keyed by its
 	// corpus-relative path. They are the only single-word identifiers that may
 	// produce an exact_identifier signal, because a person wrote them down for
@@ -136,6 +159,10 @@ func (s Settings) digest() string {
 		ExcludeNestedRepos bool                `json:"exclude_nested_repos"`
 		Aliases            map[string][]string `json:"aliases,omitempty"`
 	}{s.Extensions, s.MaxFileBytes, s.ExcludeDirs, s.ExcludeNestedRepos, s.Aliases})
+	// examples_quote_queries is deliberately absent: it changes how a query is
+	// answered, not which files are in the corpus, so a generation built under
+	// either value describes the same boundary and must not be rebuilt when it
+	// is toggled.
 	if err != nil {
 		// Every field is a string, an int, or a map of them. A failure here
 		// would mean the type above changed into something unserializable.
@@ -179,6 +206,8 @@ func parseSettings(raw map[string]any) (Settings, error) {
 			}
 		case "exclude_nested_repos":
 			out.ExcludeNestedRepos, err = asBool(key, value)
+		case "examples_quote_queries":
+			out.ExamplesQuoteQueries, err = asBool(key, value)
 		case "aliases":
 			out.Aliases, err = asAliases(value)
 		default:
@@ -354,6 +383,12 @@ func settingsSchema() map[string]any {
 				"type": "boolean",
 				"description": "Skip any directory holding a .git entry, so a nested checkout " +
 					"is not indexed as a second copy of the same documents. Default true.",
+			},
+			"examples_quote_queries": map[string]any{
+				"type": "boolean",
+				"description": "This corpus quotes realistic user queries as worked examples. " +
+					"Where set, an occurrence inside a quotation does not count toward how much " +
+					"a chunk is about the query; it stays indexed and findable. Default false.",
 			},
 			"aliases": map[string]any{
 				"type": "object",

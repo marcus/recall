@@ -252,7 +252,7 @@ func (a *Adapter) setBuildError(err error) {
 func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	a.mu.RLock()
 	gen, sourceID, closed := a.gen, a.sourceID, a.closed
-	root, maxBytes := a.root, a.settings.MaxFileBytes
+	root, settings := a.root, a.settings
 	a.mu.RUnlock()
 
 	switch {
@@ -267,7 +267,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	start := time.Now()
-	hits, query := searchIndex(gen, req)
+	hits, query := searchIndex(gen, req, settings)
 
 	// Excerpt selection reads files, so it is the one part of a search that can
 	// run out of time. Both bounds are folded into one context here; a read that
@@ -278,7 +278,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		defer cancel()
 	}
 	found, unreadable := candidates(
-		ctx, gen, sourceID, hits, req.Limit, query, newBodyReader(root, maxBytes))
+		ctx, gen, sourceID, hits, req.Limit, query, newBodyReader(root, settings.MaxFileBytes))
 
 	// A generation built over a partial boundary answers partial, every time it
 	// answers. The alternative is a source reporting success over a corpus it
@@ -289,7 +289,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 	return recall.SearchResponse{
 		Candidates:      found,
-		Diagnostics:     searchDiagnostics(gen, req, query, len(hits), unreadable, time.Since(start)),
+		Diagnostics:     searchDiagnostics(gen, req, query, settings, len(hits), unreadable, time.Since(start)),
 		SourceWatermark: gen.header.Watermark,
 		Outcome:         outcome,
 	}, nil

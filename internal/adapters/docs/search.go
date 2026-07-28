@@ -89,7 +89,7 @@ type hit struct {
 // term statistics, so the tie-breaks are what make the ORDER identical too —
 // without them, equal scores would come out in whatever order the postings
 // happened to be visited.
-func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis) {
+func searchIndex(g *generation, req recall.SearchRequest, s Settings) ([]hit, queryAnalysis) {
 	if !wantsDocuments(req.Filters.RecordTypes) {
 		return nil, queryAnalysis{}
 	}
@@ -111,6 +111,7 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 	// as the coordination factor BM25 does not have. Both read the content
 	// terms, so scaffolding pays for neither.
 	coverage := newQueryCoverage(g, query)
+	coverage.discountCitations = s.ExamplesQuoteQueries
 
 	// An exact identifier match must surface the document even when its text
 	// shares no term with the query: "docs/spec.md" names a file rather than
@@ -138,7 +139,7 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 			score:     score,
 			exact:     exact[c.Path],
 			alias:     alias[c.Path],
-			relevance: recall.Relevance(covered, len(coverage.groups), coverage.hits(c), c.Length),
+			relevance: coverage.aboutness(c),
 		})
 	}
 
@@ -214,6 +215,15 @@ func (t termGroup) count(chunk indexedChunk) int {
 	return n
 }
 
+// cited is how many of those occurrences fall inside a quotation.
+func (t termGroup) cited(chunk indexedChunk) int {
+	n := chunk.Cited[t.term]
+	for _, v := range t.variants {
+		n += chunk.Cited[v]
+	}
+	return n
+}
+
 // groupTerms resolves each query term against the generation's vocabulary.
 func groupTerms(g *generation, terms []string) []termGroup {
 	variants := recall.ResolveTermVariants(terms, g.holds)
@@ -260,6 +270,14 @@ func contentTerms(query queryAnalysis) []string {
 type queryCoverage struct {
 	groups   []termGroup
 	required int
+
+	// discountCitations follows settings.examples_quote_queries. It changes
+	// [queryCoverage.aboutness] and nothing else: admission, scoring, and the
+	// coordination factor all still read every occurrence, so a chunk that
+	// quotes the query is still found and still reported. What it stops is that
+	// chunk competing, on a query about the thing it quoted, with records that
+	// ARE that thing.
+	discountCitations bool
 }
 
 func newQueryCoverage(g *generation, query queryAnalysis) queryCoverage {
@@ -292,16 +310,41 @@ func (c queryCoverage) admits(covered int) bool {
 	return covered >= c.required
 }
 
-// hits counts matched term OCCURRENCES, where covered counts matched TERMS.
-// Concentration needs the occurrences: a chunk that says "dentist" once and a
-// chunk that is a list of dentists cover the query identically and are not
-// equally about it.
-func (c queryCoverage) hits(chunk indexedChunk) int {
-	n := 0
+// aboutness is [recall.Candidate.Relevance] for one chunk: the one definition
+// every source shares, over the text this source counts as the chunk's own.
+//
+// The occurrences and the length move together, which is what keeps the number
+// comparable. docs/adapter-protocol.md requires that length be measured over
+// exactly the text a match was found in — padding it with text no query term
+// could reach makes every record look less about every query — so a source that
+// does not count a citation as its own prose must not count its words in the
+// length either. It is the same rule the link destinations follow: text that is
+// a reference to something else is not the document speaking.
+//
+// A chunk whose every occurrence of the query is a citation measures 0 and is
+// then withheld by the profile's relevance floor, which reports it as a
+// suppression rather than dropping it silently. That is the intended end state
+// and the reason this is a per-source declaration: on a corpus of notes, a
+// quoted decision IS the decision.
+// Occurrences are counted, where covered counts matched TERMS: a chunk that
+// says "dentist" once and a chunk that is a list of dentists cover the query
+// identically and are not equally about it.
+func (c queryCoverage) aboutness(chunk indexedChunk) float64 {
+	covered, hits, length := 0, 0, chunk.Length
 	for _, group := range c.groups {
-		n += group.count(chunk)
+		n := group.count(chunk)
+		if c.discountCitations {
+			n -= group.cited(chunk)
+		}
+		if n > 0 {
+			covered++
+			hits += n
+		}
 	}
-	return n
+	if c.discountCitations {
+		length -= chunk.CitedLength
+	}
+	return recall.Relevance(covered, len(c.groups), hits, length)
 }
 
 // share is the coordination factor. An empty query is covered by everything:
@@ -578,6 +621,7 @@ func searchDiagnostics(
 	g *generation,
 	req recall.SearchRequest,
 	query queryAnalysis,
+	s Settings,
 	pool int,
 	unreadable int,
 	elapsed time.Duration,
@@ -599,6 +643,12 @@ func searchDiagnostics(
 		// that admitted less than the caller expected is then a stated rule
 		// rather than a thin corpus.
 		diag["query_terms_required"] = coverage.required
+	}
+	if s.ExamplesQuoteQueries {
+		// A source that discounts its own citations says so on every search it
+		// answers, because it is the difference between a result this corpus
+		// withheld and one it does not hold.
+		diag["relevance_basis"] = "excludes_quoted_occurrences"
 	}
 	if n := variantCount(coverage.groups); n > 0 {
 		// How many terms this corpus answered under a different number than the

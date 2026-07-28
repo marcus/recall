@@ -38,10 +38,30 @@ func (c parsedChunk) text() string {
 // under "Index Obligations" is reachable by either phrase. It is included once
 // and not repeated per line: weighting headings more heavily is a ranking
 // choice that has to be measured before it is made.
+//
+// Locators — link destinations and URL-shaped runs — are removed first. See
+// [withoutLocators].
 func (c parsedChunk) terms() (map[string]int, int) {
-	tokens := tokenize(strings.Join(c.HeadingPath, " "))
-	tokens = append(tokens, tokenize(strings.Join(c.Body, "\n"))...)
+	tokens := tokenize(withoutLocators(strings.Join(c.HeadingPath, " ")))
+	tokens = append(tokens, tokenize(withoutLocators(strings.Join(c.Body, "\n")))...)
 	return countTerms(tokens)
+}
+
+// cited are the tokens this chunk holds ONLY inside a quotation: a
+// double-quoted span or an inline code span in the body.
+//
+// They are counted, not removed. Whether a citation is evidence depends on what
+// the corpus is — a note quoting a decision is the decision, while a manual
+// quoting "make a dentist appointment" as a worked example is about retrieval —
+// and the corpus is the only thing that can say which. So the index records the
+// fact and settings.examples_quote_queries decides what to do with it; see
+// [queryCoverage.aboutness].
+//
+// Headings are not scanned: a heading is what the section IS, and a term the
+// author put in one is not a passing citation whatever the punctuation around
+// it.
+func (c parsedChunk) cited() (map[string]int, int) {
+	return countTerms(tokenize(withoutLocators(quotedRuns(strings.Join(c.Body, "\n")))))
 }
 
 // excerpt is a bounded preview: the first non-blank body lines, or the heading
