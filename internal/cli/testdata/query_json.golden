@@ -1,0 +1,121 @@
+{
+  "results": [
+    {
+      "primary": {
+        "candidate_id": "record#1",
+        "source_uid": "01UIDNOTES",
+        "source_id": "notes",
+        "source_record_id": "record",
+        "locator": "notes:record",
+        "record_type": "document",
+        "title": "Ranking",
+        "excerpt": "Cross-source fusion uses rank.",
+        "excerpt_kind": "matched",
+        "local_rank": 1,
+        "match_signals": [
+          "lexical"
+        ],
+        "observed_at": "2026-03-04T05:00:00Z",
+        "source_revision": "rev-9",
+        "sensitivity": "internal",
+        "metadata": {
+          "chunk_count": 5
+        },
+        "content_fingerprint": "fp-1"
+      },
+      "members": [
+        {
+          "lineage_root": "01UIDNOTES:record",
+          "candidates": [
+            {
+              "candidate_id": "",
+              "source_uid": "",
+              "source_id": "notes",
+              "source_record_id": "",
+              "locator": "notes:record",
+              "record_type": "",
+              "title": "",
+              "local_rank": 1,
+              "match_signals": [
+                "lexical"
+              ],
+              "sensitivity": "public"
+            }
+          ]
+        }
+      ],
+      "explanation": {
+        "source_uid": "01UIDNOTES",
+        "source_id": "notes",
+        "local_rank": 1,
+        "local_pool_size": 2,
+        "match_signals": null,
+        "prior": {
+          "base": 0,
+          "intent": 0,
+          "effective": 0
+        },
+        "lineage_root": "01UIDNOTES:record",
+        "corroboration": {
+          "independent_units": 1,
+          "sources": [
+            "notes"
+          ],
+          "cap": 2,
+          "cap_applied": false
+        },
+        "freshness": {
+          "mode": ""
+        },
+        "reranker": {
+          "used": false
+        },
+        "exact_promoted": false,
+        "score": 0.0163934,
+        "rank_constant": 60
+      },
+      "score": 0.0163934
+    }
+  ],
+  "source_outcomes": [
+    {
+      "source_uid": "01UIDNOTES",
+      "source_id": "notes",
+      "outcome": "success",
+      "candidates": 1,
+      "elapsed_ns": 0,
+      "diagnostics": {
+        "chunk_count": 12
+      }
+    }
+  ],
+  "plan": {
+    "profile": "work",
+    "sources": [
+      {
+        "source_uid": "01UIDNOTES",
+        "source_id": "notes",
+        "eligible": true,
+        "limit": 20,
+        "timeout_ns": 0,
+        "prior": 1.2
+      }
+    ],
+    "deadline": "2026-03-04T05:06:07Z",
+    "fusion_reserve_ns": 0,
+    "limit": 20,
+    "rank_constant": 60,
+    "corroboration_cap": 2
+  },
+  "suppressed": [
+    {
+      "reason": "above profile ceiling",
+      "count": 1,
+      "lineage_root": "01UIDNOTES:sealed"
+    }
+  ],
+  "outcome": "answered",
+  "coverage": "complete",
+  "truncated": false,
+  "elapsed_ns": 12000000
+}

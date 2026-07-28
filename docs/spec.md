@@ -214,7 +214,7 @@ Each result carries its primary candidate, cluster members with lineage roots,
 a structured score explanation, and a locator. Leading results include
 excerpts; trailing results compress to one line plus locator. The same
 structure serializes to JSON and renders as tiered text. Neither surface gets
-extra fields.
+extra fields, and neither may assert what the structure does not say.
 
 An excerpt says which of two things it is. `excerpt_kind: matched` is the span
 the query matched; `excerpt_kind: preview` is the record's opening, shown
@@ -231,6 +231,63 @@ that revision actually holds: the same query against the same generation always
 yields the same window, or it yields none. An adapter that cuts the window from
 live content verifies the content is unchanged first — byte for byte, since a
 normalized comparison passes on a reflow that moves every offset.
+
+### Output Tiers And Parity
+
+The parity rule is that the human and machine surfaces carry the same facts. It
+is read as **the same facts are available from the surface**, not that the
+default human view prints all of them. The human surface is a projection chosen
+for a reader with finite attention; `--json` is the complete serialization;
+`--explain` is the bridge between them.
+
+```text
+default    outcome, coverage, and one pointer per result — rank, locator,
+           title, and excerpt, plus two markers: `exact` when the query
+           named the record outright, and the corroboration count when a
+           result stands on more than one independent record
+--explain  per-result provenance, cluster lineage, score explanations,
+           per-source outcomes, and the resolved plan
+--json     the whole response, unprojected and identical under every
+           rendering flag
+```
+
+The two markers are the documented exceptions to "pointer only", and each is
+there because it states something the position in the list does not. `exact` is
+what makes a `preview` excerpt legible: a record whose text did not match, shown
+because the query named it outright, is a strong result rather than a suspicious
+one, and without the marker the two are indistinguishable. The corroboration
+count separates one cluster standing on several independent records from a
+single record, which is the distinction the whole ranking layer exists to draw.
+The fusion score is deliberately not among them: it is ordinal and uncalibrated,
+so the rank is the whole of what it says to a caller choosing what to expand,
+and `--explain` prints the number with the arithmetic behind it.
+
+The reasoning, recorded because the question recurs:
+
+- **The default view exists to be chosen from.** Its reader is deciding which
+  locator to expand, and `recall expand` takes exactly that locator. Printing
+  everything at equal weight made the caller pay for the whole response before
+  reading the first result: the source outcomes and plan alone were a fixed
+  ~6.5 KB on every query, unreduced by `--limit`, and were the entire cost of a
+  query that found nothing.
+- **Available, not omitted.** Every fact the default view drops is one flag away
+  and unconditionally present in `--json`. A projection that made a fact
+  unreachable would break the rule; one that ranks facts by whether they change
+  a reader's next action does not.
+- **Two facts are exempt, because their absence is itself a claim.** Degraded
+  coverage and suppression print unflagged in every mode. A source that could
+  not answer, or a record withheld, reads as an answer that had nothing more
+  when it is not stated — which is the one thing this system does not do.
+- **One flag, not two.** `--explain` already means "why did this answer come out
+  this way", and every block behind it answers that question. A second
+  verbosity flag would split the diagnostics across two axes and leave a caller
+  learning which flag holds which fact. `recall sources` and `recall doctor`
+  remain the direct answers when source health is the question rather than a
+  footnote to a query.
+
+What this forbids is unchanged: a rendering flag may not alter outcome,
+coverage, or exit code; no fact may be reachable only from a human tier; and no
+tier may state something the structure does not carry.
 
 ### Abstention
 
@@ -822,7 +879,8 @@ All surfaces call one application layer.
 ### CLI
 
 Canonical operator surface. Every read command supports `--json` alongside
-concise human output.
+concise human output; for `recall query` the two are tiers of one structure,
+under [Output Tiers And Parity](#output-tiers-and-parity).
 
 ```text
 recall query      search and fuse configured sources

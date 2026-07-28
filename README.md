@@ -77,7 +77,8 @@ recall doctor           # config validity, trust boundary, health, freshness
 
 ```sh
 recall query "what did we decide about ranking"
-recall query "…" --json
+recall query "…" --explain   # provenance, lineage, scores, source outcomes, plan
+recall query "…" --json      # the whole response, unprojected
 recall expand <locator> --detail full
 recall refresh [--source <source-id>]  # publish fresh adapter-owned indexes
 recall sources          # instances, capabilities, health, freshness
@@ -90,6 +91,14 @@ recall mcp              # MCP tools over stdio
 Exit codes distinguish `answered` (0), `error` (1), `abstained` (2),
 `degraded` (3), and `failed` (4) — "nothing matched" and "a source could not
 answer" are never the same result.
+
+A default result is a pointer: rank, locator, title, and excerpt, marked `exact`
+when the query named the record outright and `corroborated N` when it stands on
+more than one independent record. It is what a caller chooses from before
+spending a call on `recall expand`. Degraded coverage and withheld records are
+always stated; scores, provenance, lineage, source outcomes, and the plan are
+behind `--explain` and unconditionally in `--json` — see
+[output tiers and parity](docs/spec.md#output-tiers-and-parity).
 
 Configuration lives at `~/.config/recall/config.toml` with adapter definitions
 in `adapters.d/`; `recall config explain` prints the resolved view. Adapter

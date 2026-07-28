@@ -127,13 +127,99 @@ func TestDegradedCoverageIsVisibleInHumanOutput(t *testing.T) {
 	}
 	contains(t, stdout, "coverage degraded", "the header states coverage inline")
 	contains(t, stdout, "degraded coverage: tasks (unreachable)",
-		"the source that could not answer is named, not silently absent")
-	contains(t, stdout, "tasks (01UIDTASKS)", "the failed source still appears in the source list")
+		"the source that could not answer is named without --explain")
+
+	_, explained, _ := h.run("query", "--explain", "anything")
+	contains(t, explained, "tasks (01UIDTASKS)", "the per-source ledger is behind --explain")
+}
+
+// The diagnostic tier is a projection choice, not a deletion: everything the
+// default view stops printing is one flag away, and the flag is the one that
+// already means "why did this answer come out this way".
+func TestDiagnosticsAreBehindExplain(t *testing.T) {
+	docs := &fake{manifest: manifest(), candidates: []recall.Candidate{
+		candidate("a.md", 1, func(c *recall.Candidate) {
+			c.SourceRevision = "rev-9"
+			c.Metadata = map[string]any{"chunk_count": 5}
+		}),
+	}}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": {manifest: manifest()}}),
+	})
+
+	_, plain, _ := h.run("query", "anything")
+	// A pointer is the locator, the title, and the excerpt. Anything a caller
+	// would have to read past to reach the next result is the diagnostic tier.
+	for _, want := range []string{"docs:a.md", "title a.md", "excerpt for a.md"} {
+		contains(t, plain, want, "the pointer a caller chooses from stays in the default view")
+	}
+	// The score is in this list: it is ordinal and uncalibrated, so the rank
+	// already carries everything it tells a caller choosing what to expand.
+	diagnostic := []string{"sources\n", "plan  profile", "lineage ", "chunk_count", "rev-9",
+		"candidate a.md#1", "0.0163934"}
+	for _, gone := range diagnostic {
+		if strings.Contains(plain, gone) {
+			t.Errorf("the default view still prints %q; it belongs behind --explain\n%s", gone, plain)
+		}
+	}
+
+	_, explained, _ := h.run("query", "--explain", "anything")
+	for _, want := range diagnostic {
+		contains(t, explained, want, "--explain reaches everything the default view dropped")
+	}
+}
+
+// Two independent records agreeing is what this tool does that grep does not,
+// and a cluster that dropped its lineage blocks would look exactly like a
+// single record. The count stays in the default view; --explain names them.
+func TestCorroborationSurvivesInTheDefaultView(t *testing.T) {
+	person := func(c *recall.Candidate) {
+		c.RecordType = recall.RecordPerson
+		c.Metadata = map[string]any{"entity_id": "person-42"}
+	}
+	docs := &fake{manifest: manifest(), candidates: []recall.Candidate{candidate("team.md", 1, person)}}
+	tasks := &fake{manifest: manifest(), candidates: []recall.Candidate{candidate("td-1", 1, person)}}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": tasks}),
+	})
+
+	_, stdout, _ := h.run("query", "marcus")
+	contains(t, stdout, "corroborated 2", "one result standing on two records says so")
+
+	_, explained, _ := h.run("query", "--explain", "marcus")
+	contains(t, explained, "2 independent units from docs, tasks", "--explain names the sources")
+}
+
+// A query that found nothing must still cost nothing to read: the per-source
+// ledger and the plan do not shrink with the result set, so leaving them in the
+// default view made abstention the most expensive answer the tool gives.
+func TestAbstentionIsCheapToRead(t *testing.T) {
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{
+			"fakedocs": {manifest: manifest()}, "faketasks": {manifest: manifest()},
+		}),
+	})
+
+	code, stdout, _ := h.run("query", "nothing here")
+	if code != cli.ExitAbstained {
+		t.Fatalf("exit = %d, want %d\n%s", code, cli.ExitAbstained, stdout)
+	}
+	contains(t, stdout, "results: none", "the abstention is stated")
+	if len(stdout) > 128 {
+		t.Errorf("an abstention costs %d bytes to read:\n%s", len(stdout), stdout)
+	}
 }
 
 // Neither surface may carry a fact the other lacks. The tiered text is derived
 // from the same structure the JSON serializes, so a fact that reaches one and
 // not the other means a surface acquired a view of its own.
+//
+// Read against the full human surface — --explain — because that is what parity
+// means here: the same facts are available from the surface, not printed in
+// every tier of it. docs/spec.md, "Output Tiers And Parity", records why.
 func TestHumanAndJSONCarryTheSameFacts(t *testing.T) {
 	observed := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	docs := &fake{
@@ -208,6 +294,62 @@ func TestHumanAndJSONCarryTheSameFacts(t *testing.T) {
 				f.what, f.want, human)
 		}
 	}
+}
+
+// --json is the complete serialization, and the human tiers are projections of
+// it. That only holds if no rendering decision can reach the machine surface,
+// so this pins the bytes: a golden file over a fixed response, plus the check
+// that --explain — the flag that decides how much a person is shown — changes
+// nothing about what a program reads.
+func TestJSONIsTheUnprojectedResponse(t *testing.T) {
+	deadline := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	observed := time.Date(2026, 3, 4, 5, 0, 0, 0, time.UTC)
+	core := &transportCore{query: recall.QueryResponse{
+		Results: []recall.Result{{
+			Primary: recall.Candidate{
+				CandidateID: "record#1", SourceUID: "01UIDNOTES", SourceID: "notes",
+				SourceRecordID: "record", Locator: recall.Locator{SourceID: "notes", Local: "record"},
+				RecordType: recall.RecordDocument, Sensitivity: recall.SensitivityInternal,
+				Title: "Ranking", Excerpt: "Cross-source fusion uses rank.",
+				ExcerptKind: recall.ExcerptMatched, LocalRank: 1, SourceRevision: "rev-9",
+				ContentFingerprint: "fp-1", ObservedAt: &observed,
+				MatchSignals: []recall.MatchSignal{recall.MatchLexical},
+				Metadata:     map[string]any{"chunk_count": 5},
+			},
+			Members: []recall.ClusterMember{{
+				LineageRoot: "01UIDNOTES:record",
+				Candidates: []recall.Candidate{{
+					SourceID: "notes", Locator: recall.Locator{SourceID: "notes", Local: "record"},
+					LocalRank: 1, MatchSignals: []recall.MatchSignal{recall.MatchLexical},
+				}},
+			}},
+			Explanation: recall.Explanation{
+				SourceUID: "01UIDNOTES", SourceID: "notes", LocalRank: 1, LocalPoolSize: 2,
+				LineageRoot: "01UIDNOTES:record", Score: 0.0163934, RankConstant: 60,
+				Corroboration: recall.CorroborationExplanation{IndependentUnits: 1, Sources: []string{"notes"}, Cap: 2},
+			},
+			Score: 0.0163934,
+		}},
+		SourceOutcomes: []recall.SourceReport{{
+			SourceUID: "01UIDNOTES", SourceID: "notes", Outcome: recall.SearchSuccess, Candidates: 1,
+			Diagnostics: map[string]any{"chunk_count": 12},
+		}},
+		Plan: recall.Plan{
+			Profile: "work", Limit: 20, RankConst: 60, Corrobor: 2, Deadline: deadline,
+			Sources: []recall.PlanSource{{SourceUID: "01UIDNOTES", SourceID: "notes", Eligible: true, Limit: 20, Prior: 1.2}},
+		},
+		Suppressed: []recall.Suppression{{Reason: "above profile ceiling", Count: 1, LineageRoot: "01UIDNOTES:sealed"}},
+		Outcome:    recall.OutcomeAnswered,
+		Coverage:   recall.CoverageComplete,
+		Elapsed:    12 * time.Millisecond,
+	}}
+
+	_, plain, _ := runSurfaceCLI(t, core, nil, "query", "--json", "anything")
+	_, explained, _ := runSurfaceCLI(t, core, nil, "query", "--json", "--explain", "anything")
+	if plain != explained {
+		t.Errorf("--explain changed the machine surface:\n--- plain ---\n%s\n--- explained ---\n%s", plain, explained)
+	}
+	compareGolden(t, "query_json", plain)
 }
 
 // The score explanation is the product surface for ranking decisions, and it is
@@ -300,10 +442,13 @@ func TestScopeNarrowsThePlanWithoutDegrading(t *testing.T) {
 	if code != cli.ExitOK {
 		t.Errorf("exit = %d, want %d\n%s", code, cli.ExitOK, stdout)
 	}
-	contains(t, stdout, "out_of_scope", "the scoped-away source is reported, not hidden")
 	if strings.Contains(stdout, "td-1") {
 		t.Error("a scoped-away source contributed results")
 	}
+	// Not degraded, so nothing about it is stated unflagged; the report is
+	// still there for a caller asking why a source did not answer.
+	_, explained, _ := h.run("query", "--explain", "--scope", "source=docs", "anything")
+	contains(t, explained, "out_of_scope", "the scoped-away source is reported, not hidden")
 }
 
 func TestProjectAndEntityScopeReachAdapters(t *testing.T) {

@@ -18,8 +18,10 @@ remaining arguments, joined by spaces.
 
 flags:
   --profile NAME       profile to resolve; default is the configured one
-  --json               emit the response as JSON
-  --explain            show each result's score explanation
+  --json               emit the response as JSON: every field, unprojected
+  --explain            add the diagnostic tier: per-result provenance and
+                       cluster lineage, score explanations, per-source
+                       outcomes, and the resolved retrieval plan
   --limit N            maximum fused results
   --budget-ms N        latency budget for the whole request
   --budget-tokens N    response size budget; trailing results compress, then drop
@@ -31,6 +33,14 @@ flags:
                        reported, and coverage becomes degraded.
   --server URL         dispatch to a running recall serve instance
   --auth-token-env ENV read the server bearer token from ENV
+
+A default result is a pointer: rank, locator, title, and the excerpt, marked
+"exact" when the query named the record outright and "corroborated N" when the
+result stands on more than one independent record. The locator is the handle
+recall expand takes, and choosing what to expand is what the list is for.
+Scores, provenance, lineage, source outcomes, and the plan are diagnostics —
+behind --explain here, complete in --json, and answered directly by recall
+sources and recall doctor when they are the question.
 
 Human output states coverage inline: a source that was eligible and could not
 answer is named, never silently absent. An excerpt is marked by what it is:
@@ -128,14 +138,38 @@ func queryExit(resp recall.QueryResponse) int {
 	}
 }
 
-// renderQuery writes the tiered human form of a response.
+// renderQuery writes the human form of a response in two tiers.
 //
-// It carries every fact the JSON form carries. That is not a courtesy to the
-// terminal: the spec says the same structure serializes to JSON and renders as
-// tiered text, and neither surface gets extra fields. Degraded coverage in
-// particular is stated inline, because a person running a query without --json
-// is exactly the person who must not be told a partial answer is a whole one.
+// The default tier is a projection for a reader with finite attention: the
+// outcome, one pointer per result, and the two things that must never be
+// missing — degraded coverage and suppression. The diagnostic tier — per-result
+// provenance, cluster lineage, score explanations, per-source outcomes, and the
+// resolved plan — is behind --explain. Nothing becomes unreachable: --json
+// carries every field unprojected, and docs/spec.md records why a projected
+// human surface still satisfies the human/JSON parity invariant.
+//
+// One flag rather than two. --explain already means "why did this answer come
+// out this way", and every block behind it answers that question; a second
+// --verbose would split the diagnostics across two axes and leave a caller
+// learning which flag holds which fact. It is also the flag a caller already
+// reaches for, so nothing new has to be discovered to get the old output back.
+//
+// Every block below is its own function so the response budget can be charged
+// against what is actually rendered rather than against excerpts alone.
 func renderQuery(o *out, resp recall.QueryResponse, explained bool) {
+	renderOutcome(o, resp)
+	renderResults(o, resp.Results, explained)
+	renderSuppressed(o, resp.Suppressed)
+	if explained {
+		renderSourceOutcomes(o, resp.SourceOutcomes)
+		renderPlan(o, resp.Plan)
+	}
+}
+
+// renderOutcome states what the run claims about the corpus. It is never
+// flagged: a person running a query without --json is exactly the person who
+// must not be told a partial answer is a whole one.
+func renderOutcome(o *out, resp recall.QueryResponse) {
 	var head fields
 	head.text("outcome", string(resp.Outcome))
 	head.text("coverage", string(resp.Coverage))
@@ -151,11 +185,6 @@ func renderQuery(o *out, resp recall.QueryResponse, explained bool) {
 		// absence further down.
 		o.line("degraded coverage: " + strings.Join(degraded, ", "))
 	}
-
-	renderResults(o, resp.Results, explained)
-	renderSourceOutcomes(o, resp.SourceOutcomes)
-	renderPlan(o, resp.Plan)
-	renderSuppressed(o, resp.Suppressed)
 }
 
 func degradedSources(reports []recall.SourceReport) []string {
@@ -184,45 +213,76 @@ func renderResults(o *out, results []recall.Result, explained bool) {
 		return
 	}
 	for i, r := range results {
-		var head fields
-		head.text("score", num(r.Score))
-		head.flag("exact", r.Explanation.ExactPromoted)
-		o.printf("%d. %s  %s\n", i+1, r.Primary.Locator.String(), head.String())
-
-		var meta fields
-		meta.text("type", string(r.Primary.RecordType))
-		meta.text("sensitivity", r.Primary.Sensitivity.String())
-		meta.text("id", r.Primary.SourceRecordID)
-		meta.text("candidate", r.Primary.CandidateID)
-		meta.text("revision", r.Primary.SourceRevision)
-		meta.text("fingerprint", r.Primary.ContentFingerprint)
-		meta.text("signals", join(r.Primary.MatchSignals))
-		meta.count("local rank", r.Primary.LocalRank)
-		if r.Primary.LocalScore != nil {
-			meta.text("local score", num(*r.Primary.LocalScore))
-		}
-		meta.at("event", r.Primary.EventTime)
-		meta.at("valid from", r.Primary.ValidFrom)
-		meta.at("valid to", r.Primary.ValidTo)
-		meta.at("observed", r.Primary.ObservedAt)
-		meta.at("confirmed", r.Primary.ConfirmedAt)
-		meta.text("derived from", locators(r.Primary.DerivedFrom))
-		meta.text("metadata", diagnostics(r.Primary.Metadata))
-
-		if r.Primary.Title != "" {
-			o.block("   ", r.Primary.Title)
-		}
-		if r.Primary.Excerpt != "" {
-			o.block(excerptIndent(r.Primary.ExcerptKind), r.Primary.Excerpt)
-		}
-		if !meta.empty() {
-			o.block("   ", meta.String())
-		}
-		renderMembers(o, r.Members)
+		renderResult(o, i+1, r)
 		if explained {
-			o.block("   ", explain.Render(r.Explanation))
+			renderResultDetail(o, r)
 		}
 	}
+}
+
+// renderResult is the default tier of one result: what a caller needs to decide
+// whether to expand this locator, and nothing that only says how it got here.
+// The locator carries the source, so naming the source again would be a field
+// spent restating the line above it. The fusion score is not here either: it is
+// ordinal and uncalibrated, so the position in the list is the whole of what it
+// says, and explain.Render prints the number with the arithmetic behind it.
+func renderResult(o *out, rank int, r recall.Result) {
+	var head fields
+	// Two markers earn their place because each states something the rank does
+	// not. "exact" says the query named this record outright, which is what
+	// makes a "~" excerpt — nothing in the text matched — a strong result
+	// rather than a suspicious one.
+	head.flag("exact", r.Explanation.ExactPromoted)
+	if n := r.Explanation.Corroboration.IndependentUnits; n > 1 {
+		// Independent records agreeing is the one fact the lineage blocks carry
+		// that the locator does not, and it is the reason to run this instead
+		// of grep. Units, not members: a record that arrived as three chunks
+		// corroborates nothing.
+		head.count("corroborated", n)
+	}
+	line := fmt.Sprintf("%d. %s", rank, r.Primary.Locator.String())
+	if !head.empty() {
+		line += "  " + head.String()
+	}
+	o.line(line)
+	if r.Primary.Title != "" {
+		o.block("   ", r.Primary.Title)
+	}
+	if r.Primary.Excerpt != "" {
+		o.block(excerptIndent(r.Primary.ExcerptKind), r.Primary.Excerpt)
+	}
+}
+
+// renderResultDetail is the diagnostic tier of one result: the record's
+// provenance, the cluster's lineage, and the score explanation. All of it
+// answers "why is this here and what exactly is it", which is what --explain
+// asks, and all of it is in --json unconditionally.
+func renderResultDetail(o *out, r recall.Result) {
+	var meta fields
+	meta.text("type", string(r.Primary.RecordType))
+	meta.text("sensitivity", r.Primary.Sensitivity.String())
+	meta.text("id", r.Primary.SourceRecordID)
+	meta.text("candidate", r.Primary.CandidateID)
+	meta.text("revision", r.Primary.SourceRevision)
+	meta.text("fingerprint", r.Primary.ContentFingerprint)
+	meta.text("signals", join(r.Primary.MatchSignals))
+	meta.count("local rank", r.Primary.LocalRank)
+	if r.Primary.LocalScore != nil {
+		meta.text("local score", num(*r.Primary.LocalScore))
+	}
+	meta.at("event", r.Primary.EventTime)
+	meta.at("valid from", r.Primary.ValidFrom)
+	meta.at("valid to", r.Primary.ValidTo)
+	meta.at("observed", r.Primary.ObservedAt)
+	meta.at("confirmed", r.Primary.ConfirmedAt)
+	meta.text("derived from", locators(r.Primary.DerivedFrom))
+	meta.text("metadata", diagnostics(r.Primary.Metadata))
+
+	if !meta.empty() {
+		o.block("   ", meta.String())
+	}
+	renderMembers(o, r.Members)
+	o.block("   ", explain.Render(r.Explanation))
 }
 
 // excerptIndent marks what the excerpt is, in the three states the JSON form
@@ -276,6 +336,11 @@ func locators(in []recall.Locator) string {
 
 // renderSourceOutcomes lists every source the request touched, answered or
 // not. A source that failed is reported here rather than being absent.
+//
+// Behind --explain, because this is the whole per-source ledger and it does not
+// shrink with the result set: it was the entire cost of a query that found
+// nothing. The failure a caller must not miss is already named unflagged by
+// renderOutcome, and recall sources answers the rest on demand.
 func renderSourceOutcomes(o *out, reports []recall.SourceReport) {
 	o.blank()
 	o.line("sources")
@@ -298,6 +363,9 @@ func renderSourceOutcomes(o *out, reports []recall.SourceReport) {
 	}
 }
 
+// renderPlan is the resolved retrieval plan, behind --explain: it describes the
+// request rather than the answer, and it is identical for every query against
+// the profile.
 func renderPlan(o *out, plan recall.Plan) {
 	o.blank()
 	var head fields
@@ -324,7 +392,8 @@ func renderPlan(o *out, plan recall.Plan) {
 
 // renderSuppressed reports what was withheld. Every suppressed candidate is
 // counted with a reason so a host can say something was not shown without
-// saying what it was.
+// saying what it was. Unflagged, for the same reason the coverage line is:
+// silence about a withheld record reads as an answer that had nothing more.
 func renderSuppressed(o *out, in []recall.Suppression) {
 	if len(in) == 0 {
 		return

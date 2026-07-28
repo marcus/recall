@@ -1,23 +1,9 @@
 outcome answered  coverage degraded  results 2
 degraded coverage: tasks (unreachable)
 
-1. docs:ranking.md#L1-20  score 0.0196721
+1. docs:ranking.md#L1-20
    Ranking
  > Cross-source fusion uses rank, never raw scores.
-   type document  sensitivity internal  id ranking.md#L1-20  candidate ranking.md#L1-20#1  revision rev-9  signals lexical  local rank 1  observed 2026-03-04T05:06:07Z
-   lineage 01UIDDOCS:ranking.md#L1-20
-     docs:ranking.md#L1-20  source docs  local rank 1  signals lexical
-2. docs:plan.md#L4-9  score 0.0193548
+2. docs:plan.md#L4-9
    Retrieval plan
    The eligible sources, per-source limits, and budgets.
-   type document  sensitivity internal  id plan.md#L4-9  candidate plan.md#L4-9#1  signals lexical  local rank 2
-   lineage 01UIDDOCS:plan.md#L4-9
-     docs:plan.md#L4-9  source docs  local rank 2  signals lexical
-
-sources
-  docs (01UIDDOCS)  outcome success  candidates 2  watermark w-000123  generation gen-000042
-  tasks (01UIDTASKS)  outcome unavailable  reason unreachable
-
-plan  profile work  rank constant 60  corroboration cap 2  fusion reserve 25ms  deadline <time>
-  docs (01UIDDOCS)  eligible  limit 20  timeout <dur>  prior 1.2
-  tasks (01UIDTASKS)  eligible  limit 20  timeout <dur>  prior 1

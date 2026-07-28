@@ -1,11 +1,3 @@
 outcome abstained  coverage complete
 
 results: none
-
-sources
-  docs (01UIDDOCS)  outcome success
-  tasks (01UIDTASKS)  outcome success
-
-plan  profile work  rank constant 60  corroboration cap 2  fusion reserve 25ms  deadline <time>
-  docs (01UIDDOCS)  eligible  limit 20  timeout <dur>  prior 1.2
-  tasks (01UIDTASKS)  eligible  limit 20  timeout <dur>  prior 1
