@@ -18,6 +18,53 @@ const (
 	bm25K1 = 1.2
 	bm25B  = 0.75
 
+	// minimumQueryTerms is how many of a question's content terms a chunk has to
+	// carry to be a candidate at all, and the share it carries is what
+	// multiplies its score. BM25 has no coordination factor of its own: without
+	// one, a chunk holding a single common word of a six-word question is scored
+	// against a chunk that answered the whole question, separated only by idf.
+	// That is how a sentence came to return four times what the keyword inside
+	// it did, on the same question.
+	//
+	// A count of two, and not a fraction of the query, because both packs say a
+	// fraction is wrong in one direction or the other. smoke's "the backup
+	// restore runbook for atlas storage" is answered by a chunk carrying two of
+	// its six terms — the question names a distractor, and the answer is
+	// entitled to ignore it — while the chunks that flood firstuse's "what is
+	// the sidecar project for" carry two of three. Half the terms drops the
+	// first; a third of them admits the second. What separates a paraphrase from
+	// a coincidence is not how much of a question it covers, but whether it
+	// covers more of it than any single word would, which is also exactly the
+	// reported defect: one term of six admitted the whole corpus.
+	//
+	// Weighing the terms by idf rather than counting them was measured and
+	// rejected: it drops that same smoke case, whose two covered terms are the
+	// common ones in that corpus, and the judgments in both packs side with the
+	// count. The score being scaled is idf-weighted already.
+	//
+	// A question with fewer terms than this requires all of them. The terms are
+	// the ones that were asked, whether or not this generation indexes them: a
+	// requirement computed against the corpus's own vocabulary would quietly
+	// become "carry the one word I happen to have" for a question about
+	// something the corpus is missing, and a filter narrowing that corpus would
+	// change what the same question demanded of it. So "what is the zxqv
+	// project", two terms of which this corpus has one, answers nothing instead
+	// of answering with everything filed under a project — 64 document results
+	// on the home profile before this rule and none after. That is the honest
+	// outcome where degrading to the query's weakest surviving word is not, and
+	// it is what abstention is for. The recourse is the term on its own or the
+	// document's name, both of which say what a question cannot: that the caller
+	// meant exactly this much.
+	//
+	// The floor applies where content eligibility already applied — a question
+	// whose grammatical shell was removed — and applying it to bare keywords was
+	// measured and reverted. smoke's "signals stream rotation" is answered by a
+	// chunk carrying one of those three words, and the pack marks it required:
+	// somebody who types three words has typed the alternatives they would
+	// accept, while somebody who writes a sentence has written one subject.
+	// Coverage still scales a keyword query's scores; it excludes nothing there.
+	minimumQueryTerms = 2
+
 	// defaultLimit bounds a search that asked for no limit. The core normally
 	// sets one; a document corpus must not flood the pool when it does not.
 	defaultLimit = 20
@@ -56,9 +103,16 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 	// change because lexical prose normalization did.
 	exact, alias := identifierMatches(g, query.raw)
 
+	// One coverage measurement per chunk, used twice: as the admission floor and
+	// as the coordination factor BM25 does not have. Both read the content
+	// terms, so scaffolding pays for neither.
+	coverage := newQueryCoverage(query)
+
 	// An exact identifier match must surface the document even when its text
 	// shares no term with the query: "docs/spec.md" names a file rather than
 	// describing it, and a source that answered nothing there would be wrong.
+	// Coverage never excludes it for the same reason, and still scales its
+	// lexical score, which the exact partition of the sort order outranks.
 	// Chunks are visited in index order, which is stable, so the hit list is
 	// the same before sorting on every run.
 	hits := make([]hit, 0, len(scores))
@@ -67,13 +121,15 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 		if !scored && !exact[c.Path] {
 			continue
 		}
-		if scored && !exact[c.Path] && !contentEligible(c, query) {
+		covered := coverage.covered(c)
+		if scored && !exact[c.Path] && !coverage.admits(covered) {
 			continue
 		}
 		if !allowed(c) {
 			continue
 		}
-		hits = append(hits, hit{chunk: i, score: scores[i], exact: exact[c.Path], alias: alias[c.Path]})
+		score := scores[i] * coverage.share(covered)
+		hits = append(hits, hit{chunk: i, score: score, exact: exact[c.Path], alias: alias[c.Path]})
 	}
 
 	sort.Slice(hits, func(a, b int) bool {
@@ -99,9 +155,10 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 // absent, they cannot manufacture candidates; if content is present, the full
 // query may still order those results exactly as it did before normalization.
 //
-// Candidate admission separately requires one of the retained terms on that
-// same chunk. Scaffolding can therefore influence order among content-bearing
-// candidates, but can never create one.
+// Candidate admission separately requires more than one of the query's content
+// terms on that same chunk: see minimumQueryTerms. Scaffolding can therefore
+// influence order among content-bearing candidates, but can never create one,
+// and cannot pay any part of what admission costs.
 func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryAnalysis {
 	if !query.normalized {
 		return query
@@ -117,16 +174,60 @@ func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryA
 	return query
 }
 
-func contentEligible(chunk indexedChunk, query queryAnalysis) bool {
-	if !query.normalized {
-		return true
+// contentTerms are the terms a candidate has to answer for: the retained ones
+// when normalization removed anything, the whole query otherwise. It is the
+// population query_term_count reports and the one excerpts are anchored on, so
+// the coverage a result is admitted and scored under is the coverage the
+// diagnostics describe.
+func contentTerms(query queryAnalysis) []string {
+	if query.normalized {
+		return query.retained
 	}
-	for _, term := range query.retained {
+	return query.terms
+}
+
+// queryCoverage measures one query against the chunks that will answer it.
+//
+// It reads the query and nothing else. A rule that consulted the index would
+// state a different requirement for the same question depending on what the
+// corpus happens to hold, and — because filters are applied per chunk after
+// scoring — a different one again for the same corpus under a project or time
+// filter. The requirement is a property of what was asked.
+type queryCoverage struct {
+	terms    []string
+	required int
+}
+
+func newQueryCoverage(query queryAnalysis) queryCoverage {
+	cov := queryCoverage{terms: uniqueTerms(contentTerms(query))}
+	if query.normalized {
+		cov.required = min(len(cov.terms), minimumQueryTerms)
+	}
+	return cov
+}
+
+func (c queryCoverage) covered(chunk indexedChunk) int {
+	n := 0
+	for _, term := range c.terms {
 		if chunk.Terms[term] > 0 {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
+}
+
+func (c queryCoverage) admits(covered int) bool {
+	return covered >= c.required
+}
+
+// share is the coordination factor. An empty query is covered by everything:
+// nothing is being measured, and a zero here would silently score a whole
+// source to nothing.
+func (c queryCoverage) share(covered int) float64 {
+	if len(c.terms) == 0 {
+		return 1
+	}
+	return float64(covered) / float64(len(c.terms))
 }
 
 // scoreBM25 accumulates Okapi BM25 over the postings.
@@ -395,6 +496,10 @@ func searchDiagnostics(
 	}
 	if query.normalized {
 		diag["query_terms_removed"] = query.removed
+		// How many of the query's terms a candidate had to carry. A question
+		// that admitted less than the caller expected is then a stated rule
+		// rather than a thin corpus.
+		diag["query_terms_required"] = newQueryCoverage(query).required
 	}
 	if query.scoringWithScaffolding {
 		diag["query_scoring"] = "full_query_over_content_candidates"
@@ -420,10 +525,7 @@ func searchDiagnostics(
 }
 
 func queryRetainedTermCount(query queryAnalysis) int {
-	if query.normalized {
-		return len(uniqueTerms(query.retained))
-	}
-	return len(uniqueTerms(query.terms))
+	return len(uniqueTerms(contentTerms(query)))
 }
 
 // excerptTerms are the terms an excerpt window may be anchored on.
@@ -433,10 +535,7 @@ func queryRetainedTermCount(query queryAnalysis) int {
 // words are excluded for the same reason they are excluded from proving
 // relevance: a window anchored on "the" shows a match nobody asked about.
 func excerptTerms(query queryAnalysis) map[string]bool {
-	terms := query.terms
-	if query.normalized {
-		terms = query.retained
-	}
+	terms := contentTerms(query)
 	out := make(map[string]bool, len(terms))
 	for _, t := range terms {
 		out[t] = true

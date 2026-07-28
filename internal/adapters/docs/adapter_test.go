@@ -72,6 +72,24 @@ func cleanCorpus(t *testing.T) string {
 	return root
 }
 
+// writtenCorpus is a corpus written for one test, for the tests whose subject
+// is term statistics: which words are rare and which are everywhere is the
+// thing under test, and the shared fixture cannot state that per test.
+func writtenCorpus(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for name, body := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create %s: %v", filepath.Dir(name), err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	return root
+}
+
 // newAdapter completes a handshake against root and returns the adapter with
 // its workdir. Initialize publishes the first generation, so every test starts
 // from a source that has actually indexed something.

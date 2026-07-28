@@ -145,6 +145,10 @@ func TestRankingIsStableAcrossRebuilds(t *testing.T) {
 		"corroboration",
 		"signals projection upstream",
 		"decisions about deletion",
+		// A question, so the coordination factor is exercised too: it scales
+		// every score, and a rebuild has to reproduce the scaled number and
+		// the order it produces, not just the BM25 sum underneath it.
+		"what does the recall architecture say about deletion",
 	}
 
 	first := make(map[string][]string, len(queries))
@@ -225,17 +229,10 @@ func TestNaturalQuestionAndKeywordFormShareRetrieval(t *testing.T) {
 
 func TestEveryCandidateCarriesContentEvidence(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	files := map[string]string{
-		"content.md":     "# Network\nThe wifi network is documented here.\n",
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		"content.md":     "# Network\nThe wifi password is printed on the router.\n",
 		"scaffolding.md": "# What is the\nWhat is the what is the.\n",
-	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a, _ := newAdapter(t, root, nil)
+	}), nil)
 
 	resp := search(t, a, "what is the wifi password")
 	if len(resp.Candidates) == 0 {
@@ -253,6 +250,178 @@ func TestEveryCandidateCarriesContentEvidence(t *testing.T) {
 	if got := resp.Diagnostics["query_scoring"]; got != "full_query_over_content_candidates" {
 		t.Errorf("query scoring diagnostic = %v", got)
 	}
+}
+
+// TestQuestionAbstainsWhenOneOfItsTermsIsAbsent is the price of measuring
+// coverage against what was asked instead of against what the corpus turned out
+// to hold. A question about a wifi password, in a corpus that documents the
+// network and no password, is answered with nothing rather than with everything
+// about the network. On the home profile the same rule takes "what is the zxqv
+// project" from 64 document results to none.
+//
+// It is a deliberate trade and it has a recourse: the term on its own, or the
+// document's name, both of which say something a question does not, which is
+// that the caller meant exactly this much.
+func TestQuestionAbstainsWhenOneOfItsTermsIsAbsent(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		"network.md": "# Network\nThe wifi network is documented here, on the shelf.\n",
+	}), nil)
+
+	resp := search(t, a, "what is the wifi password")
+	if len(resp.Candidates) != 0 {
+		t.Errorf("question returned %v; the corpus has no password and coverage says so",
+			paths(t, resp))
+	}
+	if resp.Outcome != recall.SearchSuccess {
+		t.Errorf("outcome = %q, want a successful search that found nothing", resp.Outcome)
+	}
+
+	// Same question, both terms present: it is the absent term that abstained,
+	// not the shape of the query.
+	if got := paths(t, search(t, a, "what is the wifi network")); len(got) != 1 {
+		t.Errorf("question over two present terms returned %v, want the document", got)
+	}
+	// The recourse.
+	if got := paths(t, search(t, a, "wifi")); len(got) != 1 {
+		t.Errorf("the term on its own returned %v, want the document", got)
+	}
+}
+
+// TestQuestionNeedsMoreThanOneOfItsTerms is the defect td-92c7b7 was written
+// for: asking a question instead of typing a keyword made the answer four times
+// larger, because one common word of the question admitted every chunk that
+// held it and BM25 has no coordination factor to sort them back down.
+//
+// The corpus is the shape that produced it. "sidecar" names one document;
+// "project" and "for" are the words the rest of the corpus is made of.
+func TestQuestionNeedsMoreThanOneOfItsTerms(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		// Three of the query's terms, two, one and one.
+		"sidecar.md": "# Sidecar\nSidecar is the project for watching AI coding work as it happens.\n",
+		"index.md":   "# Index\nEvery project in this directory records what the project is for.\n",
+		"tools.md":   "# Tools\nThe backup project runs nightly. Every project is listed here.\n",
+		"people.md":  "# People\nMarcus writes small tools for the joy of the craft.\n",
+	}), nil)
+
+	// The weak term still reaches its own documents: what changes is what a
+	// question does with it, not whether the corpus holds it.
+	if got := paths(t, search(t, a, "project")); len(got) != 3 {
+		t.Fatalf("the keyword %q returned %v, want the 3 documents that use it", "project", got)
+	}
+
+	question := search(t, a, "what is the sidecar project for")
+	if got := paths(t, question); strings.Join(got, ",") != "sidecar.md,index.md" {
+		t.Errorf("the question returned %v, want the document it is about and then the one that "+
+			"covers two of its three terms; one term is no longer enough to answer a question", got)
+	}
+	if got := question.Diagnostics["query_terms_required"]; got != 2 {
+		t.Errorf("coverage diagnostic = %v, want the floor a caller can read a thin result against", got)
+	}
+
+	// Bare keywords are not a question. The caller chose every one of those
+	// words and nothing here knows which were meant as alternatives, so the
+	// floor stays off and coverage only orders them.
+	keywords := search(t, a, "sidecar project")
+	if got := paths(t, keywords); len(got) != 3 || got[0] != "sidecar.md" {
+		t.Errorf("keyword form returned %v, want the disjunction it has always been with the "+
+			"document carrying both terms first", got)
+	}
+}
+
+// TestPartialMatchesSortBelowCompleteOnes is the ordering half, and the fixture
+// is built so that BM25 alone gets it wrong: watcher.md is short and repeats
+// "telemetry" four times, so on term frequency and length normalization it
+// outscores a document that answers the whole query once. Delete the
+// coordination factor and this test fails, which is the only way a test of a
+// factor means anything.
+func TestPartialMatchesSortBelowCompleteOnes(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		"watcher.md": "# Watcher\nTelemetry, telemetry, telemetry. The watcher reads telemetry.\n",
+		"protocol.md": "# Protocol\nThe protocol carries telemetry from the adapter to the core, " +
+			"where the fusion stage reads it and hands it on. Nothing in this file depends on " +
+			"the transport, and the same messages travel unchanged over a socket later. " +
+			"Adapters publish generations, the core resolves locators against them, and every " +
+			"record it rejects is reported rather than dropped in silence.\n",
+		"stage.md": "# Stage\nThe fusion stage runs after every adapter has answered, or has " +
+			"failed to.\n",
+	}), nil)
+
+	// On the term they share, the short document that repeats it wins outright.
+	one := search(t, a, "telemetry")
+	if got := paths(t, one); len(got) != 2 || got[0] != "watcher.md" {
+		t.Fatalf("single-term order is %v, want watcher.md first: the fixture no longer sets up the flip", got)
+	}
+
+	// Add a term only one of them carries and the order reverses. Nothing about
+	// watcher.md changed except the share of the query it answers, and its raw
+	// BM25 is still the larger of the two.
+	both := search(t, a, "telemetry stage")
+	if got := paths(t, both); len(got) != 3 || got[0] != "protocol.md" {
+		t.Errorf("order is %v, want protocol.md first: a partial match outranked a complete one", got)
+	}
+}
+
+// TestSingleTermQueryIsUnaffectedByCoverage. One term is either present or it
+// is not, so coverage is 1 or the chunk was never scored — the guard is that
+// no arithmetic on the way there can make a one-word query return less than the
+// documents that hold the word. `bonnie` and `dentist` are that query.
+func TestSingleTermQueryIsUnaffectedByCoverage(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		"owner.md":   "# Owner\nBonnie is the one who books the dentist.\n",
+		"routine.md": "# Routine\nThe dentist appointment is a standing one, twice a year.\n",
+		"tools.md":   "# Tools\nNothing here has anything to do with either of them.\n",
+	}), nil)
+
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{query: "bonnie", want: []string{"owner.md"}},
+		{query: "dentist", want: []string{"owner.md", "routine.md"}},
+		// A question around one content term is still one content term.
+		{query: "who is bonnie", want: []string{"owner.md"}},
+	} {
+		got := paths(t, search(t, a, tc.query))
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("query %q returned %v, want %v", tc.query, got, tc.want)
+		}
+	}
+}
+
+// TestNamedDocumentSurvivesTheCoverageFloor. Naming a file is a request for
+// that file, and it outranks everything the text of the query would have found.
+// A floor that applied to it would answer "docs/spec.md" with nothing whenever
+// the rest of the sentence was about something the file does not say.
+func TestNamedDocumentSurvivesTheCoverageFloor(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
+		"specs/protocol.md": "# Protocol\nAdapters speak newline-delimited JSON-RPC over stdio.\n",
+		"index.md":          "# Index\nEvery project in this directory records what the project is for.\n",
+		"tools.md":          "# Tools\nThe backup project runs nightly. Notes for each project live here.\n",
+	}), nil)
+
+	resp := search(t, a, "what does specs/protocol.md say about the sidecar project")
+	c := firstFrom(t, resp, "specs/protocol.md")
+	if !c.Exact() {
+		t.Errorf("%s did not carry exact_identifier for the name the query used", c.Locator.Local)
+	}
+	if c.LocalRank != 1 {
+		t.Errorf("the named document ranked %d, want first", c.LocalRank)
+	}
+}
+
+// paths renders a response as the documents it answered with, in order.
+func paths(t *testing.T, resp recall.SearchResponse) []string {
+	t.Helper()
+	out := make([]string, 0, len(resp.Candidates))
+	for _, c := range resp.Candidates {
+		out = append(out, metaString(t, c, "path"))
+	}
+	return out
 }
 
 // TestExactIdentifierOnlyAtTokenBoundaries is the false-positive test the spec
