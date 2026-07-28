@@ -15,7 +15,7 @@ func TestFunctionWordsAreNeverExpanded(t *testing.T) {
 		"doe":       {{chunk: 1, tf: 3}},
 	}}
 
-	for _, group := range groupTerms(g, []string{"what", "does", "goldeneye", "eat"}) {
+	for _, group := range groupTerms(g, []string{"what", "does", "goldeneye", "eat"}, nil) {
 		if group.term == "does" && len(group.variants) > 0 {
 			t.Errorf("the function word %q was expanded to %v", group.term, group.variants)
 		}
@@ -23,7 +23,7 @@ func TestFunctionWordsAreNeverExpanded(t *testing.T) {
 	// A content term the corpus does not hold is still expanded, which is the
 	// whole rule.
 	g.postings["goldeneyes"] = []posting{{chunk: 2, tf: 1}}
-	for _, group := range groupTerms(g, []string{"goldeneyes", "eat"}) {
+	for _, group := range groupTerms(g, []string{"goldeneyes", "eat"}, nil) {
 		if group.term == "eat" && len(group.variants) > 0 {
 			t.Errorf("a term with no variant in the corpus resolved to %v", group.variants)
 		}

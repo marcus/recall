@@ -98,7 +98,7 @@ func TestQuestionAndKeywordFormsProduceTheSameLexicalTerms(t *testing.T) {
 func TestContentEvidenceControlsFunctionWordRanking(t *testing.T) {
 	question := analyzeQuery("what is the wifi password")
 
-	absent := preserveRankingAfterContentMatch(&generation{postings: map[string][]posting{}}, question)
+	absent := preserveRankingAfterContentMatch(&generation{postings: map[string][]posting{}}, question, nil)
 	if want := []string{"wifi", "password"}; !slices.Equal(absent.terms, want) {
 		t.Fatalf("absent content terms = %v, want %v", absent.terms, want)
 	}
@@ -108,7 +108,8 @@ func TestContentEvidenceControlsFunctionWordRanking(t *testing.T) {
 
 	present := preserveRankingAfterContentMatch(&generation{
 		postings: map[string][]posting{"wifi": {{chunk: 0, tf: 1}}},
-	}, question)
+		chunks:   []indexedChunk{{}},
+	}, question, nil)
 	if !slices.Equal(present.terms, question.raw) {
 		t.Fatalf("content match terms = %v, want full ranking query %v", present.terms, question.raw)
 	}

@@ -268,8 +268,8 @@ func queryExit(resp recall.QueryResponse) int {
 // missing — degraded coverage and suppression. The diagnostic tier — per-result
 // provenance, cluster lineage, score explanations, per-source outcomes, and the
 // resolved plan — is behind --explain. Nothing becomes unreachable: --json
-// carries every field unprojected, and docs/spec.md records why a projected
-// human surface still satisfies the human/JSON parity invariant.
+// --explain is the complete serialization, and docs/spec.md records why a
+// projected human surface still satisfies the human/JSON parity invariant.
 //
 // One flag rather than two. --explain already means "why did this answer come
 // out this way", and every block behind it answers that question; a second

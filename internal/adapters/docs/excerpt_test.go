@@ -164,7 +164,7 @@ func TestExcerptTermsExcludeFunctionWords(t *testing.T) {
 	t.Parallel()
 	// An empty generation holds no vocabulary, so no number variant resolves and
 	// the set is exactly the query's retained terms.
-	got := excerptTerms(&generation{postings: map[string][]posting{}}, analyzeQuery("what is the wifi password"))
+	got := excerptTerms(&generation{postings: map[string][]posting{}}, analyzeQuery("what is the wifi password"), nil)
 
 	for _, want := range []string{"wifi", "password"} {
 		if !got[want] {

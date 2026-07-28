@@ -89,17 +89,16 @@ type hit struct {
 // term statistics, so the tie-breaks are what make the ORDER identical too —
 // without them, equal scores would come out in whatever order the postings
 // happened to be visited.
-func searchIndex(g *generation, req recall.SearchRequest, s Settings) ([]hit, queryAnalysis) {
+func searchIndex(g *generation, req recall.SearchRequest, s Settings, allowed func(indexedChunk) bool) ([]hit, queryAnalysis) {
 	if !wantsDocuments(req.Filters.RecordTypes) {
 		return nil, queryAnalysis{}
 	}
-	allowed := docFilter(g, req)
 	query := analyzeQuery(req.Query)
-	query = preserveRankingAfterContentMatch(g, query)
+	query = preserveRankingAfterContentMatch(g, query, allowed)
 
 	scores := map[int]float64{}
 	if len(query.terms) > 0 && len(g.chunks) > 0 {
-		scoreBM25(g, groupTerms(g, uniqueTerms(query.terms)), allowed, scores)
+		scoreBM25(g, groupTerms(g, uniqueTerms(query.terms), allowed), allowed, scores)
 	}
 
 	// Exact identifiers deliberately use the raw token stream. A path, alias,
@@ -110,7 +109,7 @@ func searchIndex(g *generation, req recall.SearchRequest, s Settings) ([]hit, qu
 	// One coverage measurement per chunk, used twice: as the admission floor and
 	// as the coordination factor BM25 does not have. Both read the content
 	// terms, so scaffolding pays for neither.
-	coverage := newQueryCoverage(g, query)
+	coverage := newQueryCoverage(g, query, allowed)
 	coverage.discountCitations = s.ExamplesQuoteQueries
 
 	// An exact identifier match must surface the document even when its text
@@ -170,12 +169,12 @@ func searchIndex(g *generation, req recall.SearchRequest, s Settings) ([]hit, qu
 // terms on that same chunk: see minimumQueryTerms. Scaffolding can therefore
 // influence order among content-bearing candidates, but can never create one,
 // and cannot pay any part of what admission costs.
-func preserveRankingAfterContentMatch(g *generation, query queryAnalysis) queryAnalysis {
+func preserveRankingAfterContentMatch(g *generation, query queryAnalysis, allowed func(indexedChunk) bool) queryAnalysis {
 	if !query.normalized {
 		return query
 	}
 	for _, term := range query.terms {
-		if !g.reaches(term) {
+		if !g.reaches(term, allowed) {
 			continue
 		}
 		query.terms = append(query.terms[:0], query.raw...)
@@ -234,14 +233,14 @@ func (t termGroup) cited(chunk indexedChunk) int {
 // and every mention of a doe would raise a chunk's score — invisibly, because
 // admission, relevance, and the excerpt read the content terms and would never
 // see it.
-func groupTerms(g *generation, terms []string) []termGroup {
+func groupTerms(g *generation, terms []string, allowed func(indexedChunk) bool) []termGroup {
 	content := make([]string, 0, len(terms))
 	for _, term := range terms {
 		if !isEnglishFunctionWord(term) {
 			content = append(content, term)
 		}
 	}
-	variants := recall.ResolveTermVariants(content, g.holds)
+	variants := recall.ResolveTermVariants(content, g.vocabulary(allowed))
 	out := make([]termGroup, 0, len(terms))
 	for _, term := range terms {
 		out = append(out, termGroup{term: term, variants: variants[term]})
@@ -295,8 +294,8 @@ type queryCoverage struct {
 	discountCitations bool
 }
 
-func newQueryCoverage(g *generation, query queryAnalysis) queryCoverage {
-	cov := queryCoverage{groups: groupTerms(g, uniqueTerms(contentTerms(query)))}
+func newQueryCoverage(g *generation, query queryAnalysis, allowed func(indexedChunk) bool) queryCoverage {
+	cov := queryCoverage{groups: groupTerms(g, uniqueTerms(contentTerms(query)), allowed)}
 	if query.normalized {
 		cov.required = min(len(cov.groups), minimumQueryTerms)
 	}
@@ -357,7 +356,15 @@ func (c queryCoverage) aboutness(chunk indexedChunk) float64 {
 		}
 	}
 	if c.discountCitations {
-		length -= chunk.CitedLength
+		if length -= chunk.CitedLength; length <= 0 {
+			// Everything this chunk says is quoted, so it asserts nothing of
+			// its own and is about nothing. [recall.Relevance] reads a
+			// non-positive length as "this source cannot measure itself" and
+			// answers 1, which is right for a source that never reported a
+			// length and exactly inverted here — it would make the chunk
+			// maximally relevant on the strength of a citation.
+			return 0
+		}
 	}
 	return recall.Relevance(covered, len(c.groups), hits, length)
 }
@@ -532,6 +539,7 @@ func candidates(
 	hits []hit,
 	limit int,
 	query queryAnalysis,
+	allowed func(indexedChunk) bool,
 	bodies *bodyReader,
 ) ([]recall.Candidate, int) {
 	if limit <= 0 {
@@ -542,7 +550,7 @@ func candidates(
 	}
 	confirmed := g.confirmedAt()
 	observed := g.header.BuiltAt
-	terms := excerptTerms(g, query)
+	terms := excerptTerms(g, query, allowed)
 	unavailable := 0
 
 	out := make([]recall.Candidate, 0, len(hits))
@@ -636,6 +644,7 @@ func searchDiagnostics(
 	g *generation,
 	req recall.SearchRequest,
 	query queryAnalysis,
+	allowed func(indexedChunk) bool,
 	s Settings,
 	pool int,
 	unreadable int,
@@ -651,7 +660,7 @@ func searchDiagnostics(
 		"chunk_count":      len(g.chunks),
 		"elapsed_ms":       elapsed.Milliseconds(),
 	}
-	coverage := newQueryCoverage(g, query)
+	coverage := newQueryCoverage(g, query, allowed)
 	if query.normalized {
 		diag["query_terms_removed"] = query.removed
 		// How many of the query's terms a candidate had to carry. A question
@@ -710,10 +719,10 @@ func queryRetainedTermCount(query queryAnalysis) int {
 // query's own spelling alone would show the head of the record and mark it a
 // preview — telling the caller nothing in the text matched, on a result the
 // same rule just admitted.
-func excerptTerms(g *generation, query queryAnalysis) map[string]bool {
+func excerptTerms(g *generation, query queryAnalysis, allowed func(indexedChunk) bool) map[string]bool {
 	terms := contentTerms(query)
 	out := make(map[string]bool, len(terms))
-	for _, group := range groupTerms(g, terms) {
+	for _, group := range groupTerms(g, terms, allowed) {
 		for _, spelling := range group.spellings() {
 			out[spelling] = true
 		}

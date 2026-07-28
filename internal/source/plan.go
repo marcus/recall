@@ -348,15 +348,24 @@ func (r *Registry) scopedOutOfProfile(
 			},
 		})
 	}
+	if len(unknown) > 0 {
+		// An id no source answers to is refused however much else was named.
+		// There is nothing to put in the ledger for it — no uid, no instance,
+		// nothing this installation could report on — so answering the rest
+		// would report `coverage: complete` over a request that named
+		// something this machine does not have, which is the same false
+		// completeness as the wholly-out-of-profile case. It is also almost
+		// always a typo, and a typo the caller cannot see is one they will
+		// trust.
+		return nil, unsatisfiableScope(r.cfg, profile.Name, elsewhere, unknown)
+	}
 	if inside > 0 {
-		// Some of what was named is here. Answer from it, and let the rest
-		// degrade coverage rather than disappear. An id that is not configured
-		// at all names nothing this installation could report on, so it is not
-		// in the ledger — but it is still part of a scope that cannot be met,
-		// and a request naming only unconfigured sources is refused below.
+		// Some of what was named is here, and everything named exists. Answer
+		// from the members, and let the rest degrade coverage rather than
+		// disappear.
 		return reports, nil
 	}
-	return nil, unsatisfiableScope(r.cfg, profile.Name, elsewhere, unknown)
+	return nil, unsatisfiableScope(r.cfg, profile.Name, elsewhere, nil)
 }
 
 // unsatisfiableScope writes the refusal, naming where the source can be asked.
@@ -366,7 +375,10 @@ func unsatisfiableScope(cfg *config.Config, profile string, elsewhere, unknown [
 	switch {
 	case len(elsewhere) == 0:
 		return fmt.Errorf("%w: scope source=%s: no such source is configured; `recall sources` lists what this installation has",
-			recall.ErrUnsatisfiableScope, strings.Join(named, ","))
+			recall.ErrUnsatisfiableScope, strings.Join(unknown, ","))
+	case len(unknown) > 0:
+		return fmt.Errorf("%w: scope source=%s: no such source is configured, and %s is not in profile %q; `recall sources` lists what this installation has",
+			recall.ErrUnsatisfiableScope, strings.Join(unknown, ","), strings.Join(elsewhere, ","), profile)
 	default:
 		var advice []string
 		for _, id := range elsewhere {

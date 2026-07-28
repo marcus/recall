@@ -215,15 +215,42 @@ type generation struct {
 	avgLen   float64
 }
 
-// holds reports whether this generation's vocabulary contains a term. It is the
-// membership test number-variant resolution is written against, so the only
-// spellings a query can be expanded to are ones the corpus itself uses.
-func (g *generation) holds(term string) bool { return len(g.postings[term]) > 0 }
+// holds reports whether a term appears in text this request may actually reach.
+//
+// The filter is part of the question, not an afterthought applied to the
+// answer. Number-variant resolution asks "does this source spell the term the
+// caller's way", and under a project or time filter the source IS the part the
+// filter admits: a generation-wide answer would see the exact spelling in a
+// project the request excluded, refuse to expand, and abstain over a requested
+// project that holds the word in the plural. That is the false abstention this
+// rule exists to remove, moved behind a filter where it is harder to see.
+//
+// allowed nil means the whole generation, which is what an unfiltered request
+// asks for and what every caller outside search uses.
+func (g *generation) holds(term string, allowed func(indexedChunk) bool) bool {
+	postings := g.postings[term]
+	if allowed == nil {
+		return len(postings) > 0
+	}
+	for _, p := range postings {
+		if allowed(g.chunks[p.chunk]) {
+			return true
+		}
+	}
+	return false
+}
+
+// vocabulary is [generation.holds] bound to one request's filter, which is the
+// membership test number-variant resolution takes.
+func (g *generation) vocabulary(allowed func(indexedChunk) bool) func(string) bool {
+	return func(term string) bool { return g.holds(term, allowed) }
+}
 
 // reaches reports whether a query term touches this generation at all, under
 // its own spelling or a number variant of it.
-func (g *generation) reaches(term string) bool {
-	return g.holds(term) || len(recall.VariantsIn(term, g.holds)) > 0
+func (g *generation) reaches(term string, allowed func(indexedChunk) bool) bool {
+	vocab := g.vocabulary(allowed)
+	return vocab(term) || len(recall.VariantsIn(term, vocab)) > 0
 }
 
 func (g *generation) doc(path string) (indexedDoc, bool) {

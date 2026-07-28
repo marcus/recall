@@ -46,7 +46,6 @@ func TestNumberVariantsRefuseFalseMerges(t *testing.T) {
 		{"his", "hi"},                //
 		{"analysis", "analysi"},      // len 7, but the derivation is still wrong
 		{"bus", "bu"},                //
-		{"series", "serie"},          // -ies wins over -s
 		{"identifiers", "identifie"}, // -s strips exactly one letter
 	}
 	for _, c := range cases {
@@ -170,9 +169,17 @@ func TestNumberVariantsRefuseTheReviewedFalseMerges(t *testing.T) {
 			t.Errorf("NumberVariants(%q) = %v, must not contain %q", tc.query, got, tc.unwanted)
 		}
 	}
-	// The -y rule still applies where the word is long enough to be one.
-	if got := recall.NumberVariants("cities"); !slices.Contains(got, "city") {
-		t.Errorf("NumberVariants(\"cities\") = %v, missing \"city\"", got)
+	// Above the bound both readings are offered, because the spelling is
+	// ambiguous and only the corpus knows which word was meant.
+	for _, tc := range []struct{ query, want string }{
+		{"cities", "city"},  // -y pluralized by the -ies rule
+		{"movies", "movie"}, // -ie pluralized by the plain -s
+		{"cookies", "cookie"},
+		{"entries", "entry"},
+	} {
+		if got := recall.NumberVariants(tc.query); !slices.Contains(got, tc.want) {
+			t.Errorf("NumberVariants(%q) = %v, missing %q", tc.query, got, tc.want)
+		}
 	}
 }
 

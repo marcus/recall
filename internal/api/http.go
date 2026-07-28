@@ -191,6 +191,13 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 // tier is what this server SENDS. Reading a pricing declaration as an
 // instruction to project would have made the CLI's own remote path
 // undecodable.
+//
+// So the two may disagree, and a body larger than the budget that named it is
+// the expected result of one: a caller that declares `pointer` and takes the
+// complete tier is charged for what it renders, not for what it received, which
+// is the whole point of the declaration and what makes `recall query --server`
+// answer identically to `recall query`. A caller that wants the wire bounded
+// too asks for the tier as well as declaring the surface.
 func queryTier(tier string) (recall.ResponseSurface, *Problem) {
 	switch tier {
 	case "", "complete":

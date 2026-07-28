@@ -86,7 +86,12 @@ func NumberVariants(term string) []string {
 	// in any English corpus to match everything.
 	switch {
 	case strings.HasSuffix(term, "ies") && len(term) >= minIESRunes:
+		// Both readings, because the spelling is ambiguous and the corpus is
+		// what decides: "cities" is "city" pluralized by the -y rule, while
+		// "movies" and "cookies" are "movie" and "cookie" pluralized by the
+		// plain -s. Offering both costs a lookup that fails.
 		add(strings.TrimSuffix(term, "ies") + "y")
+		add(strings.TrimSuffix(term, "s"))
 	case strings.HasSuffix(term, "es") && sibilantEnding(strings.TrimSuffix(term, "es")):
 		add(strings.TrimSuffix(term, "es"))
 		add(strings.TrimSuffix(term, "s"))
@@ -96,14 +101,12 @@ func NumberVariants(term string) []string {
 	return out
 }
 
-// minIESRunes is the shortest word the -ies rule may rewrite.
+// minIESRunes is the shortest word the -y-to-ies reading may be tried on.
 //
-// Below it the rule is describing the wrong word: "ties" and "lies" are "tie"
-// and "lie" with an -s, not "ty" and "ly" with an -ies, and the unguarded rule
-// produced the latter and then found nothing. Six characters is where the -ies
-// spelling starts being the -y-to-ies rule — "cities", "entries", "policies" —
-// and anything shorter falls through to the plain -s case, which is right for
-// all of them.
+// Below it that reading is describing the wrong word and cannot be right:
+// "ties" and "lies" are "tie" and "lie" with an -s, and the -ies reading turns
+// them into "ty" and "ly". Above it both readings are possible — "cities" is
+// -y, "movies" is -s — so both are offered and the corpus decides.
 const minIESRunes = 6
 
 // nonPlural names the -s words whose trailing s is not a plural marker AND

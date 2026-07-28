@@ -185,3 +185,33 @@ func profileSources(t *testing.T, r *Registry, name string) []*config.SourceInst
 	}
 	return instances
 }
+
+// An id no source answers to is refused however much else was named. There is
+// nothing to put in the ledger for it — no uid, no instance — so answering the
+// rest would report complete coverage over a request that named something this
+// machine does not have.
+func TestAnUnconfiguredSourceIsRefusedEvenBesideAMember(t *testing.T) {
+	t.Parallel()
+	r, _ := scopeRegistry(t)
+
+	_, err := r.scopedOutOfProfile(
+		scopeRequest("docs", "typo"), profileOf(t, r, "work"), profileSources(t, r, "work"))
+	if !errors.Is(err, recall.ErrUnsatisfiableScope) {
+		t.Fatalf("error = %v, want an unsatisfiable scope", err)
+	}
+	if !strings.Contains(err.Error(), "typo") || strings.Contains(err.Error(), "docs") {
+		t.Errorf("message %q should name the id that does not resolve, and only it", err)
+	}
+
+	// And beside an out-of-profile one, which names both problems.
+	_, err = r.scopedOutOfProfile(
+		scopeRequest("docs", "memory-only", "typo"), profileOf(t, r, "work"), profileSources(t, r, "work"))
+	if !errors.Is(err, recall.ErrUnsatisfiableScope) {
+		t.Fatalf("error = %v, want an unsatisfiable scope", err)
+	}
+	for _, want := range []string{"typo", "memory-only"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q does not name %q", err, want)
+		}
+	}
+}

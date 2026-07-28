@@ -267,7 +267,12 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	start := time.Now()
-	hits, query := searchIndex(gen, req, settings)
+	// One filter, built once and threaded through: it decides which chunks may
+	// answer, and it is also what makes the vocabulary a query's number-variant
+	// resolution is measured against the part of the corpus this request can
+	// actually reach. See [generation.holds].
+	allowed := docFilter(gen, req)
+	hits, query := searchIndex(gen, req, settings, allowed)
 
 	// Excerpt selection reads files, so it is the one part of a search that can
 	// run out of time. Both bounds are folded into one context here; a read that
@@ -278,7 +283,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		defer cancel()
 	}
 	found, unreadable := candidates(
-		ctx, gen, sourceID, hits, req.Limit, query, newBodyReader(root, settings.MaxFileBytes))
+		ctx, gen, sourceID, hits, req.Limit, query, allowed, newBodyReader(root, settings.MaxFileBytes))
 
 	// A generation built over a partial boundary answers partial, every time it
 	// answers. The alternative is a source reporting success over a corpus it
@@ -289,7 +294,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 	return recall.SearchResponse{
 		Candidates:      found,
-		Diagnostics:     searchDiagnostics(gen, req, query, settings, len(hits), unreadable, time.Since(start)),
+		Diagnostics:     searchDiagnostics(gen, req, query, allowed, settings, len(hits), unreadable, time.Since(start)),
 		SourceWatermark: gen.header.Watermark,
 		Outcome:         outcome,
 	}, nil

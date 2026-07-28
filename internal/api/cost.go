@@ -46,22 +46,33 @@ const ToolEnvelopeTokens = 96
 
 func (c ToolCost) Frame(resp recall.QueryResponse) int {
 	resp.Results = nil
-	return compact(c.structured(resp)) + evidence.EstimateTokens(renderQueryText(resp)) + ToolEnvelopeTokens
+	return compact(c.structured(resp)) + compact(renderQueryText(resp)) + ToolEnvelopeTokens
 }
 
 func (c ToolCost) Result(rank int, r recall.Result) int {
 	var b strings.Builder
 	writeResultText(&b, rank, r)
-	if !c.Explained {
-		return compact(pointer.ProjectResult(rank, r)) + evidence.EstimateTokens(b.String())
+	return compact(c.structuredResult(rank, r)) + compact(b.String())
+}
+
+// structuredResult is one result as this tier serializes it.
+func (c ToolCost) structuredResult(rank int, r recall.Result) any {
+	if c.Explained {
+		return r
 	}
-	return compact(r) + evidence.EstimateTokens(b.String())
+	return pointer.ProjectResult(rank, r)
 }
 
 // compact charges a value as the JSON-RPC frame writes it. A value that cannot
 // be marshaled costs nothing rather than failing the request: the response is
 // still the caller's answer, and a budget is not the place to discover a broken
 // type.
+//
+// The text half goes through here too, as the string it is, which charges the
+// quoting and escaping that putting it in a JSON frame adds. Estimating the raw
+// text instead undercharged by however much of an excerpt needed escaping — a
+// backslash and a quote each double in the frame — and what a budget charges
+// has to be a ceiling on what gets written or it is a suggestion.
 func compact(v any) int {
 	body, err := json.Marshal(v)
 	if err != nil {

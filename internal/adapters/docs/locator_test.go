@@ -2,6 +2,7 @@ package docs
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -277,5 +278,56 @@ func TestLocatorsFoundByReview(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A chunk whose every word is quoted has no prose of its own, and a source that
+// declared examples_quote_queries must measure it as about nothing.
+// [recall.Relevance] reads a non-positive length as "this source cannot measure
+// itself" and answers 1, which is right for a silent source and exactly
+// inverted here.
+func TestAWhollyQuotedChunkIsAboutNothing(t *testing.T) {
+	t.Parallel()
+	chunk := indexedChunk{
+		Length:      1,
+		Terms:       map[string]int{"dentist": 1},
+		Cited:       map[string]int{"dentist": 1},
+		CitedLength: 1,
+	}
+	coverage := queryCoverage{groups: []termGroup{{term: "dentist"}}, discountCitations: true}
+	if got := coverage.aboutness(chunk); got != 0 {
+		t.Errorf("aboutness = %v for a chunk that is nothing but a citation, want 0", got)
+	}
+	// Undeclared, it is ordinary text and measures what it always did.
+	coverage.discountCitations = false
+	if got := coverage.aboutness(chunk); got == 0 {
+		t.Error("a corpus that declared nothing had its own prose discounted")
+	}
+}
+
+// The variant gate asks whether the text this request may REACH spells the term
+// the caller's way. Generation-wide it would see an excluded project's spelling,
+// refuse to expand, and abstain over a requested project that holds the plural.
+func TestTheVariantGateReadsOnlyWhatTheFilterAdmits(t *testing.T) {
+	t.Parallel()
+	g := &generation{
+		chunks: []indexedChunk{
+			{Path: "excluded/a.md", Terms: map[string]int{"goldeneye": 1}},
+			{Path: "wanted/b.md", Terms: map[string]int{"goldeneyes": 1}},
+		},
+		postings: map[string][]posting{
+			"goldeneye":  {{chunk: 0, tf: 1}},
+			"goldeneyes": {{chunk: 1, tf: 1}},
+		},
+	}
+	wanted := func(c indexedChunk) bool { return strings.HasPrefix(c.Path, "wanted/") }
+
+	groups := groupTerms(g, []string{"goldeneye"}, wanted)
+	if len(groups) != 1 || !slices.Contains(groups[0].variants, "goldeneyes") {
+		t.Fatalf("groups = %+v, want the plural resolved inside the filter", groups)
+	}
+	// Unfiltered, the corpus holds the caller's own spelling and is not widened.
+	if groups := groupTerms(g, []string{"goldeneye"}, nil); len(groups[0].variants) != 0 {
+		t.Errorf("an unfiltered corpus holding the term was widened to %v", groups[0].variants)
 	}
 }

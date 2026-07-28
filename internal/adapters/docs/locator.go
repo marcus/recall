@@ -28,10 +28,13 @@ import (
 // which is the point: `[ollama.com/blog/claude](https://ollama.com/blog/claude)`
 // says the word twice and means it neither time.
 //
-// What this costs is a query for a hostname — "izotope" no longer finds a
-// document that only cites izotope.com. That is the trade the ticket asks for:
-// a corpus of prose is searched by its prose, and a caller looking for a link
-// has the document it is in.
+// What this costs is a query for the host part of a URL — "izotope" no longer
+// finds a document whose only mention is inside a link to izotope.com. It is
+// exactly that narrow: a bare host written as prose or as link text is not a
+// locator by these rules and stays indexed, so `[izotope.com](https://vendor)`
+// remains findable under its text. That is the trade the ticket asks for — a
+// corpus of prose is searched by its prose, and a caller looking for a link has
+// the document it is in.
 
 // quotedRuns returns only the text inside quotations: double-quoted spans and
 // inline code spans, each separated so no token spans two of them.
@@ -118,10 +121,15 @@ func dropReferenceDefinitions(text string) string {
 		if label < 1 {
 			continue
 		}
-		if fields := strings.Fields(trimmed[label+2:]); len(fields) != 1 {
+		rest := trimmed[label+2:]
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
 			continue
 		}
-		lines[i] = line[:len(line)-len(trimmed)] + trimmed[:label+2] + " "
+		// The destination is the first field; anything after it is the
+		// definition's optional title, which is prose a person wrote and stays.
+		cut := strings.Index(rest, fields[0]) + len(fields[0])
+		lines[i] = line[:len(line)-len(trimmed)] + trimmed[:label+2] + " " + rest[cut:]
 	}
 	return strings.Join(lines, "\n")
 }
@@ -138,7 +146,10 @@ func dropLinkDestinations(text string) string {
 	var b strings.Builder
 	b.Grow(len(text))
 	for i := 0; i < len(text); {
-		if !strings.HasPrefix(text[i:], "](") {
+		if !strings.HasPrefix(text[i:], "](") || (i > 0 && text[i-1] == '\\') {
+			// An escaped bracket is literal syntax somebody wrote about
+			// Markdown rather than in it, and the parenthesis after it is
+			// prose.
 			b.WriteByte(text[i])
 			i++
 			continue
@@ -237,11 +248,14 @@ func isRunBreak(r rune) bool {
 		return true
 	case '\u2013', '\u2014', '\u2026': // en dash, em dash, ellipsis
 		return true
-	case '|', '<', '>', '"':
-		// A table cell wall, an HTML attribute, an autolink bracket. None can
-		// appear unescaped inside a URL, and each of them is written hard
-		// against one: `|prose|https://host/path|` dropped the whole row, and
-		// `href="https://host/path">prose` dropped the prose on both sides.
+	case '|', '<', '>', '"', ',', ';':
+		// A table cell wall, an HTML attribute, an autolink bracket, a list
+		// separator. None can appear unescaped inside a URL, and each is
+		// written hard against one: `|prose|https://host/path|` dropped the
+		// whole row, `href="https://host/path">prose` dropped the prose on
+		// both sides, and `https://host/path,then` dropped the word after the
+		// comma. A colon deliberately is NOT one of these: it is inside every
+		// scheme, and breaking on it would leave "https" as a term.
 		return true
 	}
 	return false
