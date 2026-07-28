@@ -222,7 +222,7 @@ const queryInputSchema = `{
     "budget_tokens": {
       "type": "integer",
       "minimum": 1,
-      "description": "Approximate size budget for the response. Trailing results compress and then drop, and the response reports truncated and dropped_results when that happens."
+      "description": "Size budget for the whole response, charged against the serialized form this tool returns rather than against excerpts alone: the source outcomes and plan are inside it, not exempt from it. Trailing results compress and then drop, and the response reports truncated and dropped_results when that happens. Unset it is 8000, which bounds every response by default; raise it when a query is worth the context."
     },
     "budget_ms": {
       "type": "integer",
@@ -459,7 +459,9 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 		return toolFailure("%s", err.Error())
 	}
 
-	if problem := normalizeQuery(&req, s.core.Profile()); problem != nil {
+	// A tool result carries the structured response and its text
+	// projection inside one JSON-RPC frame; ToolCost prices all three.
+	if problem := normalizeQuery(&req, s.core.Profile(), recall.SurfaceTool); problem != nil {
 		return toolFailure("%s", problem.Message)
 	}
 

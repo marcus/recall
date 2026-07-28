@@ -121,7 +121,10 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, *problem)
 		return
 	}
-	if problem := normalizeQuery(&req, h.core.Profile()); problem != nil {
+	// The body this handler writes is the whole serialized response, so that is
+	// what an undeclared budget is charged against. A client that renders a
+	// projection of it says so and is priced for that instead.
+	if problem := normalizeQuery(&req, h.core.Profile(), recall.SurfaceStructured); problem != nil {
 		writeProblem(w, requestStatus(*problem), *problem)
 		return
 	}

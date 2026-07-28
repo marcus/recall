@@ -46,6 +46,26 @@ typed response in which every source failed uses 503. The 503 body is still a
 query result, not a transport error: its source outcomes are the evidence that
 nothing managed to search.
 
+Every response is bounded. A request that names no `budget.response_tokens`
+gets the default ceiling of 8000 — source outcomes and plan included — and a
+negative value asks for an unbounded one. `budget.surface` names what the
+caller will consume: unset, it is the body this endpoint sends, so an
+undeclared caller is bounded by the bytes it receives. A client that renders a
+projection of the body declares it — `pointer` or `explained` — and the budget
+bounds that projection instead, which is what makes `recall query --server`
+byte-identical to the same query in process. `tool`, and any value outside the
+vocabulary, is refused here with `bad_request`: a tool result is consumed where
+it is produced, and this endpoint is not producing one. MCP prices its own
+results as what they deliver — structured content, text projection, and
+envelope together — and ignores anything a caller says about it.
+
+When a budget cannot afford the frame, or affording it whole would leave no
+room for a single result, `source_outcomes` is replaced by `source_summary`
+and the plan's source list is dropped, with both named in `omitted`. The
+degraded sources are named either way. Shaping sets `truncated` and
+`dropped_results`; it never changes `outcome`, because what the corpus said is
+decided before anything is cut.
+
 Refresh responses use the same severity mapping: 200 when every attempted
 source refreshed, 206 when usable state remains but a source failed or stayed
 degraded, and 503 when no target produced usable state. Those non-200 bodies

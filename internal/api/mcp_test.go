@@ -15,6 +15,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -627,4 +628,44 @@ func responseMap(t *testing.T, raw []byte) map[string]mcpResponse {
 		t.Fatal(err)
 	}
 	return got
+}
+
+// A tool result is not the response: the model receives the structured content,
+// the text projection of it, and the JSON-RPC frame around both. Pricing only
+// the structure left the text uncharged on the one surface whose entire
+// audience is a context window, so this measures the bytes the client reads.
+func TestMCPToolResultFitsTheBudget(t *testing.T) {
+	for _, budget := range []int{600, 1500, 4000, recall.DefaultResponseTokens} {
+		t.Run(fmt.Sprint(budget), func(t *testing.T) {
+			args := fmt.Sprintf(`{"query":"decision","budget_tokens":%d}`, budget)
+			if budget == recall.DefaultResponseTokens {
+				// The unset case: the ceiling has to hold without being asked
+				// for, because that is the case an agent will actually hit.
+				args = `{"query":"decision"}`
+			}
+			var output bytes.Buffer
+			err := ServeMCP(t.Context(), strings.NewReader(strings.Join([]string{
+				`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+				`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+				`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_query","arguments":` + args + `}}`,
+				"",
+			}, "\n")), &output, MCPOptions{Core: &liveCore{}})
+			if err != nil {
+				t.Fatalf("ServeMCP: %v", err)
+			}
+
+			var result []byte
+			for line := range bytes.SplitSeq(bytes.TrimRight(output.Bytes(), "\n"), []byte("\n")) {
+				if bytes.Contains(line, []byte(`"id":2`)) {
+					result = line
+				}
+			}
+			if result == nil {
+				t.Fatalf("no tool result in\n%s", output.String())
+			}
+			if got := evidence.EstimateTokens(string(result)); got > budget {
+				t.Errorf("the tool result the client reads is %d tokens against a budget of %d", got, budget)
+			}
+		})
+	}
 }

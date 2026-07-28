@@ -33,8 +33,10 @@ func renderQueryText(resp recall.QueryResponse) string {
 		b.WriteString("Nothing matched, and at least one source answered. Reporting that nothing was found is supported.\n")
 	}
 	// The one line that must never be missing: a source that could not answer
-	// is named here, not left to be inferred from an absence further down.
-	if degraded := DegradedSources(resp.SourceOutcomes); len(degraded) > 0 {
+	// is named here, not left to be inferred from an absence further down. It
+	// survives a budget that removed the ledger, because the summary standing
+	// in for the ledger carries the same names.
+	if degraded := degradedSources(resp); len(degraded) > 0 {
 		fmt.Fprintf(&b, "Degraded coverage — these sources could not answer: %s. Any answer drawn from this is partial.\n",
 			strings.Join(degraded, ", "))
 	}
@@ -45,23 +47,39 @@ func renderQueryText(resp recall.QueryResponse) string {
 	}
 
 	for i, r := range resp.Results {
-		fmt.Fprintf(&b, "\n%d. %s", i+1, r.Primary.Locator.String())
-		if r.Primary.Title != "" {
-			fmt.Fprintf(&b, "  %s", oneLine(r.Primary.Title))
-		}
-		fmt.Fprintf(&b, "\n   source=%s type=%s score=%.4f", r.Explanation.SourceID, r.Primary.RecordType, r.Score)
-		if len(r.Members) > 1 {
-			// Two members mean two independent records agreeing, which is a
-			// different thing from one record seen twice and is worth a
-			// reader's attention.
-			fmt.Fprintf(&b, " corroborated_by=%d", len(r.Members))
-		}
-		b.WriteString("\n")
-		if r.Primary.Excerpt != "" {
-			fmt.Fprintf(&b, "   %s\n", oneLine(r.Primary.Excerpt))
-		}
+		writeResultText(&b, i+1, r)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// writeResultText is one result's text block. It is its own function so the
+// response budget can price what a tool result actually delivers: see
+// [ToolCost].
+func writeResultText(b *strings.Builder, rank int, r recall.Result) {
+	fmt.Fprintf(b, "\n%d. %s", rank, r.Primary.Locator.String())
+	if r.Primary.Title != "" {
+		fmt.Fprintf(b, "  %s", oneLine(r.Primary.Title))
+	}
+	fmt.Fprintf(b, "\n   source=%s type=%s score=%.4f", r.Explanation.SourceID, r.Primary.RecordType, r.Score)
+	if len(r.Members) > 1 {
+		// Two members mean two independent records agreeing, which is a
+		// different thing from one record seen twice and is worth a reader's
+		// attention.
+		fmt.Fprintf(b, " corroborated_by=%d", len(r.Members))
+	}
+	b.WriteString("\n")
+	if r.Primary.Excerpt != "" {
+		fmt.Fprintf(b, "   %s\n", oneLine(r.Primary.Excerpt))
+	}
+}
+
+// degradedSources names the sources that could not answer, from the ledger or
+// from the summary that stands in for it under a response budget.
+func degradedSources(resp recall.QueryResponse) []string {
+	if len(resp.SourceOutcomes) == 0 && resp.SourceSummary != nil {
+		return resp.SourceSummary.Degraded
+	}
+	return DegradedSources(resp.SourceOutcomes)
 }
 
 // renderEvidenceText puts the provenance first and the content last, so a

@@ -103,14 +103,14 @@ func classify(err error) Problem {
 }
 
 // normalizeQuery fills a request's defaults and refuses one this surface cannot
-// honor.
+// honor. wire is the form this transport puts on the wire.
 //
 // Every check here is about refusing rather than repairing. A mode outside the
 // vocabulary, or a profile this surface does not serve, would otherwise be
 // silently reinterpreted as something the caller did not ask for — and the
 // caller would receive a plausible answer to a different question. Empty query
 // text is the same failure in its most obvious form.
-func normalizeQuery(req *recall.QueryRequest, profile string) *Problem {
+func normalizeQuery(req *recall.QueryRequest, profile string, wire recall.ResponseSurface) *Problem {
 	if req.Query == "" {
 		return &Problem{CodeBadRequest, "query text is required"}
 	}
@@ -131,6 +131,47 @@ func normalizeQuery(req *recall.QueryRequest, profile string) *Problem {
 	}
 	if req.Limit < 0 {
 		return &Problem{CodeBadRequest, "limit must not be negative"}
+	}
+	if req.Budget.ResponseTokens == 0 {
+		// A surface hands its answer to a caller with a context window, so an
+		// unnamed budget is the default ceiling here even though the core
+		// leaves one unbounded for a library caller holding the struct. A
+		// negative value is a caller asking for unbounded outright and passes
+		// through.
+		req.Budget.ResponseTokens = recall.DefaultResponseTokens
+	}
+	return normalizeSurface(req, wire)
+}
+
+// normalizeSurface resolves what the budget is denominated in.
+//
+// The budget bounds the surface the caller consumes, and a client can consume
+// something other than what came off the wire: `recall query --server` receives
+// JSON and prints pointers, and bounding its budget by the body would make the
+// same query answer differently in process and over a socket, which is the
+// surprise this whole flag exists to remove. So a declared projection is
+// honored, and a caller that declares one it does not apply misprices only
+// itself.
+//
+// An MCP tool result is the exception, and not by policy: it is consumed where
+// it is produced. The model reads exactly the bytes the server serialized, so
+// there is no projection for a declaration to name, and the wire form is the
+// only honest price. `tool` is therefore refused from an HTTP caller rather
+// than quietly reinterpreted — this server is not producing a tool result, and
+// pricing one is not something it can do on that caller's behalf.
+func normalizeSurface(req *recall.QueryRequest, wire recall.ResponseSurface) *Problem {
+	if wire == recall.SurfaceTool {
+		req.Budget.Surface = wire
+		return nil
+	}
+	switch req.Budget.Surface {
+	case "":
+		// No declaration is the safe default: the bytes this transport sends.
+		req.Budget.Surface = wire
+	case recall.SurfaceStructured, recall.SurfacePointer, recall.SurfaceExplained:
+	default:
+		return &Problem{CodeBadRequest, fmt.Sprintf("budget surface %q: want %q, %q, or %q",
+			req.Budget.Surface, recall.SurfaceStructured, recall.SurfacePointer, recall.SurfaceExplained)}
 	}
 	return nil
 }

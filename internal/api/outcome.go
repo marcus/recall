@@ -93,20 +93,5 @@ func ListingStatus(degraded bool) Status {
 // things on each. The rule is the plan's, not this package's — a skipped source
 // degrades only when the reason it was skipped degrades.
 func DegradedSources(reports []recall.SourceReport) []string {
-	var out []string
-	for _, r := range reports {
-		degrades := r.Outcome.Degrades()
-		if r.Outcome == recall.SearchSkipped {
-			degrades = source.Degrades(r.Reason)
-		}
-		if !degrades {
-			continue
-		}
-		reason := r.Reason
-		if reason == "" {
-			reason = string(r.Outcome)
-		}
-		out = append(out, r.SourceID+" ("+reason+")")
-	}
-	return out
+	return source.DegradedReports(reports)
 }

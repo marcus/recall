@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/ranking"
 	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
@@ -19,6 +20,11 @@ type BuildOptions struct {
 
 	// Limit is the default result cap. A request may override it.
 	Limit int
+
+	// Costs prices a response per surface, for the transports that render one.
+	// See [Options.Costs]; the default prices every surface as the serialized
+	// response.
+	Costs map[recall.ResponseSurface]evidence.Cost
 
 	Now func() time.Time
 }
@@ -47,6 +53,7 @@ func Build(opt BuildOptions) (*App, *source.Registry, error) {
 		Config:   opt.Config,
 		Registry: registry,
 		Ranker:   ranker,
+		Costs:    opt.Costs,
 		Now:      opt.Now,
 	}), registry, nil
 }

@@ -62,6 +62,7 @@ func newRuntime(env Env, cfg *config.Config, profile string, limit int) (*runtim
 		Builtins: factories(env),
 		StateDir: cfg.Paths.StateDir(profile),
 		Limit:    limit,
+		Costs:    renderCosts(),
 		Now:      env.now(),
 	})
 	if err != nil {

@@ -28,8 +28,12 @@ type App struct {
 	cfg      *config.Config
 	registry Registry
 	ranker   *ranking.Ranker
-	shaper   evidence.Shaper
 	limits   evidence.Limits
+
+	// costs prices a response for the surface that will render it. A surface
+	// with no entry here is priced as the serialized response, which is the
+	// largest rendering and therefore never lets a projection of it overrun.
+	costs map[recall.ResponseSurface]evidence.Cost
 
 	// now is injectable so evaluation runs can pin the clock to a case's as_of.
 	now func() time.Time
@@ -49,7 +53,13 @@ type Options struct {
 	Registry Registry
 	Ranker   *ranking.Ranker
 	Limits   evidence.Limits
-	Now      func() time.Time
+
+	// Costs prices a response per surface. Only a transport knows what its own
+	// rendering costs, so the transport supplies it rather than the core
+	// keeping a table of numbers it cannot verify.
+	Costs map[recall.ResponseSurface]evidence.Cost
+
+	Now func() time.Time
 }
 
 // New builds the application core.
@@ -67,6 +77,7 @@ func New(opt Options) *App {
 		registry: opt.Registry,
 		ranker:   opt.Ranker,
 		limits:   limits,
+		costs:    opt.Costs,
 		now:      now,
 	}
 }
@@ -110,21 +121,63 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 
 	a.annotate(fusion.Results, plan, results)
 
-	shaped := a.shaper.Shape(fusion.Results, req.Budget)
 	outcomes := reports(plan, results)
 
 	resp := recall.QueryResponse{
-		Results:        shaped.Results,
+		Results:        fusion.Results,
 		SourceOutcomes: outcomes,
+		// Carried on every response and kept only by shaping, which is the one
+		// thing that knows whether the ledger it stands in for was affordable.
+		SourceSummary:  summarize(outcomes),
 		Plan:           plan.AsPlan(a.ranker.Config().RankConstant, a.ranker.Config().CorroborationCap),
 		Suppressed:     append(suppressed, fusion.Suppressed...),
 		Coverage:       coverage(outcomes),
-		Truncated:      shaped.Truncated || fusion.Truncated,
-		DroppedResults: shaped.Dropped + fusion.Dropped,
+		Truncated:      fusion.Truncated,
+		DroppedResults: fusion.Dropped,
 		Elapsed:        a.now().Sub(start),
 	}
+	// Decided before shaping, on what the corpus returned. A budget too small
+	// for one result is a fact about the request, and reading it back as
+	// "nothing matched" would make the caller's own budget into a claim about
+	// the corpus.
 	resp.Outcome = outcome(resp, outcomes)
-	return resp, nil
+
+	// Shaped last, and against the frame above: the outcome line, the source
+	// ledger, and the plan are part of what gets rendered, so results are fitted
+	// into what remains after them rather than on top of them — and when even
+	// that does not fit, the diagnostics summarize rather than the budget being
+	// waived.
+	return evidence.Shape(resp, req.Budget, a.cost(req.Budget.Surface)).Response, nil
+}
+
+// summarize reduces the per-source ledger to what stands in for it when the
+// response budget cannot afford the whole thing: how many sources reported
+// each outcome, and which of them could not answer.
+//
+// The degraded list is the part that must survive. Everything else here is a
+// convenience; that list is a claim about the evidence, and a summary that
+// dropped it would turn an incomplete answer into a silent one.
+func summarize(reports []recall.SourceReport) *recall.SourceSummary {
+	if len(reports) == 0 {
+		return nil
+	}
+	out := recall.SourceSummary{
+		Sources:  len(reports),
+		Outcomes: make(map[recall.SearchOutcome]int, 4),
+		Degraded: source.DegradedReports(reports),
+	}
+	for _, r := range reports {
+		out.Outcomes[r.Outcome]++
+	}
+	return &out
+}
+
+// cost prices a response for the surface that asked for it.
+func (a *App) cost(surface recall.ResponseSurface) evidence.Cost {
+	if c, ok := a.costs[surface]; ok {
+		return c
+	}
+	return evidence.StructuredCost{}
 }
 
 // searchResult is one source's answer plus the reporting that goes with it.
@@ -342,7 +395,8 @@ func coverage(reports []recall.SourceReport) recall.Coverage {
 	return recall.CoverageComplete
 }
 
-// outcome decides what Recall did, independently of how much it could see.
+// outcome decides what Recall did, independently of how much it could see and
+// of how much of it fit — resp carries the fused results, before shaping.
 //
 // Abstention is a rule over results and source outcomes, never a threshold on a
 // fusion score: those scores are ordinal and uncalibrated, so a threshold on

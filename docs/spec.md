@@ -163,7 +163,8 @@ conversation_id      optional identity, for host correlation only
 request_id           correlation identity for tracing and logs
 suppress_lineages    lineage roots the host has already shown
 mode                 explicit | pre_reply
-budget               latency_ms and response_tokens
+budget               latency_ms, response_tokens, and the surface
+                     the token budget is denominated in
 limit                maximum fused results
 ```
 
@@ -180,8 +181,10 @@ only with a code path that consumes the weight.
 ```text
 results              ordered clusters, budget-shaped
 source_outcomes      per-source outcome, latency, and freshness evidence
+source_summary       stands in for source_outcomes under a response budget
 plan                 the resolved retrieval plan
 suppressed           counts and reasons for withheld candidates
+omitted              what the response budget removed from the frame
 outcome              answered | abstained | failed
 coverage             complete | degraded
 truncated            bool, with dropped-result count
@@ -208,7 +211,8 @@ observable only as latency; it cannot change coverage or make an unverified
 store's evidence admissible.
 
 `truncated` means budget shaping dropped trailing results. Truncation is not
-degradation.
+degradation, and it is not an abstention either: what the corpus said is
+decided before shaping. See Response Budget.
 
 Each result carries its primary candidate, cluster members with lineage roots,
 a structured score explanation, and a locator. Leading results include
@@ -327,9 +331,103 @@ A source whose deadline has already elapsed is skipped and reported; coverage
 becomes degraded. Late results are discarded, never attached to a later
 request. Timed-out sources report `timeout`, never empty success.
 
-Response shaping is deterministic: assign excerpt budget greedily from the top
-until `response_tokens` is exhausted, then emit one-line entries, then truncate
-and set `truncated`.
+### Response Budget
+
+`response_tokens` bounds the whole rendered response, not its excerpts. A
+budget charged against fields rather than against output budgets a response
+nobody prints: the same result costs about a hundred tokens as a pointer and
+closer to two thousand serialized, and the frame around it — the outcome line,
+the per-source ledger, the plan — is not free either.
+
+So the request names the surface the budget is denominated in, and the surface
+prices its own rendering:
+
+```text
+budget.surface = structured | tool | pointer | explained
+```
+
+`structured` is the response serialized whole — `--json`, the HTTP body — and
+it is the default: it is what a caller receives when nothing projects it, and
+it is the most expensive rendering, so a surface the core does not recognize is
+priced as this one and can never let a projection of it overrun. `tool` is an
+MCP tool result, which delivers the structured response AND its text projection
+inside a JSON-RPC envelope, and is priced as all three. `pointer` and
+`explained` are the CLI's two human tiers.
+
+The surface is the caller's declaration of what it will consume; a transport
+supplies the default and validates the vocabulary. Over HTTP, a request that
+declares nothing is priced as the body the server sends, which is what keeps an
+undeclared caller from being handed an unbounded one. A client that renders a
+projection of that body declares the projection and is priced for it: `recall
+query --server` receives JSON and prints pointers, and pricing it as the body
+would make the same query answer differently in process and over a socket — the
+substitution `recall serve` exists to make total would stop being total. A
+caller that declares a projection it does not apply misprices only itself.
+
+An MCP tool result is the exception, and not by policy: it is consumed where it
+is produced. The model reads exactly the bytes the server serialized, so there
+is no projection for a declaration to name and the wire form is the only honest
+price. `tool` is therefore refused from an HTTP caller, along with any value
+outside the vocabulary — this server is not producing a tool result, and
+pricing one on that caller's behalf is not something it can do.
+
+Shaping is deterministic and spends in this order:
+
+1. The frame — everything the surface prints whatever it finds — is charged
+   first. Footers are inside the budget, not exempt from it.
+2. When the frame does not fit, or when keeping it whole would leave no room
+   for even one result, its diagnostics summarize: `source_outcomes` is
+   replaced by `source_summary`, and the plan's per-source list is dropped.
+   Both are named in `omitted`. A response that spent its whole budget on
+   diagnostics and answered nothing is the failure this budget exists to
+   prevent.
+3. Leading results keep their excerpts, greedily from the top.
+4. The remainder compress to a title and locator.
+5. The tail is dropped, `truncated` is set, and `dropped_results` counts it.
+
+What is never traded away is the minimal floor: the outcome, the coverage,
+every degraded source by name, every suppression, and the summary standing in
+for what was dropped. Those are claims about the evidence, and a response that
+dropped one to save tokens would be cheaper by being less true. On the
+eighteen-source home profile the floor measures 17 tokens as pointers, 79 with
+`--explain`, and 129 serialized — tens of tokens, not the 1,600 and 2,900 the
+full frames cost.
+
+`source_summary` keeps what the ledger is read for: how many sources reported
+each outcome, and which of them could not answer, by name and reason. What it
+drops is the per-source freshness evidence, which `recall sources` answers on
+demand. An omitted fact is always named in `omitted`; an unnamed absence would
+read as a source that was never asked.
+
+The outcome is decided before shaping, on what the corpus returned — a budget
+too small for one result reports `answered` with `truncated`, never
+`abstained`, because the caller's budget is not evidence about the corpus.
+
+The tolerance is one-sided: measured in the same estimator the shaper spends
+(about four characters per token, deterministic by design and not calibrated to
+any tokenizer), a rendered response never exceeds its budget except by the
+minimal floor above, and falls short of it by at most the cost of the first
+result that did not fit.
+
+One acceptance criterion this design amends. It was written as
+"`--budget-tokens 500` is never larger than `--limit 3`", from an observation
+that 500 tokens rendered about 3,400 while `--limit 3` rendered 11.9 KB — the
+budget flag naming the smaller number and producing the larger response. With
+the response priced as what it renders, the literal comparison is wrong: the
+two flags name different units, and 500 tokens legitimately buys more than
+three pointer results, which cost about 250. What replaces it is the property
+the original was reaching for — a response never exceeds what was asked for:
+`tokens(--budget-tokens N) <= max(N, tokens(--limit 3))`, asserted on all three
+surfaces.
+
+An unset `response_tokens` is unbounded in the core and
+`DefaultResponseTokens` — 8000 — at every product surface: the CLI, the HTTP
+API, and the MCP tools all substitute it before the request is served. A
+library caller holding the struct pays no rendering cost, so nothing is
+withheld from it; a caller with a terminal or a context window is the other
+case, and one unset budget once produced a 203 KB response. A negative value is
+unbounded outright — `--budget-tokens -1` — which is what makes the ceiling a
+default rather than a limit.
 
 ### Invocation Modes
 

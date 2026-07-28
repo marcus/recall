@@ -103,6 +103,33 @@ func Degrades(reason string) bool {
 	}
 }
 
+// DegradedReports names every source that was eligible and could not answer,
+// as "source_id (reason)".
+//
+// One implementation because it is one rule. Every surface states this list —
+// the CLI unflagged, the MCP text block, the summary that stands in for the
+// ledger when a budget cannot afford it — and a second opinion about which
+// outcomes degrade would let one surface fall silent about a source another one
+// names.
+func DegradedReports(reports []recall.SourceReport) []string {
+	var out []string
+	for _, r := range reports {
+		degrades := r.Outcome.Degrades()
+		if r.Outcome == recall.SearchSkipped {
+			degrades = Degrades(r.Reason)
+		}
+		if !degrades {
+			continue
+		}
+		reason := r.Reason
+		if reason == "" {
+			reason = string(r.Outcome)
+		}
+		out = append(out, r.SourceID+" ("+reason+")")
+	}
+	return out
+}
+
 // DefaultFusionReserve is time held back from the request deadline so fusion,
 // shaping, and rendering are not themselves the thing that blows the budget.
 const DefaultFusionReserve = 25 * time.Millisecond

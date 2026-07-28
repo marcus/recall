@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,7 +26,9 @@ flags:
                        outcomes, and the resolved retrieval plan
   --limit N            maximum fused results
   --budget-ms N        latency budget for the whole request
-  --budget-tokens N    response size budget; trailing results compress, then drop
+  --budget-tokens N    size budget for the whole rendered response, footers
+                       included; trailing results compress, then drop. Default
+                       8000; -1 is unbounded
   --scope KEY=VALUE    narrow the request; repeatable and comma-separable.
                        Keys: source, type, project, entity, since, until.
                        Times are RFC 3339.
@@ -41,6 +45,15 @@ recall expand takes, and choosing what to expand is what the list is for.
 Scores, provenance, lineage, source outcomes, and the plan are diagnostics —
 behind --explain here, complete in --json, and answered directly by recall
 sources and recall doctor when they are the question.
+
+Every response is bounded. --budget-tokens is charged against the whole
+rendering — the outcome line, each result as this surface prints it, and the
+source and plan footers when --explain prints them — so the number means the
+same thing on every surface, and a serialized response costs what serializing
+it costs. Unset it is 8000 tokens, roughly 32 KB of human output; -1 removes
+the ceiling. A budget too small for the footers summarizes them rather than
+ignoring them, and says so. What it never drops is the outcome, the coverage,
+a degraded source, or a suppression: those are what the answer claims.
 
 Human output states coverage inline: a source that was eligible and could not
 answer is named, never silently absent. An excerpt is marked by what it is:
@@ -95,8 +108,12 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		Scope:   scope,
 		AsOf:    asOf,
 		Mode:    recall.ModeExplicit,
-		Budget:  recall.Budget{LatencyMS: *budgetMS, ResponseTokens: *tokens},
-		Limit:   *limit,
+		Budget: recall.Budget{
+			LatencyMS:      *budgetMS,
+			ResponseTokens: responseTokens(*tokens),
+			Surface:        surface(*asJSON, *explained),
+		},
+		Limit: *limit,
 	})
 	if err != nil {
 		// A request that could not be planned or fused made no claim about the
@@ -117,6 +134,36 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		return code
 	}
 	return queryExit(resp)
+}
+
+// responseTokens resolves what an unset --budget-tokens means here.
+//
+// It is the default ceiling, not unbounded. The core leaves an unset budget
+// unbounded because a library caller pays no rendering cost for a struct it
+// holds; a command whose output lands in a terminal or a context window is the
+// other case, and the observed failure this exists to stop was a single query
+// that printed 203 KB nobody asked for. A negative value is the caller saying
+// unbounded outright, which is the escape hatch a ceiling needs in order to be
+// a default rather than a limit.
+func responseTokens(asked int) int {
+	if asked == 0 {
+		return recall.DefaultResponseTokens
+	}
+	return asked
+}
+
+// surface names the rendering this invocation will print, so the budget is
+// charged against what the caller actually receives. --json is the whole
+// response whether or not --explain was named, which is why it decides first.
+func surface(asJSON, explained bool) recall.ResponseSurface {
+	switch {
+	case asJSON:
+		return recall.SurfaceStructured
+	case explained:
+		return recall.SurfaceExplained
+	default:
+		return recall.SurfacePointer
+	}
 }
 
 // queryExit maps one response onto an exit code, most severe first.
@@ -154,15 +201,16 @@ func queryExit(resp recall.QueryResponse) int {
 // learning which flag holds which fact. It is also the flag a caller already
 // reaches for, so nothing new has to be discovered to get the old output back.
 //
-// Every block below is its own function so the response budget can be charged
-// against what is actually rendered rather than against excerpts alone.
+// Every block below is its own function because the response budget is charged
+// by running them: cost.go prices a frame and a result by rendering one, so
+// what the budget buys and what the surface prints cannot drift apart.
 func renderQuery(o *out, resp recall.QueryResponse, explained bool) {
 	renderOutcome(o, resp)
-	renderResults(o, resp.Results, explained)
+	renderResults(o, resp, explained)
 	renderSuppressed(o, resp.Suppressed)
 	if explained {
-		renderSourceOutcomes(o, resp.SourceOutcomes)
-		renderPlan(o, resp.Plan)
+		renderSourceOutcomes(o, resp)
+		renderPlan(o, resp)
 	}
 }
 
@@ -179,7 +227,7 @@ func renderOutcome(o *out, resp recall.QueryResponse) {
 	head.count("dropped", resp.DroppedResults)
 	o.line(head.String())
 
-	if degraded := degradedSources(resp.SourceOutcomes); len(degraded) > 0 {
+	if degraded := degradedSources(resp); len(degraded) > 0 {
 		// The one line that must never be missing from human output: a source
 		// that could not answer is named here, not left to be inferred from an
 		// absence further down.
@@ -187,28 +235,28 @@ func renderOutcome(o *out, resp recall.QueryResponse) {
 	}
 }
 
-func degradedSources(reports []recall.SourceReport) []string {
-	var out []string
-	for _, r := range reports {
-		degrades := r.Outcome.Degrades()
-		if r.Outcome == recall.SearchSkipped {
-			degrades = source.Degrades(r.Reason)
-		}
-		if !degrades {
-			continue
-		}
-		reason := r.Reason
-		if reason == "" {
-			reason = string(r.Outcome)
-		}
-		out = append(out, fmt.Sprintf("%s (%s)", r.SourceID, reason))
+// degradedSources names the sources that could not answer, from the ledger or
+// from the summary standing in for it. This line does not shrink under budget
+// pressure: it is the response's own claim about how complete it is.
+func degradedSources(resp recall.QueryResponse) []string {
+	if len(resp.SourceOutcomes) == 0 && resp.SourceSummary != nil {
+		return resp.SourceSummary.Degraded
 	}
-	return out
+	return source.DegradedReports(resp.SourceOutcomes)
 }
 
-func renderResults(o *out, results []recall.Result, explained bool) {
+func renderResults(o *out, resp recall.QueryResponse, explained bool) {
+	results := resp.Results
 	o.blank()
 	if len(results) == 0 {
+		if resp.DroppedResults > 0 {
+			// "none" would read as "nothing matched" when a budget or a limit
+			// is what emptied the list, and that is the one thing an empty
+			// result set must never be confused with. Which of the two it was
+			// is not claimed here: the count is what is known.
+			o.line(fmt.Sprintf("results: none shown, %d dropped", resp.DroppedResults))
+			return
+		}
 		o.line("results: none")
 		return
 	}
@@ -341,9 +389,24 @@ func locators(in []recall.Locator) string {
 // shrink with the result set: it was the entire cost of a query that found
 // nothing. The failure a caller must not miss is already named unflagged by
 // renderOutcome, and recall sources answers the rest on demand.
-func renderSourceOutcomes(o *out, reports []recall.SourceReport) {
+// When the response budget could not afford the ledger, the summary that stood
+// in for it is printed instead, marked as the stand-in it is. The alternative —
+// printing nothing under a "sources" heading — would say this profile has no
+// sources, which is a different and false statement.
+func renderSourceOutcomes(o *out, resp recall.QueryResponse) {
+	reports := resp.SourceOutcomes
 	o.blank()
 	o.line("sources")
+	if len(reports) == 0 && resp.SourceSummary != nil {
+		s := resp.SourceSummary
+		var f fields
+		f.count("sources", s.Sources)
+		for _, outcome := range slices.Sorted(maps.Keys(s.Outcomes)) {
+			f.count(string(outcome), s.Outcomes[outcome])
+		}
+		o.block("  ", f.String()+"  (per-source ledger omitted for the response budget)")
+		return
+	}
 	if len(reports) == 0 {
 		o.block("  ", "none configured for this profile")
 		return
@@ -366,7 +429,12 @@ func renderSourceOutcomes(o *out, reports []recall.SourceReport) {
 // renderPlan is the resolved retrieval plan, behind --explain: it describes the
 // request rather than the answer, and it is identical for every query against
 // the profile.
-func renderPlan(o *out, plan recall.Plan) {
+//
+// Its header is one line and stays whatever the budget is. The per-source list
+// grows with the profile, so it is what a budget drops, and it says so rather
+// than reading as a plan that reached no sources.
+func renderPlan(o *out, resp recall.QueryResponse) {
+	plan := resp.Plan
 	o.blank()
 	var head fields
 	head.text("profile", plan.Profile)
@@ -379,6 +447,10 @@ func renderPlan(o *out, plan recall.Plan) {
 	}
 	o.line("plan  " + head.String())
 
+	if len(plan.Sources) == 0 && slices.Contains(resp.Omitted, recall.OmittedPlanSources) {
+		o.block("  ", "per-source plan omitted for the response budget")
+		return
+	}
 	for _, s := range plan.Sources {
 		var f fields
 		f.raw(eligibility(s.Eligible))

@@ -2,6 +2,7 @@ package evidence_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -216,26 +217,51 @@ func result(title, excerpt string) recall.Result {
 	}}
 }
 
+// priced is a surface with stated prices, so a shaping test measures shaping
+// rather than a serializer. A result that lost its excerpt costs the compressed
+// price, which is how every real surface prices one.
+type priced struct{ frame, full, compressed int }
+
+func (p priced) Frame(resp recall.QueryResponse) int {
+	if len(resp.Results) != 0 {
+		panic("the frame was priced with results in it")
+	}
+	return p.frame
+}
+
+func (p priced) Result(rank int, r recall.Result) int {
+	if rank < 1 {
+		panic("a result was priced without its rank")
+	}
+	if r.Primary.Excerpt == "" {
+		return p.compressed
+	}
+	return p.full
+}
+
+func shapeable(n int) recall.QueryResponse {
+	results := make([]recall.Result, n)
+	for i := range results {
+		results[i] = result(fmt.Sprintf("result title %d", i), strings.Repeat("excerpt body ", 20))
+	}
+	return recall.QueryResponse{Results: results, Outcome: recall.OutcomeAnswered}
+}
+
 // Shaping runs in three phases: excerpts while they fit, then one-line entries,
 // then a reported truncation.
 func TestShapeDegradesThroughPhases(t *testing.T) {
-	results := make([]recall.Result, 20)
-	for i := range results {
-		results[i] = result("result title here", strings.Repeat("excerpt body ", 20))
-	}
+	resp := shapeable(20)
+	got := evidence.Shape(resp, recall.Budget{ResponseTokens: 200}, priced{frame: 20, full: 60, compressed: 10})
 
-	shaper := evidence.Shaper{}
-	got := shaper.Shape(results, recall.Budget{ResponseTokens: 200})
-
-	if len(got.Results) == 0 {
+	if len(got.Response.Results) == 0 {
 		t.Fatal("shaping dropped everything")
 	}
-	if got.Results[0].Primary.Excerpt == "" {
+	if got.Response.Results[0].Primary.Excerpt == "" {
 		t.Error("the leading result should keep its excerpt")
 	}
 
 	sawCompressed := false
-	for _, r := range got.Results {
+	for _, r := range got.Response.Results {
 		if r.Primary.Excerpt == "" {
 			sawCompressed = true
 			continue
@@ -244,39 +270,165 @@ func TestShapeDegradesThroughPhases(t *testing.T) {
 			t.Error("an excerpt appeared after compression began; phases must not interleave")
 		}
 	}
-	if !got.Truncated || got.Dropped == 0 {
-		t.Errorf("expected truncation to be reported: %+v", got)
+	if !got.Response.Truncated || got.Response.DroppedResults == 0 {
+		t.Errorf("expected truncation to be reported: %+v", got.Response)
 	}
-	if got.Dropped+len(got.Results) != len(results) {
-		t.Errorf("dropped %d + kept %d != %d input", got.Dropped, len(got.Results), len(results))
+	if got.Response.DroppedResults+len(got.Response.Results) != len(resp.Results) {
+		t.Errorf("dropped %d + kept %d != %d input",
+			got.Response.DroppedResults, len(got.Response.Results), len(resp.Results))
 	}
 	if got.Tokens > 200 {
 		t.Errorf("shaped output costs %d tokens, budget was 200", got.Tokens)
 	}
 }
 
-func TestShapeIsDeterministic(t *testing.T) {
-	results := make([]recall.Result, 12)
-	for i := range results {
-		results[i] = result(fmt.Sprintf("title %d", i), strings.Repeat("body ", 15))
-	}
-	shaper := evidence.Shaper{}
+// The frame is what the surface prints whatever it finds. A budget that funded
+// results and left the frame unpaid would be the defect this pricing exists to
+// remove: the response nobody budgeted for is the one that always renders.
+func TestShapeChargesTheFrameFirst(t *testing.T) {
+	resp := shapeable(20)
+	cheap := evidence.Shape(resp, recall.Budget{ResponseTokens: 200}, priced{frame: 20, full: 60, compressed: 10})
+	dear := evidence.Shape(resp, recall.Budget{ResponseTokens: 200}, priced{frame: 150, full: 60, compressed: 10})
 
-	first := shaper.Shape(results, recall.Budget{ResponseTokens: 120})
+	// Spend on results, not the count: a dear frame leaves less to spend, and
+	// what it buys with the remainder is compression's business.
+	if onResults, cheaply := dear.Tokens-150, cheap.Tokens-20; onResults >= cheaply {
+		t.Errorf("a dear frame left %d tokens for results and a cheap one %d; the frame must come out of the budget",
+			onResults, cheaply)
+	}
+	if dear.Tokens > 200 || cheap.Tokens > 200 {
+		t.Errorf("cost %d and %d tokens against a budget of 200", dear.Tokens, cheap.Tokens)
+	}
+
+	// A frame alone over budget carries no results rather than pretending it
+	// was free, and says how many it dropped.
+	none := evidence.Shape(resp, recall.Budget{ResponseTokens: 100}, priced{frame: 500, full: 60, compressed: 10})
+	if len(none.Response.Results) != 0 || !none.Response.Truncated || none.Response.DroppedResults != 20 {
+		t.Errorf("a frame over budget should drop every result and report it: %+v", none.Response)
+	}
+}
+
+// A frame that does not fit is summarized, not waived. What survives is the
+// minimal floor: the outcome, the coverage, and every source that could not
+// answer, named. Those are claims about the evidence, and dropping one to save
+// tokens would make the response cheaper by making it less true.
+func TestShapeSummarizesAFrameItCannotAfford(t *testing.T) {
+	resp := shapeable(3)
+	resp.SourceOutcomes = []recall.SourceReport{
+		{SourceID: "notes", Outcome: recall.SearchSuccess},
+		{SourceID: "tasks", Outcome: recall.SearchUnavailable, Reason: "unreachable"},
+	}
+	resp.SourceSummary = &recall.SourceSummary{
+		Sources:  2,
+		Outcomes: map[recall.SearchOutcome]int{recall.SearchSuccess: 1, recall.SearchUnavailable: 1},
+		Degraded: []string{"tasks (unreachable)"},
+	}
+	resp.Plan = recall.Plan{Profile: "work", Sources: []recall.PlanSource{{SourceID: "notes"}, {SourceID: "tasks"}}}
+
+	// A ledger nobody can afford: pricing it at 400 against a budget of 100.
+	ledger := func(r recall.QueryResponse) int {
+		if len(r.SourceOutcomes) > 0 {
+			return 400
+		}
+		return 40
+	}
+	got := evidence.Shape(resp, recall.Budget{ResponseTokens: 100}, framed{frame: ledger, result: 20})
+
+	if got.Response.SourceOutcomes != nil {
+		t.Error("the ledger was kept in a response that could not afford it")
+	}
+	if got.Response.SourceSummary == nil || len(got.Response.SourceSummary.Degraded) != 1 {
+		t.Fatalf("the summary standing in for the ledger lost the degraded source: %+v", got.Response.SourceSummary)
+	}
+	if len(got.Response.Plan.Sources) != 0 || got.Response.Plan.Profile != "work" {
+		t.Errorf("the plan's source list is what a budget drops, not its header: %+v", got.Response.Plan)
+	}
+	want := []recall.Omission{recall.OmittedSourceOutcomes, recall.OmittedPlanSources}
+	if !slices.Equal(got.Response.Omitted, want) {
+		t.Errorf("omitted = %v, want %v; an omission a caller cannot see reads as a source never asked",
+			got.Response.Omitted, want)
+	}
+	if got.Tokens > 100 {
+		t.Errorf("the summarized response still costs %d tokens against a budget of 100", got.Tokens)
+	}
+	if len(got.Response.Results) == 0 {
+		t.Error("summarizing the frame bought no room to answer at all")
+	}
+}
+
+// A response whose whole frame fits keeps the ledger, and then the summary
+// would be the same facts twice.
+func TestShapeKeepsTheLedgerItCanAfford(t *testing.T) {
+	resp := shapeable(1)
+	resp.SourceOutcomes = []recall.SourceReport{{SourceID: "notes", Outcome: recall.SearchSuccess}}
+	resp.SourceSummary = &recall.SourceSummary{Sources: 1}
+
+	got := evidence.Shape(resp, recall.Budget{ResponseTokens: 5000}, evidence.StructuredCost{})
+	if len(got.Response.SourceOutcomes) != 1 || got.Response.SourceSummary != nil || got.Response.Omitted != nil {
+		t.Errorf("an affordable frame was summarized anyway: %+v", got.Response)
+	}
+}
+
+// framed prices a frame by inspecting it, which is what makes a summarized one
+// cheaper than a full one.
+type framed struct {
+	frame  func(recall.QueryResponse) int
+	result int
+}
+
+func (f framed) Frame(resp recall.QueryResponse) int { return f.frame(resp) }
+
+func (f framed) Result(int, recall.Result) int { return f.result }
+
+func TestShapeIsDeterministic(t *testing.T) {
+	resp := shapeable(12)
+	budget := recall.Budget{ResponseTokens: 400}
+
+	first := evidence.Shape(resp, budget, evidence.StructuredCost{})
 	for range 50 {
-		got := shaper.Shape(results, recall.Budget{ResponseTokens: 120})
-		if len(got.Results) != len(first.Results) || got.Dropped != first.Dropped || got.Tokens != first.Tokens {
+		got := evidence.Shape(resp, budget, evidence.StructuredCost{})
+		if len(got.Response.Results) != len(first.Response.Results) ||
+			got.Response.DroppedResults != first.Response.DroppedResults || got.Tokens != first.Tokens {
 			t.Fatalf("shaping varied between runs: %+v vs %+v", first, got)
 		}
 	}
 }
 
+// The core's contract, deliberately not the product's: a caller holding the
+// struct pays no rendering cost, so nothing is withheld from it. Every surface
+// that renders one substitutes recall.DefaultResponseTokens first.
 func TestZeroBudgetMeansUnbounded(t *testing.T) {
-	results := []recall.Result{result("a", "body"), result("b", "body")}
-	got := evidence.Shaper{}.Shape(results, recall.Budget{})
+	resp := recall.QueryResponse{Results: []recall.Result{result("a", "body"), result("b", "body")}}
+	got := evidence.Shape(resp, recall.Budget{}, evidence.StructuredCost{})
 
-	if len(got.Results) != 2 || got.Truncated {
-		t.Errorf("an unset budget should not shape: %+v", got)
+	if len(got.Response.Results) != 2 || got.Response.Truncated {
+		t.Errorf("an unset budget should not shape: %+v", got.Response)
+	}
+	if got.Tokens == 0 {
+		t.Error("an unbounded response should still report what it cost")
+	}
+}
+
+// A surface with no cost model of its own is priced as the serialized
+// response: the largest rendering, so a projection of it cannot overrun a
+// budget priced this way.
+func TestStructuredCostPricesTheSerialization(t *testing.T) {
+	cost := evidence.StructuredCost{}
+	r := result("title", strings.Repeat("excerpt body ", 20))
+
+	full := cost.Result(1, r)
+	if want := evidence.EstimateTokens(r.Primary.Excerpt); full < want {
+		t.Errorf("a result priced %d tokens, its excerpt alone is %d", full, want)
+	}
+	stripped := r
+	stripped.Primary.Excerpt = ""
+	if compressed := cost.Result(1, stripped); compressed >= full {
+		t.Errorf("compressed cost %d is not below the full cost %d; compression must buy budget", compressed, full)
+	}
+
+	resp := recall.QueryResponse{Results: []recall.Result{r, r}, Outcome: recall.OutcomeAnswered}
+	if frame := cost.Frame(resp); frame >= full {
+		t.Errorf("the frame priced %d tokens with the results still in it; it prices the response without them", frame)
 	}
 }
 
