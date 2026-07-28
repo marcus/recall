@@ -15,7 +15,8 @@ func TestRenderCostsCoverEverySurfaceThisProcessRenders(t *testing.T) {
 	costs := renderCosts()
 
 	for _, surface := range []recall.ResponseSurface{
-		recall.SurfacePointer, recall.SurfaceExplained, recall.SurfaceTool,
+		recall.SurfacePointer, recall.SurfaceExplained,
+		recall.SurfaceTool, recall.SurfaceToolExplained,
 	} {
 		if _, ok := costs[surface]; !ok {
 			t.Errorf("surface %q has no price registered", surface)
@@ -23,6 +24,11 @@ func TestRenderCostsCoverEverySurfaceThisProcessRenders(t *testing.T) {
 	}
 	if _, ok := costs[recall.SurfaceTool].(api.ToolCost); !ok {
 		t.Error("the tool surface must be priced by the transport that renders it")
+	}
+	// The two tool tiers differ by most of the response, so one price for both
+	// would shape a projected result for a serialization it does not send.
+	if cost, ok := costs[recall.SurfaceToolExplained].(api.ToolCost); !ok || !cost.Explained {
+		t.Error("the explained tool surface is not priced as the complete serialization")
 	}
 	// The structured surface is priced by its own serialization. A second
 	// opinion here would be a number to keep in step with encoding/json.

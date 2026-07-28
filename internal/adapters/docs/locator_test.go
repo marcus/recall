@@ -193,3 +193,24 @@ func TestCitationsCountAgainstAboutnessOnlyWhereDeclared(t *testing.T) {
 		t.Error("a term outside every quotation was discounted")
 	}
 }
+
+// Prose set against a locator with no space around it must survive: a dash is
+// not part of a URL, and the run on either side of one is a word.
+func TestProseGluedToALocatorByADashSurvives(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"written up here—https://example.com/blog/post—last year",
+		"written up here–https://example.com/blog/post–last year",
+		"written up here…https://example.com/blog/post…last year",
+	} {
+		got := tokenize(withoutLocators(line))
+		for _, want := range []string{"written", "here", "last", "year"} {
+			if !slices.Contains(got, want) {
+				t.Errorf("%q\n  terms %v lost the prose word %q", line, got, want)
+			}
+		}
+		if slices.Contains(got, "blog") {
+			t.Errorf("%q\n  terms %v kept the locator", line, got)
+		}
+	}
+}

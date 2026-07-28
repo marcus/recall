@@ -318,7 +318,15 @@ func (r *Registry) scopedOutOfProfile(
 		elsewhere []string
 		unknown   []string
 	)
+	// A source named twice is one source. `--scope source=a --scope source=a`
+	// is a caller repeating itself, not two exclusions, and reporting it twice
+	// would put the same name in the degraded-coverage line twice.
+	seen := make(map[string]bool, len(req.Scope.SourceIDs))
 	for _, id := range req.Scope.SourceIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		if member[id] {
 			inside++
 			continue

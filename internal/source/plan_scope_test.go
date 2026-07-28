@@ -84,6 +84,22 @@ func TestScopeInsideTheProfileReportsNothing(t *testing.T) {
 	}
 }
 
+// A source named twice is one source: a repeated scope entry must not put the
+// same name in the degraded-coverage line twice.
+func TestARepeatedScopeEntryIsReportedOnce(t *testing.T) {
+	t.Parallel()
+	r, _ := scopeRegistry(t)
+
+	reports, err := r.scopedOutOfProfile(
+		scopeRequest("docs", "memory-only", "memory-only"), profileOf(t, r, "work"), profileSources(t, r, "work"))
+	if err != nil {
+		t.Fatalf("partial overlap refused: %v", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("reports = %+v, want the source named once", reports)
+	}
+}
+
 func scopeRequest(sources ...string) recall.QueryRequest {
 	return recall.QueryRequest{Query: "x", Scope: &recall.Scope{SourceIDs: sources}}
 }

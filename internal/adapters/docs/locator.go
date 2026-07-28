@@ -40,6 +40,14 @@ import "strings"
 // gives up at the newline, and counts the citation as the document's own prose,
 // which is the whole failure inverted. A blank line ends it because a quotation
 // that reached the next paragraph was never one.
+//
+// A fenced block reads as a run of code spans under the same pairing, so its
+// contents count as quotation. That is intended — a command shown as an example
+// is being displayed, not asserted — and it is also the bound on what a
+// mis-paired backtick can cost: the only thing this decides is whether an
+// occurrence counts toward aboutness in a source that declared
+// examples_quote_queries. Nothing here removes a term from the index or from a
+// query's reach.
 func quotedRuns(text string) string {
 	var b strings.Builder
 	for _, paragraph := range strings.Split(text, "\n\n") {
@@ -129,14 +137,20 @@ func closingParen(text string, open int) (int, bool) {
 	return 0, false
 }
 
-// dropURLRuns removes whitespace-separated runs that are locators, keeping the
-// whitespace so the words on either side stay two tokens.
+// dropURLRuns removes the runs that are locators, keeping the delimiters so the
+// words on either side stay two tokens.
 //
 // Runs are delimited by whitespace rather than by the tokenizer's own rule,
 // because the tokenizer splits a URL into the words inside it — which is the
 // defect — and a locator has to be recognized before that happens. Surrounding
 // markup and sentence punctuation are trimmed for the test only: a URL inside a
 // code span, in angle brackets, or ending a sentence is the same locator.
+//
+// Dashes delimit a run as well, and they have to: a URL never contains an em or
+// en dash, while prose sets one against a URL with no space around it —
+// "written up here—https://example.com/post—last year" is one whitespace-
+// delimited run, and dropping it whole would take two words of prose with the
+// locator.
 func dropURLRuns(text string) string {
 	const wrapping = "`<>()[]{},;:'\"*_.!?"
 
@@ -154,10 +168,10 @@ func dropURLRuns(text string) string {
 		}
 		start = -1
 	}
-	for i := 0; i < len(text); i++ {
-		if c := text[i]; c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+	for i, r := range text {
+		if isRunBreak(r) {
 			flush(i)
-			b.WriteByte(c)
+			b.WriteRune(r)
 			continue
 		}
 		if start < 0 {
@@ -166,6 +180,20 @@ func dropURLRuns(text string) string {
 	}
 	flush(len(text))
 	return b.String()
+}
+
+// isRunBreak reports the characters that cannot appear inside a locator and do
+// appear between one and the prose around it.
+func isRunBreak(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\r', '\v', '\f',
+		' ', // non-breaking space
+		'–', // en dash
+		'—', // em dash
+		'…': // ellipsis
+		return true
+	}
+	return false
 }
 
 // isLocator reports whether a run of text is a reference rather than a word.
