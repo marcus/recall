@@ -46,6 +46,39 @@ type Config struct {
 type Evaluation struct {
 	DevelopmentPack     string `json:"development_pack,omitempty"`
 	DevelopmentBaseline string `json:"development_baseline,omitempty"`
+
+	// MustAbstain names queries this machine's active profile has to answer
+	// with nothing. `recall doctor` runs them and fails when one comes back
+	// with results.
+	//
+	// It exists because an evaluation pack cannot ask this question. A pack
+	// pins its corpus — it has to, or a ranking change could not be measured
+	// against a fixed thing — so it measures a source set chosen on the day it
+	// was written, never the profile anyone actually runs. That gap is not
+	// theoretical: `fujifilm` abstained in eval/packs/firstuse and returned six
+	// results on the home profile for three days, because a source added in
+	// between quoted the query in its own issue text. Every assertion was
+	// green.
+	//
+	// So these carry only what cannot drift. An abstention is the one claim a
+	// growing corpus cannot make truer: any new source can turn "nothing"
+	// into "something", and none can turn it back. Ranking, counts, and
+	// lineage all legitimately move as sources are added, which is why none of
+	// them are stated here — a check that cried wolf every time a document
+	// changed would be turned off within a week.
+	MustAbstain []MustAbstain `json:"must_abstain,omitempty"`
+}
+
+// MustAbstain is one query that must answer nothing, and why it should.
+//
+// The reason is carried rather than assumed, for the same reason
+// internal/eval/pack.go requires one on a gate threshold: the first question
+// anyone asks of a failing entry is whether it was ever right to expect this,
+// and an entry that cannot answer that is folklore. It is required — a bare
+// list would be cheaper today and a config migration later.
+type MustAbstain struct {
+	Query  string `json:"query"`
+	Reason string `json:"reason"`
 }
 
 // find returns the instance currently resolved under a display name, or nil.

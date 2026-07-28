@@ -33,8 +33,14 @@ type rawDefaults struct {
 }
 
 type rawEvaluation struct {
-	DevelopmentPack     *string `toml:"development_pack"`
-	DevelopmentBaseline *string `toml:"development_baseline"`
+	DevelopmentPack     *string          `toml:"development_pack"`
+	DevelopmentBaseline *string          `toml:"development_baseline"`
+	MustAbstain         []rawMustAbstain `toml:"must_abstain"`
+}
+
+type rawMustAbstain struct {
+	Query  *string `toml:"query"`
+	Reason *string `toml:"reason"`
 }
 
 type rawAdapter struct {

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/marcus/recall/internal/app"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/conformance"
 	"github.com/marcus/recall/internal/protocol"
@@ -30,6 +31,8 @@ Check everything that has to be true before a query means anything:
   store_isolation  no two instances of one adapter opened the same store
   freshness        each source's freshness mode is one its adapter serves
   lineage          declared source-level derivation has no cycle
+  abstention       the queries evaluation.must_abstain names still answer
+                   nothing on this profile
 
 A check that fails means the installation is misconfigured and exits 1. A check
 that degrades means it is configured correctly and is not serving what it was
@@ -105,6 +108,7 @@ const (
 	checkIsolation     = "store_isolation"
 	checkFreshness     = "freshness"
 	checkLineage       = "lineage"
+	checkAbstention    = "abstention"
 	checkConformance   = "conformance"
 )
 
@@ -252,7 +256,8 @@ func diagnoseRuntime(ctx context.Context, cfg *config.Config, rt *runtime) Diagn
 
 	health, manifests, healths := healthCheck(ctx, rt, eligible)
 	d.add(health, servingCheck(eligible, manifests, healths), isolationCheck(eligible, healths),
-		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests))
+		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests),
+		abstentionCheck(ctx, rt.app, rt.profile, cfg.Evaluation.MustAbstain))
 	return d.finish()
 }
 
@@ -870,4 +875,92 @@ func renderDiagnosis(o *out, d Diagnosis) {
 			o.block("    ", p.Message)
 		}
 	}
+}
+
+// abstentionCheck runs the queries `evaluation.must_abstain` names and fails on
+// any that came back with results.
+//
+// This is the one check that asks a question about retrieval rather than about
+// configuration or reachability, and it is here rather than in an evaluation
+// pack because a pack cannot ask it. A pack pins its corpus so that a ranking
+// change can be measured against something fixed, which means it measures the
+// sources chosen when it was written and never the profile in front of you.
+// The gap is real: `fujifilm` abstained in eval/packs/firstuse and answered
+// with six results on the home profile, because a source added afterwards
+// quoted the query in its own text. Every assertion in the pack was green
+// throughout.
+//
+// An abstention is the only claim safe to make against a live, growing corpus.
+// Any new source can turn "nothing" into "something" and none can turn it back,
+// so this fails in exactly one direction and never for a reason the operator
+// did not cause.
+//
+// A query that ERRORS is not a failure here. The corpus made no claim, so
+// neither does this check: it is reported and the check degrades, which is the
+// same distinction the outcome vocabulary draws between abstained and failed.
+func abstentionCheck(ctx context.Context, core *app.App, profile string, queries []config.MustAbstain) Check {
+	if len(queries) == 0 {
+		return Check{
+			Name:   checkAbstention,
+			Status: CheckSkipped,
+			Detail: "no evaluation.must_abstain queries are configured",
+		}
+	}
+
+	var problems []Problem
+	// Whether any query actually came back with results, as opposed to being
+	// unanswerable. It is the difference between "this profile serves an answer
+	// it should not" and "this run could not tell".
+	answered := false
+	for _, m := range queries {
+		q := m.Query
+		resp, err := core.Query(ctx, recall.QueryRequest{
+			Query:   q,
+			Profile: profile,
+			Mode:    recall.ModeExplicit,
+			Limit:   1,
+		})
+		if err != nil {
+			problems = append(problems, Problem{
+				Key:     "must_abstain",
+				Message: fmt.Sprintf("%q could not be answered, so it makes no claim either way: %v", q, err),
+			})
+			continue
+		}
+		switch resp.Outcome {
+		case recall.OutcomeAbstained:
+			// The claim holds.
+		case recall.OutcomeFailed:
+			// Every source asked failed, so "no results" would be a claim
+			// nothing supports — which is the same reason `failed` is not
+			// `abstained` anywhere else. It has not shown the profile answers
+			// this query, so it must not be reported as though it had.
+			problems = append(problems, Problem{
+				Key: "must_abstain",
+				Message: fmt.Sprintf(
+					"%q could not be established: every source asked failed, so this "+
+						"run says nothing about whether the profile answers it", q),
+			})
+		default:
+			answered = true
+			problems = append(problems, Problem{
+				Key: "must_abstain",
+				Message: fmt.Sprintf(
+					"%q was configured to answer nothing on this profile and returned %s; "+
+						"a source reachable from %q now matches it, which means an answer "+
+						"nothing supports is being served for it. It was configured "+
+						"because: %s",
+					q, resp.Outcome, profile, m.Reason),
+			})
+		}
+	}
+
+	detail := fmt.Sprintf("%d of %d configured queries still answer nothing",
+		len(queries)-len(problems), len(queries))
+	// Nothing answered, but something went wrong: the check could not run,
+	// rather than ran and found a fault.
+	if len(problems) > 0 && !answered {
+		return Check{Name: checkAbstention, Status: CheckDegraded, Detail: detail, Problems: problems}
+	}
+	return finishCheck(checkAbstention, detail, problems)
 }

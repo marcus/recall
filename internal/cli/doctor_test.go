@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -461,5 +462,93 @@ func TestDoctorPrefersFailureOverDegradation(t *testing.T) {
 	code, stdout, _ := h.run("doctor", "--json")
 	if code != cli.ExitError {
 		t.Fatalf("exit = %d, want %d\n%s", code, cli.ExitError, stdout)
+	}
+}
+
+// The abstention check exists because an evaluation pack cannot ask this
+// question. A pack pins its corpus, so it measures the sources chosen when it
+// was written; this measures the profile in front of you.
+//
+// The concrete failure it is built from: `fujifilm` abstained in
+// eval/packs/firstuse and returned six results on the home profile, because a
+// source added afterwards quoted the query verbatim in its own issue text. The
+// pack stayed green the whole time.
+func TestDoctorCatchesAnAbstentionThatStoppedAbstaining(t *testing.T) {
+	const withQueries = twoSourceTOML + `
+[[evaluation.must_abstain]]
+query = "fujifilm"
+reason = "nothing in this corpus is about the camera maker"
+`
+
+	t.Run("still abstains", func(t *testing.T) {
+		h := newHarness(t, harnessOptions{
+			userTOML: withQueries,
+			adapters: fakeAdapters(map[string]*fake{
+				"fakedocs": {manifest: manifest()}, "faketasks": {manifest: manifest()},
+			}),
+		})
+		code, stdout, _ := h.run("doctor", "--json")
+		if code != cli.ExitOK {
+			t.Fatalf("exit = %d, want 0 when nothing matches the query\n%s", code, stdout)
+		}
+		var d cli.Diagnosis
+		if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+			t.Fatal(err)
+		}
+		if got := checkStatus(t, d, "abstention"); got != cli.CheckPass {
+			t.Errorf("check = %q, want pass", got)
+		}
+	})
+
+	t.Run("a new source starts matching it", func(t *testing.T) {
+		h := newHarness(t, harnessOptions{
+			userTOML: withQueries,
+			adapters: fakeAdapters(map[string]*fake{
+				// The contaminating source: it answers the query that was
+				// configured to have no answer.
+				"fakedocs":  {manifest: manifest(), candidates: []recall.Candidate{candidate("ticket-about-the-query", 1)}},
+				"faketasks": {manifest: manifest()},
+			}),
+		})
+		code, stdout, _ := h.run("doctor", "--json")
+		if code == cli.ExitOK {
+			t.Fatalf("doctor exited 0 while a must-abstain query returned results; "+
+				"this is the exact regression the check exists to catch\n%s", stdout)
+		}
+		var d cli.Diagnosis
+		if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+			t.Fatal(err)
+		}
+		if got := checkStatus(t, d, "abstention"); got != cli.CheckFail {
+			t.Errorf("check = %q, want fail", got)
+		}
+		contains(t, stdout, "fujifilm",
+			"the report has to name the query, or an operator cannot tell which line of config to look at")
+	})
+}
+
+// A query that could not be answered makes no claim about the corpus, so it
+// must not be reported as a corpus fault. Recall draws that line everywhere
+// else — abstained is not failed — and this check draws it too.
+func TestDoctorDegradesRatherThanFailsWhenAMustAbstainQueryCannotRun(t *testing.T) {
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML + `
+[[evaluation.must_abstain]]
+query = "fujifilm"
+reason = "nothing in this corpus is about the camera maker"
+`,
+		adapters: fakeAdapters(map[string]*fake{
+			"fakedocs":  {manifest: manifest(), searchErr: errors.New("index unreadable")},
+			"faketasks": {manifest: manifest(), searchErr: errors.New("index unreadable")},
+		}),
+	})
+	_, stdout, _ := h.run("doctor", "--json")
+	var d cli.Diagnosis
+	if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkStatus(t, d, "abstention"); got == cli.CheckFail {
+		t.Errorf("check = %q, want anything but fail: a query that could not run has "+
+			"not shown that the profile answers it", got)
 	}
 }

@@ -142,6 +142,22 @@ func (c *Config) mergeEvaluation(f sourceFile) error {
 		c.Evaluation.DevelopmentBaseline = *e.DevelopmentBaseline
 		c.evaluationOrigins["development_baseline"] = f.Origin
 	}
+	if e.MustAbstain != nil {
+		c.Evaluation.MustAbstain = c.Evaluation.MustAbstain[:0]
+		for i, m := range e.MustAbstain {
+			if m.Query == nil || strings.TrimSpace(*m.Query) == "" {
+				return fmt.Errorf("%s: evaluation.must_abstain[%d] has no query", f.Origin.File, i)
+			}
+			if m.Reason == nil || strings.TrimSpace(*m.Reason) == "" {
+				return fmt.Errorf("%s: evaluation.must_abstain[%d] (%q) has no reason; "+
+					"the first question asked of a failing entry is whether it was ever "+
+					"right to expect this", f.Origin.File, i, *m.Query)
+			}
+			c.Evaluation.MustAbstain = append(c.Evaluation.MustAbstain,
+				MustAbstain{Query: *m.Query, Reason: *m.Reason})
+		}
+		c.evaluationOrigins["must_abstain"] = f.Origin
+	}
 	return nil
 }
 

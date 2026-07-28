@@ -26,3 +26,6 @@ freshness      pass
 
 lineage        pass
   0 declared source-level derivation edges
+
+abstention     skipped
+  no evaluation.must_abstain queries are configured

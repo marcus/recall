@@ -3,6 +3,7 @@ package config
 import (
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/marcus/recall/internal/recall"
 )
@@ -110,7 +111,8 @@ func (c *Config) Explain() *Explanation {
 		Files:    c.Files(),
 		Defaults: c.explainDefaults(),
 	}
-	if c.Evaluation.DevelopmentPack != "" || c.Evaluation.DevelopmentBaseline != "" {
+	if c.Evaluation.DevelopmentPack != "" || c.Evaluation.DevelopmentBaseline != "" ||
+		len(c.Evaluation.MustAbstain) > 0 {
 		e.Evaluation = map[string]Field{}
 		if c.Evaluation.DevelopmentPack != "" {
 			e.Evaluation["development_pack"] = newField(
@@ -119,6 +121,17 @@ func (c *Config) Explain() *Explanation {
 		if c.Evaluation.DevelopmentBaseline != "" {
 			e.Evaluation["development_baseline"] = newField(
 				c.Evaluation.DevelopmentBaseline, c.evaluationOrigins["development_baseline"])
+		}
+		// A setting that cannot appear in an explanation does not exist, and
+		// this one decides whether `recall doctor` fails — so it has to be
+		// visible where the rest of the resolved configuration is.
+		if len(c.Evaluation.MustAbstain) > 0 {
+			queries := make([]string, 0, len(c.Evaluation.MustAbstain))
+			for _, m := range c.Evaluation.MustAbstain {
+				queries = append(queries, m.Query)
+			}
+			e.Evaluation["must_abstain"] = newField(
+				strings.Join(queries, ", "), c.evaluationOrigins["must_abstain"])
 		}
 	}
 
