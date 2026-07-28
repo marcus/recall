@@ -686,3 +686,114 @@ func TestFusionRefusesUnrankableInput(t *testing.T) {
 		}
 	})
 }
+
+func relevance(v float64) opt { return func(c *recall.Candidate) { c.Relevance = &v } }
+
+// TestPriorAloneNoLongerDecidesBetweenTopHits is td-aefb1d, in the shape the
+// eval pack's dentist-001 case records it.
+//
+// Two sources each return their own rank 1. Before relevance, prior was the
+// only thing separating them, so the more-trusted source won regardless of
+// whether its hit had anything to do with the query — and on the home profile a
+// 7% prior edge bought five rank positions, which is how five projects with no
+// textual relationship to a question outranked the document that answered it.
+func TestPriorAloneNoLongerDecidesBetweenTopHits(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) {
+		c.Sources["uid-docs"] = ranking.SourceConfig{SourceID: "docs", BasePrior: 1.5}
+		c.Sources["uid-tasks"] = ranking.SourceConfig{SourceID: "tasks", BasePrior: 1.4}
+	})
+
+	// Both are their source's first hit. The document mentions the word once in
+	// four hundred; the task IS the word.
+	got := fuse(t, r, request(
+		cand("docs", "gog/README.md#L30", 1, relevance(0.10)),
+		cand("tasks", "td-1", 1, relevance(0.93)),
+	))
+	if want := []string{"tasks:td-1", "docs:gog/README.md#L30"}; !reflect.DeepEqual(order(got), want) {
+		t.Errorf("order = %v, want %v: the higher prior must not win on prior alone "+
+			"when the other source is far more about the query", order(got), want)
+	}
+
+	// The prior still means something: equal relevance returns the decision to it.
+	tied := fuse(t, r, request(
+		cand("docs", "gog/README.md#L30", 1, relevance(0.5)),
+		cand("tasks", "td-1", 1, relevance(0.5)),
+	))
+	if want := []string{"docs:gog/README.md#L30", "tasks:td-1"}; !reflect.DeepEqual(order(tied), want) {
+		t.Errorf("order = %v, want %v: relevance scales the prior, it does not replace it",
+			order(tied), want)
+	}
+}
+
+// A source that reports no relevance must rank exactly where it did before the
+// field existed. This is what keeps an out-of-tree adapter — the gog calendar
+// and mail adapters live outside this repository — working across the change.
+func TestMissingRelevanceReproducesThePreviousOrdering(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) {
+		c.Sources["uid-docs"] = ranking.SourceConfig{SourceID: "docs", BasePrior: 1.5}
+		c.Sources["uid-tasks"] = ranking.SourceConfig{SourceID: "tasks", BasePrior: 1.4}
+	})
+
+	silent := fuse(t, r, request(
+		cand("docs", "spec.md#1", 1),
+		cand("tasks", "td-1", 1),
+	))
+	perfect := fuse(t, r, request(
+		cand("docs", "spec.md#1", 1, relevance(1)),
+		cand("tasks", "td-1", 1, relevance(1)),
+	))
+	if !reflect.DeepEqual(order(silent), order(perfect)) {
+		t.Fatalf("silent order %v, explicit-1.0 order %v", order(silent), order(perfect))
+	}
+	for i, res := range silent.Results {
+		if res.Score != perfect.Results[i].Score {
+			t.Errorf("result %d scored %v silent, %v at relevance 1.0: absent must mean 1.0 exactly",
+				i, res.Score, perfect.Results[i].Score)
+		}
+	}
+}
+
+// Out-of-range values cost the source its position rather than failing the
+// query: one adapter's arithmetic bug must not take the whole answer down.
+func TestRelevanceOutOfRangeIsClampedNotFatal(t *testing.T) {
+	r := newRanker(t, nil)
+	for name, v := range map[string]float64{
+		"negative":  -3,
+		"above one": 40,
+		"nan":       math.NaN(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := fuse(t, r, request(
+				cand("docs", "spec.md#1", 1, relevance(v)),
+				cand("tasks", "td-1", 1, relevance(0.5)),
+			))
+			if len(got.Results) != 2 {
+				t.Fatalf("results = %d, want both candidates kept", len(got.Results))
+			}
+			for _, res := range got.Results {
+				if math.IsNaN(res.Score) || res.Score < 0 {
+					t.Errorf("score = %v, want a usable number", res.Score)
+				}
+			}
+		})
+	}
+}
+
+// Relevance travels with the rank it belongs to. A record seen twice by one
+// source must be scored with the relevance of the candidate that earned the
+// best rank, not the best relevance found anywhere in the group.
+func TestRelevancePairsWithTheRankItBelongsTo(t *testing.T) {
+	r := newRanker(t, nil)
+
+	got := single(t, fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.2), from("tasks:td-1")),
+		cand("docs", "a.md#9", 4, relevance(0.9), from("tasks:td-1")),
+	)))
+	want := single(t, fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.2), from("tasks:td-1")),
+	)))
+	if got.Score != want.Score {
+		t.Errorf("score = %v, want %v: the rank-1 candidate's own relevance, not the "+
+			"0.9 belonging to the rank-4 one", got.Score, want.Score)
+	}
+}

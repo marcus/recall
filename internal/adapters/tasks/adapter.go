@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -73,16 +74,50 @@ type Options struct {
 // Contexts and Tags are separate because the CLI keeps them separate: a
 // context is a GTD `@` handle, a tag is everything else, and collapsing them
 // would make "@work" and "work" the same filter.
+//
+// Each facet has an allowlist and an exclude list, and they are not two
+// spellings of one idea. "Only @home" and "everything except @work" differ
+// exactly on the record that carries no context at all: the allowlist drops it,
+// the exclude list keeps it. That difference is why this block grew the second
+// form — see ExcludeContexts.
 type settings struct {
-	Binary        string   `json:"binary"`
-	Scope         string   `json:"scope"`
-	States        []string `json:"states"`
-	Priorities    []string `json:"priorities"`
-	Tags          []string `json:"tags"`
-	Contexts      []string `json:"contexts"`
-	TimeoutMS     int      `json:"timeout_ms"`
-	MaxCandidates int      `json:"max_candidates"`
-	MaxTermProbes int      `json:"max_term_probes"`
+	Binary     string   `json:"binary"`
+	Scope      string   `json:"scope"`
+	States     []string `json:"states"`
+	Priorities []string `json:"priorities"`
+	Tags       []string `json:"tags"`
+	Contexts   []string `json:"contexts"`
+
+	// The exclude lists drop a record that carries any of the named values. A
+	// record carrying none of that facet is RETAINED: an exclusion that names
+	// nothing the record has excludes nothing about it.
+	//
+	// This is the whole reason they exist. Configuring contexts = ["home"] to
+	// keep work tasks out of a home profile was tried on 2026-07-24 and
+	// reverted, because five of the store's records carry no context at all —
+	// "Get Mike a birthday gift" among them — and the allowlist silently
+	// dropped exactly the personal work it was meant to keep. A query then
+	// answered `coverage complete` over a task that exists, which is a false
+	// absence arriving through configuration where nothing downstream can flag
+	// it. An inbox is where this bites hardest: a fresh capture has no context
+	// yet, and that is the moment it matters most.
+	ExcludeStates   []string `json:"exclude_states"`
+	ExcludeTags     []string `json:"exclude_tags"`
+	ExcludeContexts []string `json:"exclude_contexts"`
+
+	// CompletedWeight scales the lexical score of a record in a terminal state
+	// — done or cancelled. It orders within this source only; it never drops a
+	// record, because "what did I decide about X" is often answered by finished
+	// work.
+	//
+	// Unset means [DefaultCompletedWeight]. An explicit 0 is a different and
+	// legal setting — score terminal records to nothing — which is exactly why
+	// this is a pointer and not a float with a zero-means-default rule.
+	CompletedWeight *float64 `json:"completed_weight"`
+
+	TimeoutMS     int `json:"timeout_ms"`
+	MaxCandidates int `json:"max_candidates"`
+	MaxTermProbes int `json:"max_term_probes"`
 
 	// Replay names a directory of recorded CLI output. When set, no process is
 	// ever spawned: the adapter under test is the parser, the identifier
@@ -371,23 +406,67 @@ func (s settings) maxTermProbes() int {
 }
 
 // keeps reports whether a record passes the instance's configured field
-// filters. Each facet is an OR within itself and an AND against the others,
-// which is the only reading under which adding a filter can never widen a
-// result set.
-func (s settings) keeps(r taskRecord) bool {
+// filters, and names the facet that rejected it when one did. Each facet is an
+// OR within itself and an AND against the others, which is the only reading
+// under which adding a filter can never widen a result set.
+//
+// The facet name is returned rather than logged because a filter that removes
+// records has to be able to say how many: a configured filter is the one way a
+// result set shrinks without any query saying so, and silence there is the same
+// false-absence failure the exclude lists were added to prevent, only quieter.
+func (s settings) keeps(r taskRecord) (bool, string) {
 	if len(s.States) > 0 && !containsFold(s.States, r.State) {
-		return false
+		return false, "states"
 	}
 	if len(s.Priorities) > 0 && !matchesPriority(s.Priorities, r.Priority) {
-		return false
+		return false, "priorities"
 	}
 	if len(s.Tags) > 0 && !anyFold(s.Tags, r.Tags) {
-		return false
+		return false, "tags"
 	}
 	if len(s.Contexts) > 0 && !anyFold(normalizeContexts(s.Contexts), normalizeContexts(r.Contexts)) {
+		return false, "contexts"
+	}
+	// Exclusions below. A record carrying none of the named facet falls through
+	// every one of these and is kept, which is the property the allowlist did
+	// not have and the reason these exist.
+	if len(s.ExcludeStates) > 0 && containsFold(s.ExcludeStates, r.State) {
+		return false, "exclude_states"
+	}
+	if len(s.ExcludeTags) > 0 && anyFold(s.ExcludeTags, r.Tags) {
+		return false, "exclude_tags"
+	}
+	if len(s.ExcludeContexts) > 0 &&
+		anyFold(normalizeContexts(s.ExcludeContexts), normalizeContexts(r.Contexts)) {
+		return false, "exclude_contexts"
+	}
+	return true, ""
+}
+
+// DefaultCompletedWeight scales a terminal record's lexical score. A quarter is
+// a demotion rather than a partition: a done task with a title hit still
+// outranks an open one matched only in its body, because "when did I finish X"
+// is a real question, while an open task and a done one that match equally well
+// are not equally what a caller meant.
+const DefaultCompletedWeight = 0.25
+
+// completedWeight is the configured demotion, or the default when unset.
+func (s settings) completedWeight() float64 {
+	if s.CompletedWeight == nil {
+		return DefaultCompletedWeight
+	}
+	return *s.CompletedWeight
+}
+
+// terminal reports whether a state means the work is over. Cancelled counts:
+// the record is as finished as done, and for ranking that is the same fact.
+func terminal(state string) bool {
+	switch strings.ToUpper(state) {
+	case "DONE", "CANCELLED":
+		return true
+	default:
 		return false
 	}
-	return true
 }
 
 func matchesPriority(want []string, got *string) bool {
@@ -449,6 +528,12 @@ func parseSettings(raw map[string]any) (settings, error) {
 				"tasks settings: unknown state %q", state)
 		}
 	}
+	for _, state := range set.ExcludeStates {
+		if !knownState(state) {
+			return settings{}, protocol.Errorf(protocol.CodeInvalidParams,
+				"tasks settings: unknown exclude_states state %q", state)
+		}
+	}
 	for _, priority := range set.Priorities {
 		switch strings.ToUpper(priority) {
 		case "A", "B", "C", "NONE":
@@ -456,6 +541,29 @@ func parseSettings(raw map[string]any) (settings, error) {
 			return settings{}, protocol.Errorf(protocol.CodeInvalidParams,
 				"tasks settings: priority %q is not one of A, B, C, none", priority)
 		}
+	}
+	// An allowlist and an exclude list on one facet are refused rather than
+	// resolved. Both orderings are defensible — intersect them, or let the
+	// narrower win — and a reader of the config cannot tell which was meant, so
+	// the honest answer is to make the author say it with one form.
+	for _, pair := range []struct {
+		facet          string
+		allow, exclude []string
+	}{
+		{"states", set.States, set.ExcludeStates},
+		{"tags", set.Tags, set.ExcludeTags},
+		{"contexts", set.Contexts, set.ExcludeContexts},
+	} {
+		if len(pair.allow) > 0 && len(pair.exclude) > 0 {
+			return settings{}, protocol.Errorf(protocol.CodeInvalidParams,
+				"tasks settings: %s and exclude_%s are both set; use one form, "+
+					"because %q keeps a record carrying no %s and %q drops it",
+				pair.facet, pair.facet, "exclude_"+pair.facet, pair.facet, pair.facet)
+		}
+	}
+	if w := set.CompletedWeight; w != nil && (*w < 0 || *w > 1 || math.IsNaN(*w)) {
+		return settings{}, protocol.Errorf(protocol.CodeInvalidParams,
+			"tasks settings: completed_weight %v is not in [0,1]", *w)
 	}
 	return set, nil
 }
@@ -520,6 +628,17 @@ func settingsSchema() map[string]any {
 			"priorities": merge(stringList, "Restrict to these priorities: A, B, C, or none."),
 			"tags":       merge(stringList, "Restrict to tasks carrying any of these tags."),
 			"contexts":   merge(stringList, "Restrict to tasks carrying any of these GTD contexts."),
+			"exclude_states": merge(stringList,
+				"Drop tasks in any of these states. Refused alongside 'states'."),
+			"exclude_tags": merge(stringList,
+				"Drop tasks carrying any of these tags. A task with no tags is kept. Refused alongside 'tags'."),
+			"exclude_contexts": merge(stringList,
+				"Drop tasks carrying any of these GTD contexts. A task with NO context is kept, which is how this differs from 'contexts' and why it exists. Refused alongside 'contexts'."),
+			"completed_weight": map[string]any{
+				"type": "number", "minimum": 0, "maximum": 1,
+				"default":     DefaultCompletedWeight,
+				"description": "Scales the lexical score of done and cancelled tasks, ordering them below active work of equal match quality. Never drops them; use exclude_states for that.",
+			},
 			"timeout_ms": map[string]any{
 				"type": "integer", "minimum": 1,
 				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins.",

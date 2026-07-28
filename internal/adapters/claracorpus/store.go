@@ -117,6 +117,12 @@ type item struct {
 	identifiers []string
 	weights     map[string]float64
 
+	// counts and length back [recall.Candidate.Relevance]: how often each token
+	// occurs in this record, and how long the record is. weights cannot answer
+	// either — it keeps a token's strongest field weight and forgets the rest.
+	counts map[string]int
+	length int
+
 	eventTime time.Time
 	validFrom *time.Time
 	validTo   *time.Time

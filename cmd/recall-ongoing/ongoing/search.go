@@ -123,7 +123,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 
 	observed := a.now()
-	p := pass{cat: cat, sourceID: sourceID, floor: floor, terms: len(terms), observed: observed}
+	p := pass{cat: cat, sourceID: sourceID, floor: floor, termList: terms, observed: observed}
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
 		candidates = append(candidates, p.candidate(h, i+1))
@@ -190,7 +190,7 @@ type pass struct {
 	cat      *catalog
 	sourceID string
 	floor    recall.Sensitivity
-	terms    int
+	termList []string
 	observed time.Time
 }
 
@@ -201,13 +201,14 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 	switch {
 	case h.exact:
 		signals = []recall.MatchSignal{recall.MatchExactIdentifier}
-	case p.terms == 0:
+	case len(p.termList) == 0:
 		// Nothing was matched textually: the filters, or the absence of any,
 		// selected these projects.
 		signals = []recall.MatchSignal{recall.MatchField}
 	}
 
 	local := h.score
+	rel := relevance(proj, p.termList)
 	c := recall.Candidate{
 		CandidateID:    proj.ID,
 		SourceRecordID: proj.ID,
@@ -217,6 +218,7 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 		Excerpt:        clip(summarize(proj), excerptBytes),
 		LocalRank:      rank,
 		LocalScore:     &local,
+		Relevance:      &rel,
 		MatchSignals:   signals,
 		ObservedAt:     &p.observed,
 		EventTime:      proj.eventTime(),
@@ -493,12 +495,29 @@ func identifies(p *project, term string) bool {
 // to cache it in — every search reads the catalog fresh, and a hundred projects
 // is a few milliseconds of tokenizing.
 func weigh(p *project) map[string]float64 {
-	w := map[string]float64{}
+	w, _, _ := weighAndCount(p)
+	return w
+}
+
+// weighAndCount walks this project's searchable text once and returns all three
+// things a search needs from it: the per-token weight a match earns, how often
+// each token occurs, and the total length in tokens.
+//
+// They are gathered in one traversal because they are three readings of one
+// field list. Kept apart, the list would be written twice and a field added to
+// one copy and missed in the other would silently change relevance with nothing
+// failing — weights forgets every occurrence after the strongest, so it cannot
+// answer the other two questions, and a second walk is exactly the drift this
+// avoids.
+func weighAndCount(p *project) (weights map[string]float64, counts map[string]int, length int) {
+	weights, counts = map[string]float64{}, map[string]int{}
 	add := func(text string, weight float64) {
 		for _, token := range tokenize(text) {
-			if w[token] < weight {
-				w[token] = weight
+			if weights[token] < weight {
+				weights[token] = weight
 			}
+			counts[token]++
+			length++
 		}
 	}
 	add(p.Name, weightName)
@@ -527,7 +546,17 @@ func weigh(p *project) map[string]float64 {
 		add(m.LatestTag, weightAttribute)
 		add(m.LatestCommitSubject, weightNarrative)
 	}
-	return w
+	return weights, counts, length
+}
+
+// relevance is [recall.Candidate.Relevance] for one project.
+//
+// This is the number whose absence let five unrelated projects outrank the
+// document answering a question about a retinal detachment: this source scored
+// them 0.08 and had no way to say so across the boundary.
+func relevance(p *project, terms []string) float64 {
+	_, counts, length := weighAndCount(p)
+	return recall.RelevanceOverCounts(terms, counts, length)
 }
 
 // newerCommit orders two projects by most recent commit, then by name, then by

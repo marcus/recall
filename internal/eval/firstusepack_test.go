@@ -106,16 +106,22 @@ func TestFirstUsePackAsksTheSessionsQuestions(t *testing.T) {
 // and name what it excuses. It must also leave something enforced: a marking
 // that excuses every assertion the case declares is a case-wide exemption
 // wearing a list, and the next regression on that case rides in behind it.
+//
+// Zero markings is the goal state, not a failure. This test once required at
+// least one, because the pack was written while four cases failed; the last of
+// those, dentist-001, was fixed by td-aefb1d on 2026-07-28 and its marking
+// removed. Requiring a marking to exist would now mean requiring a known defect
+// to exist, so what is checked here is the shape of any marking the pack
+// carries, and `expected_failures_current` in the run itself is what fails when
+// a marking outlives the defect it names.
 func TestFirstUseExpectedFailuresNameWhatTheyExcuseAndLeaveTheRestEnforced(t *testing.T) {
 	t.Parallel()
 	_, cases, _ := firstUseLoad(t)
 
-	marked := 0
 	for _, c := range cases {
 		if c.ExpectedFail == nil {
 			continue
 		}
-		marked++
 		if len(c.ExpectedFail.Reason) < 40 {
 			t.Errorf("case %q: expected_fail reason %q does not say what it is waiting on",
 				c.CaseID, c.ExpectedFail.Reason)
@@ -130,9 +136,6 @@ func TestFirstUseExpectedFailuresNameWhatTheyExcuseAndLeaveTheRestEnforced(t *te
 				"leave something enforced or an unrelated regression passes behind it",
 				c.CaseID, c.ExpectedFail.Assertions, declared)
 		}
-	}
-	if marked == 0 {
-		t.Fatal("no case is marked expected_fail; the pack was written because four of them fail")
 	}
 }
 

@@ -18,7 +18,19 @@ type Explanation struct {
 
 	MatchSignals []MatchSignal `json:"match_signals"`
 
-	Prior         PriorExplanation         `json:"prior"`
+	Prior PriorExplanation `json:"prior"`
+
+	// Relevance is the factor that scaled the prior: the source's estimate of
+	// how much this record is about the query.
+	//
+	// Nil is a third state and not a default, for the same reason
+	// [Candidate.ExcerptKind] treats omitted that way: fusion reads a silent
+	// source as 1.0, and a value here would make that indistinguishable from a
+	// source claiming a perfect match. Those are the same arithmetic and not
+	// the same claim, and an explanation that cannot tell them apart has lost
+	// the fact a reader most needs when comparing two results.
+	Relevance *float64 `json:"relevance,omitempty"`
+
 	LineageRoot   LineageRoot              `json:"lineage_root"`
 	Corroboration CorroborationExplanation `json:"corroboration"`
 	Freshness     FreshnessExplanation     `json:"freshness"`

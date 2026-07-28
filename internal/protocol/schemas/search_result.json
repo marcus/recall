@@ -57,6 +57,12 @@
           "description": "Native score, diagnostic only. Never compared across sources.",
           "type": "number"
         },
+        "relevance": {
+          "description": "How much this record is about the query, in [0,1], on one definition every source shares: coverage (distinct retained query terms matched, over distinct retained query terms) times concentration (how much of the record the matched occurrences account for, saturating at a reference density). Comparable across sources because the definition is fixed, unlike local_score, whose scale is not. Fusion multiplies the source prior by it. Omitted means the source asserts nothing and fusion reads 1.0, which is also a standing advantage over sources that report honestly, so a source that can compute this should.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "match_signals": {
           "type": ["array", "null"],
           "items": { "$ref": "common.json#/$defs/match_signal" }

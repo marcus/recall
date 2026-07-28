@@ -10,6 +10,7 @@ outcome answered  coverage complete  results 3
    local rank:    1 of 1
    matches:       exact_identifier
    prior:         1 (base, no class rule)
+   relevance:     not reported by this source, so fused as 1 — an untested advantage over sources that report it
    lineage:       01UIDTASKS:td-c53986
    corroboration: 1 independent unit from tasks (cap 2)
    freshness:     indexed, as_of filter
@@ -25,6 +26,7 @@ outcome answered  coverage complete  results 3
    local rank:    1 of 2
    matches:       lexical
    prior:         1.2 (base, no class rule)
+   relevance:     not reported by this source, so fused as 1 — an untested advantage over sources that report it
    lineage:       01UIDDOCS:ranking.md#L1-20
    corroboration: 1 independent unit from docs (cap 2)
    freshness:     indexed, revision w-000123, generation gen-000042, index config bm25-k1.2, observed 2026-03-04T05:06:07Z, as_of filter
@@ -40,6 +42,7 @@ outcome answered  coverage complete  results 3
    local rank:    2 of 2
    matches:       lexical
    prior:         1.2 (base, no class rule)
+   relevance:     not reported by this source, so fused as 1 — an untested advantage over sources that report it
    lineage:       01UIDDOCS:plan.md#L4-9
    corroboration: 1 independent unit from docs (cap 2)
    freshness:     indexed, revision w-000123, generation gen-000042, index config bm25-k1.2, as_of filter

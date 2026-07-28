@@ -8,10 +8,19 @@
 //
 // Two rules shape the whole package.
 //
-// Rank, never score. A source's native relevance number is diagnostic only.
-// Fusion reads [recall.Candidate.LocalRank] and a configured prior, so a source
-// that emits scores in the thousands cannot outrank one that emits them in
-// [0,1]. Nothing here reads LocalScore.
+// Rank, never native score. A source's own relevance NUMBER is diagnostic only.
+// Fusion reads [recall.Candidate.LocalRank], a configured prior, and
+// [recall.Candidate.Relevance], so a source that emits scores in the thousands
+// cannot outrank one that emits them in [0,1]. Nothing here reads LocalScore.
+//
+// Relevance is not an exception to that rule, it is the reason the rule needed
+// a second half. Rank alone means every source's rank 1 enters the arithmetic
+// identically, so a source that found nothing relevant still contributes one
+// and the prior alone decides which rank 1 wins — which is a static belief
+// about a source deciding a question about a record. Relevance is comparable
+// where LocalScore is not because what is fixed is its DEFINITION rather than
+// its scale: every source computes coverage times concentration the same way,
+// against [recall.Relevance]. A source that reports none is read as 1.0.
 //
 // Evidence is counted once. The same record retrieved twice is one piece of
 // evidence, whether it arrived twice from one source, as a declared projection

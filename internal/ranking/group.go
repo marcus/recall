@@ -3,6 +3,7 @@ package ranking
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/marcus/recall/internal/lineage"
@@ -20,6 +21,11 @@ type group struct {
 	// bestRank is the best (lowest) local rank this record reached in each
 	// source. A source's later hits on the same record add nothing.
 	bestRank map[recall.SourceUID]int
+
+	// bestRelevance is the relevance of the candidate that earned bestRank, per
+	// source — not the best relevance seen, which could belong to a different
+	// candidate and a different rank.
+	bestRelevance map[recall.SourceUID]float64
 
 	// score is lineage_score(g): the maximum over sources, not the sum.
 	score float64
@@ -66,13 +72,21 @@ func (r *Ranker) groupByLineage(req Request) ([]*group, error) {
 
 		g := byRoot[lin.Root]
 		if g == nil {
-			g = &group{root: lin.Root, bestRank: make(map[recall.SourceUID]int, 2)}
+			g = &group{
+				root:          lin.Root,
+				bestRank:      make(map[recall.SourceUID]int, 2),
+				bestRelevance: make(map[recall.SourceUID]float64, 2),
+			}
 			byRoot[lin.Root] = g
 		}
 		g.lineages = append(g.lineages, lin)
 		g.candidates = append(g.candidates, c)
+		// Relevance travels with the rank it belongs to. Taking the best of each
+		// separately would score a group with one candidate's rank and another's
+		// relevance, which is an arithmetic no candidate supports.
 		if best, seen := g.bestRank[c.SourceUID]; !seen || c.LocalRank < best {
 			g.bestRank[c.SourceUID] = c.LocalRank
+			g.bestRelevance[c.SourceUID] = relevanceOf(c)
 		}
 		g.exact = g.exact || c.Exact()
 	}
@@ -99,16 +113,24 @@ func (r *Ranker) groupByLineage(req Request) ([]*group, error) {
 // only the group knows. Score and explanation are produced together: there is
 // no second pass that could recompute either one differently.
 //
-//	lineage_score(g) = max over sources s of prior(s) / (rank_constant + best_rank(s))
+//	lineage_score(g) = max over sources s of
+//	                       prior(s) * relevance(s) / (rank_constant + best_rank(s))
 //
 // Maximum, not sum: one record seen from two sources is still one record.
+//
+// Relevance is a FACTOR rather than a term because it scales a belief rather
+// than competing with one: a source trusted twice as much and matched half as
+// well lands in the same place. Why fusion needs it at all is argued once, in
+// this package's doc comment; what it defends against concretely is a 7% prior
+// edge buying five rank positions at rank_constant 60.
 func (r *Ranker) scoreGroup(g *group, class string, pool map[recall.SourceUID]int) error {
 	for _, uid := range sortedRanks(g.bestRank) {
 		p, err := r.cfg.prior(uid, class)
 		if err != nil {
 			return err
 		}
-		if s := p.Effective / (r.cfg.RankConstant + float64(g.bestRank[uid])); s > g.score {
+		s := p.Effective * g.bestRelevance[uid] / (r.cfg.RankConstant + float64(g.bestRank[uid]))
+		if s > g.score {
 			g.score = s
 		}
 	}
@@ -134,6 +156,7 @@ func (r *Ranker) scoreGroup(g *group, class string, pool map[recall.SourceUID]in
 		LocalPoolSize: pool[g.primary.SourceUID],
 		MatchSignals:  slices.Clone(g.primary.MatchSignals),
 		Prior:         bestPrior,
+		Relevance:     g.primary.Relevance,
 		LineageRoot:   g.root,
 		RankConstant:  r.cfg.RankConstant,
 		Freshness: recall.FreshnessExplanation{
@@ -172,4 +195,24 @@ func sortedUIDs(m map[recall.SourceUID]recall.SourceUID) []recall.SourceUID {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// relevanceOf reads a candidate's relevance, defaulting to 1.0.
+//
+// The default is what lets a source that predates this factor — or an
+// out-of-tree adapter that has not been rebuilt — keep the ordering it had.
+// Values outside [0,1] are clamped rather than rejected: a malformed number
+// from one source should cost that source its position, not fail the query.
+func relevanceOf(c recall.Candidate) float64 {
+	if c.Relevance == nil {
+		return 1
+	}
+	switch v := *c.Relevance; {
+	case math.IsNaN(v), v < 0:
+		return 0
+	case v > 1:
+		return 1
+	default:
+		return v
+	}
 }

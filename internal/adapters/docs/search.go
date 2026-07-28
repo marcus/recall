@@ -76,6 +76,10 @@ type hit struct {
 	score float64
 	exact bool
 	alias bool
+
+	// relevance is [recall.Candidate.Relevance] for this chunk: how much the
+	// chunk is about the query, on the one definition every source shares.
+	relevance float64
 }
 
 // searchIndex ranks the generation's chunks against a request.
@@ -129,7 +133,13 @@ func searchIndex(g *generation, req recall.SearchRequest) ([]hit, queryAnalysis)
 			continue
 		}
 		score := scores[i] * coverage.share(covered)
-		hits = append(hits, hit{chunk: i, score: score, exact: exact[c.Path], alias: alias[c.Path]})
+		hits = append(hits, hit{
+			chunk:     i,
+			score:     score,
+			exact:     exact[c.Path],
+			alias:     alias[c.Path],
+			relevance: recall.Relevance(covered, len(coverage.terms), coverage.hits(c), c.Length),
+		})
 	}
 
 	sort.Slice(hits, func(a, b int) bool {
@@ -218,6 +228,18 @@ func (c queryCoverage) covered(chunk indexedChunk) int {
 
 func (c queryCoverage) admits(covered int) bool {
 	return covered >= c.required
+}
+
+// hits counts matched term OCCURRENCES, where covered counts matched TERMS.
+// Concentration needs the occurrences: a chunk that says "dentist" once and a
+// chunk that is a list of dentists cover the query identically and are not
+// equally about it.
+func (c queryCoverage) hits(chunk indexedChunk) int {
+	n := 0
+	for _, term := range c.terms {
+		n += chunk.Terms[term]
+	}
+	return n
 }
 
 // share is the coordination factor. An empty query is covered by everything:
@@ -396,6 +418,7 @@ func candidates(
 		c := g.chunks[h.chunk]
 		doc, _ := g.doc(c.Path)
 		score := h.score
+		relevance := h.relevance
 		event := doc.ModTime
 
 		signals := []recall.MatchSignal{recall.MatchLexical}
@@ -431,6 +454,7 @@ func candidates(
 			ExcerptKind:    kind,
 			LocalRank:      i + 1,
 			LocalScore:     &score,
+			Relevance:      &relevance,
 			MatchSignals:   signals,
 			ObservedAt:     &observed,
 			ConfirmedAt:    confirmed,

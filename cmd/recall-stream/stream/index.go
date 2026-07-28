@@ -53,6 +53,11 @@ type record struct {
 	// a search then costs one map lookup per query term instead of retokenizing
 	// every field of every record.
 	weights map[string]float64
+
+	// counts and length back Relevance: occurrences per token, and the
+	// record's length in tokens.
+	counts map[string]int
+	length int
 }
 
 // identifies reports whether term is one of this record's stable identifiers,
@@ -129,6 +134,7 @@ func parseRecord(line []byte) (record, error) {
 	// A token appearing in several fields keeps the strongest weight: a title
 	// hit says more about the record than a body hit.
 	r.weights = map[string]float64{}
+	r.counts = map[string]int{}
 	r.weigh(r.text, 0.4)
 	for _, field := range []string{string(r.kind), r.system, r.actor, r.ref} {
 		r.weigh(field, 0.5)
@@ -137,11 +143,17 @@ func parseRecord(line []byte) (record, error) {
 	return r, nil
 }
 
-func (r record) weigh(text string, weight float64) {
+// weigh records both what a match on each token earns and how often the token
+// occurs. The count is what [recall.Candidate.Relevance] needs and weights
+// cannot supply, since weights keeps a token's strongest field weight and
+// discards every other occurrence of it.
+func (r *record) weigh(text string, weight float64) {
 	for _, token := range tokenize(text) {
 		if r.weights[token] < weight {
 			r.weights[token] = weight
 		}
+		r.counts[token]++
+		r.length++
 	}
 }
 

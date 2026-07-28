@@ -103,7 +103,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
-		candidates = append(candidates, candidateOf(h, i+1, snap, s, len(terms)))
+		candidates = append(candidates, candidateOf(h, i+1, snap, s, terms))
 	}
 
 	outcome := recall.SearchSuccess
@@ -161,18 +161,19 @@ type hit struct {
 // candidateOf renders one item for fusion. The locator, the derivation edges,
 // and the timestamps are the whole of what this source contributes; identity is
 // stamped by the core.
-func candidateOf(h hit, rank int, snap *snapshot, s session, terms int) recall.Candidate {
+func candidateOf(h hit, rank int, snap *snapshot, s session, terms []string) recall.Candidate {
 	it := h.item
 	signals := []recall.MatchSignal{recall.MatchLexical}
 	switch {
 	case h.exact:
 		signals = []recall.MatchSignal{recall.MatchExactIdentifier}
-	case terms == 0:
+	case len(terms) == 0:
 		// Nothing was matched textually: standing and weight selected these.
 		signals = []recall.MatchSignal{recall.MatchField}
 	}
 
 	local := h.score
+	rel := relevanceOf(h.item, terms)
 	meta := make(map[string]any, len(it.metadata))
 	for k, v := range it.metadata {
 		meta[k] = v
@@ -188,6 +189,7 @@ func candidateOf(h hit, rank int, snap *snapshot, s session, terms int) recall.C
 		Excerpt:        it.excerpt,
 		LocalRank:      rank,
 		LocalScore:     &local,
+		Relevance:      &rel,
 		MatchSignals:   signals,
 		// Recall observed this record when the generation was built.
 		ObservedAt:         &snap.builtAt,
@@ -270,6 +272,16 @@ func match(it *item, terms []string, windowed bool) (score float64, exact bool) 
 		score *= it.dec.multiplier()
 	}
 	return score, exact
+}
+
+// relevanceOf is [recall.Candidate.Relevance] for one corpus record.
+//
+// The decay multiplier that match() applies is deliberately absent: a memory
+// whose weight has faded is still exactly as much ABOUT the query as it was
+// when written. Folding decay in here would export this source's own ordering
+// opinion as a cross-source measurement.
+func relevanceOf(it *item, terms []string) float64 {
+	return recall.RelevanceOverCounts(terms, it.counts, it.length)
 }
 
 // identifies reports whether term is one of this record's stable identifiers,

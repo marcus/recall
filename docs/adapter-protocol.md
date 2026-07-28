@@ -292,6 +292,9 @@ excerpt_kind         matched | preview; what the excerpt is evidence of.
                      a default: preview asserts that nothing matched.
 local_rank           mandatory rank within this source's result list
 local_score          optional native score, diagnostic only
+relevance            optional [0,1]; how much this record is ABOUT the query,
+                     on the one definition every source shares. Omitted is
+                     read as 1.0 — see below before deciding to omit it.
 match_signals        exact_identifier | lexical | semantic | field | alias
 observed_at          when Recall observed this record
 confirmed_at         when a complete source boundary last confirmed it
@@ -307,6 +310,56 @@ content_fingerprint  optional normalized content hash, advisory only
 
 `source_uid` is attached by the core, not the adapter. `local_score` is never
 compared across sources.
+
+### relevance
+
+`relevance` IS compared across sources, and that is possible only because what
+is fixed is the definition rather than the scale:
+
+```text
+relevance = coverage * concentration
+
+coverage      = distinct retained query terms this record matched
+              / distinct retained query terms in the query
+concentration = d / (d + 0.02),  d = matched occurrences / record length
+```
+
+Both factors are required, because each covers a case the other gets wrong.
+Coverage alone cannot separate a four-term task titled "Make a dentist
+appointment" from a four-hundred-term chunk that uses "no dentist appointment"
+as an example — on a one-word query both cover it completely. Concentration
+alone re-admits the flood coverage exists to stop, because a short record
+matching one common term of six looks concentrated.
+
+The measurement rules matter as much as the arithmetic, and an adapter that
+breaks them reports a number that is no longer comparable:
+
+- `length` is the record's length in terms, measured over EXACTLY the text the
+  match was found in. Padding it with text no query term could reach makes
+  every record look less about every query.
+- occurrences are counted, not distinct terms — a chunk that says "dentist"
+  once and a list of dentists cover a query identically and are not equally
+  about it.
+- a source that cannot measure its own length omits the field rather than
+  guessing.
+
+Omitting it is allowed, and the core reads a silent source as **1.0, the
+maximum**. That keeps an existing adapter working unchanged across this
+addition — but it also means such a source outranks equally-good candidates
+from every source that reports honestly. Compute it if you can.
+
+The constant is 0.02: concentration is one half at one matched term in fifty,
+roughly a mention per paragraph, and saturates rather than growing without
+bound so a very short record cannot win by an arbitrary factor.
+
+**Compatibility, and a known gap.** A core that speaks this version and an
+adapter that omits `relevance` interoperate exactly as before. The reverse does
+not: the candidate object is `additionalProperties: false`, so an adapter
+emitting `relevance` to a core built before it existed is REJECTED by schema
+validation rather than degraded. The protocol version was not bumped for this
+field and states no additive-field policy, so an adapter has no way to ask
+whether emitting it is safe. Until that is resolved (td-e7a59e), only emit
+`relevance` from an adapter shipped together with its core.
 
 An adapter emits `exact_identifier` only for an exact match on a stable
 identifier or a declared alias, at token boundaries. Unbounded substring

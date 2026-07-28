@@ -359,13 +359,14 @@ func buildMemoryItems(snap *snapshot, records []memRecord, s session, at time.Ti
 			it.standing = standingLive
 		}
 
-		it.weights = map[string]float64{}
-		weigh(it.weights, r.body, 0.4)
-		weigh(it.weights, r.kind, 0.5)
-		weigh(it.weights, strings.Join(r.links, " "), 0.5)
-		weigh(it.weights, strings.Join(r.tags, " "), 0.6)
-		weigh(it.weights, r.subject, 0.8)
-		weigh(it.weights, it.title, 1.0)
+		w := newWeigher()
+		w.add(r.body, 0.4)
+		w.add(r.kind, 0.5)
+		w.add(strings.Join(r.links, " "), 0.5)
+		w.add(strings.Join(r.tags, " "), 0.6)
+		w.add(r.subject, 0.8)
+		w.add(it.title, 1.0)
+		it.weights, it.counts, it.length = w.weights, w.counts, w.length
 
 		// A memory record asserts something from the day it was written. It has
 		// no end: Clara archives a faded record rather than dating its death,
@@ -473,14 +474,15 @@ func buildSignalItems(snap *snapshot, records []sigRecord, s session) {
 			it.standing = standingLive
 		}
 
-		it.weights = map[string]float64{}
-		weigh(it.weights, r.rawExcerpt, 0.4)
-		weigh(it.weights, r.summary, 0.5)
+		w := newWeigher()
+		w.add(r.rawExcerpt, 0.4)
+		w.add(r.summary, 0.5)
 		for _, field := range []string{r.source, r.kind, r.status, r.priority, r.assignee, r.requester, r.ref} {
-			weigh(it.weights, field, 0.5)
+			w.add(field, 0.5)
 		}
-		weigh(it.weights, strings.Join(r.people, " "), 0.6)
-		weigh(it.weights, r.title, 1.0)
+		w.add(strings.Join(r.people, " "), 0.6)
+		w.add(r.title, 1.0)
+		it.weights, it.counts, it.length = w.weights, w.counts, w.length
 
 		// The upstream event's own instant, which is the only time on a signal
 		// that describes the world rather than Clara's bookkeeping.

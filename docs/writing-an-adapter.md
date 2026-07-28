@@ -46,7 +46,13 @@ You own:
 
 - **Retrieval and ranking within your source.** By SQL, FTS, vector search,
   exact lookup, an API, or any combination. Fusion consumes your `local_rank`
-  and nothing else, so your ordering is your whole contribution to relevance.
+  and your `relevance`, and nothing else — your native score is diagnostic and
+  is never compared across sources. Your ORDERING is therefore your whole
+  contribution to how your candidates rank against each other, and `relevance`
+  is your whole contribution to how they rank against another source's.
+  Omitting `relevance` is allowed and reads as 1.0, which is the maximum: your
+  candidates then outrank equally-good ones from every source that reports
+  honestly. Compute it if you can.
 - **Query interpretation.** The core sends the user's text as given and
   synthesizes no variants. Stemming, synonyms, and term expansion are yours.
 - **Your index, if you have one**, and the workdir it lives in.

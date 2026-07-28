@@ -36,13 +36,26 @@ type Candidate struct {
 	ExcerptKind ExcerptKind `json:"excerpt_kind,omitempty"`
 
 	// LocalRank is the candidate's position in its source's own result list,
-	// one-based. It is the only mandatory relevance signal and the only one
-	// fusion consumes.
+	// one-based. It is the only MANDATORY relevance signal; fusion consumes it
+	// and the optional Relevance below, and nothing else.
 	LocalRank int `json:"local_rank"`
 
 	// LocalScore is the source's native score. It is diagnostic: scales differ
 	// between engines, so it is never compared across sources.
 	LocalScore *float64 `json:"local_score,omitempty"`
+
+	// Relevance is the source's estimate, in [0,1], of how much this record is
+	// ABOUT the query. Unlike LocalScore it IS comparable across sources,
+	// because what is fixed is the definition rather than the scale: every
+	// source computes it through [Relevance], which is where the formula and
+	// the reasoning behind both of its factors live.
+	//
+	// Nil means the source asserts nothing, and fusion reads it as 1.0 — the
+	// same ordering it produced before this field existed. That is what keeps
+	// an out-of-tree adapter working across this change, and it is also a
+	// standing advantage over sources that report honestly, so a source that
+	// can compute this should.
+	Relevance *float64 `json:"relevance,omitempty"`
 
 	MatchSignals []MatchSignal `json:"match_signals,omitempty"`
 

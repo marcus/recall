@@ -1,1 +1,242 @@
-[{"id":"aaaa0002","state":"INBOX","priority":"B","title":"Skim the new API docs and note anything worth trying","tags":[],"contexts":["@computer"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":3,"source":"live","headline":"INBOX [#B] Skim the new API docs and note anything worth trying :@computer:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa0004","state":"NEXT","priority":"A","title":"Draft the Q1 planning outline","tags":["important"],"contexts":["@computer"],"deferred":false,"scheduled":"2026-01-16","scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":5,"source":"live","headline":"NEXT [#A] Draft the Q1 planning outline :@computer:important:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa0005","state":"TODO","priority":"B","title":"Reply to the vendor about the renewal quote","tags":[],"contexts":["@email"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":"2026-01-20","deadline_time":{"local":"09:30","timezone":"America/Los_Angeles","fold":0,"effective_timezone":"America/Los_Angeles","instant":"2026-01-20T17:30:00Z"},"recur":null,"line":6,"source":"live","headline":"TODO [#B] Reply to the vendor about the renewal quote :@email:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa0006","state":"WAITING","priority":null,"title":"Sign-off on the budget from finance","tags":[],"contexts":["@waiting"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":7,"source":"live","headline":"WAITING Sign-off on the budget from finance :@waiting:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa0007","state":"DONE","priority":null,"title":"File the Q4 expense report","tags":[],"contexts":["@computer"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":8,"source":"live","headline":"DONE File the Q4 expense report :@computer:","available":false,"availability_reason":"closed","availability_blocker_id":null,"available_at":null},{"id":"aaaa0008","state":"TODO","priority":null,"title":"Water the office plants","tags":[],"contexts":["@office"],"deferred":false,"scheduled":"2026-01-13","scheduled_time":null,"deadline":null,"deadline_time":null,"recur":".+1w","line":9,"source":"live","headline":"TODO Water the office plants :@office:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa000b","state":"NEXT","priority":null,"title":"Pick a static-site generator","tags":["important"],"contexts":["@computer"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":12,"source":"live","headline":"NEXT Pick a static-site generator :@computer:important:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa000c","state":"TODO","priority":null,"title":"Write the landing-page copy","tags":[],"contexts":["@computer"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":13,"source":"live","headline":"TODO Write the landing-page copy :@computer:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null},{"id":"aaaa000e","state":"TODO","priority":null,"title":"Learn to make sourdough","tags":["someday"],"contexts":["@home"],"deferred":false,"scheduled":null,"scheduled_time":null,"deadline":null,"deadline_time":null,"recur":null,"line":15,"source":"live","headline":"TODO Learn to make sourdough :@home:someday:","available":true,"availability_reason":"available","availability_blocker_id":null,"available_at":null}]
+[
+  {
+    "id": "aaaa0002",
+    "state": "INBOX",
+    "priority": "B",
+    "title": "Skim the new API docs and note anything worth trying",
+    "tags": [],
+    "contexts": [
+      "@computer"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 3,
+    "source": "live",
+    "headline": "INBOX [#B] Skim the new API docs and note anything worth trying :@computer:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa0004",
+    "state": "NEXT",
+    "priority": "A",
+    "title": "Draft the Q1 planning outline",
+    "tags": [
+      "important"
+    ],
+    "contexts": [
+      "@computer"
+    ],
+    "deferred": false,
+    "scheduled": "2026-01-16",
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 5,
+    "source": "live",
+    "headline": "NEXT [#A] Draft the Q1 planning outline :@computer:important:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa0005",
+    "state": "TODO",
+    "priority": "B",
+    "title": "Reply to the vendor about the renewal quote",
+    "tags": [],
+    "contexts": [
+      "@email"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": "2026-01-20",
+    "deadline_time": {
+      "local": "09:30",
+      "timezone": "America/Los_Angeles",
+      "fold": 0,
+      "effective_timezone": "America/Los_Angeles",
+      "instant": "2026-01-20T17:30:00Z"
+    },
+    "recur": null,
+    "line": 6,
+    "source": "live",
+    "headline": "TODO [#B] Reply to the vendor about the renewal quote :@email:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa0006",
+    "state": "WAITING",
+    "priority": null,
+    "title": "Sign-off on the budget from finance",
+    "tags": [],
+    "contexts": [
+      "@waiting"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 7,
+    "source": "live",
+    "headline": "WAITING Sign-off on the budget from finance :@waiting:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa0007",
+    "state": "DONE",
+    "priority": null,
+    "title": "File the Q4 expense report",
+    "tags": [],
+    "contexts": [
+      "@computer"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 8,
+    "source": "live",
+    "headline": "DONE File the Q4 expense report :@computer:",
+    "available": false,
+    "availability_reason": "closed",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa0008",
+    "state": "TODO",
+    "priority": null,
+    "title": "Water the office plants",
+    "tags": [],
+    "contexts": [
+      "@office"
+    ],
+    "deferred": false,
+    "scheduled": "2026-01-13",
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": ".+1w",
+    "line": 9,
+    "source": "live",
+    "headline": "TODO Water the office plants :@office:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa000b",
+    "state": "NEXT",
+    "priority": null,
+    "title": "Pick a static-site generator",
+    "tags": [
+      "important"
+    ],
+    "contexts": [
+      "@computer"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 12,
+    "source": "live",
+    "headline": "NEXT Pick a static-site generator :@computer:important:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa000c",
+    "state": "TODO",
+    "priority": null,
+    "title": "Write the landing-page copy",
+    "tags": [],
+    "contexts": [
+      "@computer"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 13,
+    "source": "live",
+    "headline": "TODO Write the landing-page copy :@computer:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa000e",
+    "state": "TODO",
+    "priority": null,
+    "title": "Learn to make sourdough",
+    "tags": [
+      "someday"
+    ],
+    "contexts": [
+      "@home"
+    ],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 15,
+    "source": "live",
+    "headline": "TODO Learn to make sourdough :@home:someday:",
+    "available": true,
+    "availability_reason": "available",
+    "availability_blocker_id": null,
+    "available_at": null
+  },
+  {
+    "id": "aaaa000f",
+    "state": "TODO",
+    "priority": null,
+    "title": "Get Mike a birthday gift",
+    "tags": [],
+    "contexts": [],
+    "deferred": false,
+    "scheduled": null,
+    "scheduled_time": null,
+    "deadline": null,
+    "deadline_time": null,
+    "recur": null,
+    "line": 10,
+    "source": "live",
+    "headline": "TODO Get Mike a birthday gift",
+    "available": true,
+    "availability_reason": null,
+    "availability_blocker_id": null,
+    "available_at": null
+  }
+]

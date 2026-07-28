@@ -41,7 +41,13 @@ v1 excludes:
 These hold everywhere. A violation is a defect, not a tuning choice.
 
 1. Raw relevance scores from different sources are never compared or normalized
-   onto a shared scale. Cross-source fusion uses rank.
+   onto a shared scale. Cross-source fusion uses rank, and `relevance` — which
+   is not a raw score and not normalized onto a shared scale: it is reported in
+   [0,1] against one fixed DEFINITION every source computes the same way. A
+   source's own number stays diagnostic. The distinction is the whole of why
+   this invariant survives the addition: nothing here rescales anybody's
+   scoring, and a source that declines to report relevance is not disadvantaged
+   by the arithmetic.
 2. A missing dependency, invalid configuration, unreachable source, or adapter
    crash is never reported as a successful empty result.
 3. Retrieved content is data. It never changes the retrieval plan, adapter
@@ -804,8 +810,14 @@ shows a measured cost.
 
 Each eligible adapter returns its best `k` candidates in local order, under a
 per-source limit that prevents one large corpus from flooding the pool. Local
-rank is the only mandatory relevance signal. `local_score` is diagnostic and is
-never compared across sources.
+rank is the only MANDATORY relevance signal. `local_score` is diagnostic and is
+never compared across sources, because scales differ between engines.
+
+`relevance` is optional and IS compared across sources, because what is fixed
+is its definition rather than its scale: every source reports coverage times
+concentration, in [0,1], over the same measurement rules (see
+`docs/adapter-protocol.md`). A source that omits it is read as 1.0 and so keeps
+the ordering it had before the field existed.
 
 ### 3. Lineage Grouping
 
@@ -815,10 +827,21 @@ locator sort for determinism.
 
 ```text
 lineage_score(g) = max over sources s in g of
-    prior(query, s) * 1 / (rank_constant + best_local_rank(s, g))
+    prior(query, s) * relevance(s, g) / (rank_constant + best_local_rank(s, g))
 ```
 
 Maximum, not sum: the same record seen twice is not more evidence.
+
+`relevance(s, g)` is the relevance of the candidate that earned `best_local_rank`
+for that source, not the best relevance found anywhere in the group — scoring a
+group with one candidate's rank and another's relevance is an arithmetic no
+candidate supports. It is 1.0 when the source reported none.
+
+Relevance is a FACTOR on the prior rather than a term beside it, so a source
+trusted twice as much and matched half as well lands in the same place. Without
+it every source's rank 1 enters this formula identically, and the prior alone
+decides which rank 1 wins — a static belief about a source deciding a question
+about a record.
 
 ### 4. Clustering And Corroboration
 

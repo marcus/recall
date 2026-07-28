@@ -93,7 +93,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		hits = hits[:limit]
 	}
 
-	p := pass{snap: snap, set: set, sourceID: sourceID, floor: floor, terms: len(terms)}
+	p := pass{snap: snap, set: set, sourceID: sourceID, floor: floor, termList: terms}
 	candidates := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
 		candidates = append(candidates, p.candidate(h, i+1))
@@ -143,7 +143,7 @@ type pass struct {
 	set      Settings
 	sourceID string
 	floor    recall.Sensitivity
-	terms    int
+	termList []string
 }
 
 // candidate renders one record for fusion. The locator, the derivation edges,
@@ -155,12 +155,13 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 	switch {
 	case h.exact:
 		signals = []recall.MatchSignal{recall.MatchExactIdentifier}
-	case p.terms == 0:
+	case len(p.termList) == 0:
 		// Nothing was matched textually: the window selected these records.
 		signals = []recall.MatchSignal{recall.MatchField}
 	}
 
 	local := h.score
+	rel := relevanceOf(rec, p.termList)
 	c := recall.Candidate{
 		CandidateID:    rec.local(),
 		SourceRecordID: rec.id,
@@ -171,6 +172,7 @@ func (p pass) candidate(h hit, rank int) recall.Candidate {
 		Excerpt:        clip(rec.text, excerptBytes),
 		LocalRank:      rank,
 		LocalScore:     &local,
+		Relevance:      &rel,
 		MatchSignals:   signals,
 		ObservedAt:     &rec.observedAt,
 		ConfirmedAt:    &p.snap.builtAt,
@@ -257,6 +259,11 @@ func match(rec record, terms []string) (score float64, exact bool) {
 		score += rec.weights[term]
 	}
 	return score / float64(len(terms)), exact
+}
+
+// relevanceOf is [recall.Candidate.Relevance] for one stream record.
+func relevanceOf(rec record, terms []string) float64 {
+	return recall.RelevanceOverCounts(terms, rec.counts, rec.length)
 }
 
 // tokenize splits on anything that cannot appear inside an identifier.

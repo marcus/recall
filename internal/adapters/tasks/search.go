@@ -84,7 +84,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		return fail(exactErr, map[string]any{"cli_invocations": gathered.invocations + 1})
 	}
 
-	ranked := rank(gathered.records, exact, terms, gathered.bodyHits, index, set, req.Filters)
+	ranked, filtered := rank(gathered.records, exact, terms, gathered.bodyHits, index, set, req.Filters)
 	matched := len(ranked)
 
 	limit := set.maxCandidates()
@@ -113,6 +113,17 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		"matched":         matched,
 		"body_probes":     len(probes),
 		"truncated":       truncated,
+	}
+	// Only when a filter actually removed something. An always-present zero
+	// would be noise on the overwhelming majority of requests, and the fact
+	// worth surfacing is that configuration narrowed THIS answer.
+	if len(filtered) > 0 {
+		total := 0
+		for _, n := range filtered {
+			total += n
+		}
+		diagnostics["filtered_records"] = total
+		diagnostics["filtered_by"] = filtered
 	}
 	if req.Filters.Project != "" {
 		// The rollup is computed over open, non-deferred tasks filed under a
@@ -337,14 +348,25 @@ const exitNoMatch = 2
 
 // scored is one candidate with the evidence that ranked it.
 type scored struct {
-	rec     taskRecord
-	score   float64
+	rec   taskRecord
+	score float64
+
+	// relevance is [recall.Candidate.Relevance]: how much this record is about
+	// the query, on the definition every source shares. It is NOT scaled by the
+	// completed-weight demotion — that is this source's own ordering opinion,
+	// and reporting it as "less about the query" would launder a local ranking
+	// choice into a number fusion reads as cross-source truth.
+	relevance float64
+
 	exact   bool
 	order   int
 	signals []recall.MatchSignal
 }
 
-// rank applies the request's filters and orders what survives.
+// rank applies the request's filters and orders what survives. The second
+// return is how many records each configured filter removed, keyed by facet, so
+// a caller can be told that its result set was narrowed by configuration rather
+// than by the query.
 func rank(
 	records []taskRecord,
 	exact []taskRecord,
@@ -353,7 +375,8 @@ func rank(
 	projects map[string]string,
 	set settings,
 	filters recall.Filters,
-) []scored {
+) ([]scored, map[string]int) {
+	filtered := make(map[string]int)
 	exactOrder := make(map[string]int, len(exact))
 	pool := make([]taskRecord, 0, len(records)+len(exact))
 	for i, rec := range exact {
@@ -375,24 +398,35 @@ func rank(
 		// An exact id is a direct instruction to retrieve one record, so it
 		// bypasses the instance's own scoping. Filters that came with the
 		// request still apply: those are what the caller asked for now.
-		if !isExact && !set.keeps(rec) {
-			continue
+		if !isExact {
+			if kept, facet := set.keeps(rec); !kept {
+				filtered[facet]++
+				continue
+			}
 		}
 		if !keepsRequest(rec, projects, filters) {
 			continue
 		}
 
-		score, signals := lexical(rec, terms, bodyHits, projects[rec.ID])
+		score, relevance, signals := lexical(rec, terms, bodyHits, projects[rec.ID])
+		// Terminal work is demoted, not removed, and after the zero check so a
+		// finished record that matched nothing is still dropped for not
+		// matching rather than for being finished.
 		if isExact {
 			signals = append([]recall.MatchSignal{recall.MatchExactIdentifier}, signals...)
 		} else if score == 0 && len(terms) > 0 {
 			continue
+		} else if terminal(rec.State) {
+			score *= set.completedWeight()
 		}
-		out = append(out, scored{rec: rec, score: score, exact: isExact, order: order, signals: signals})
+		out = append(out, scored{
+			rec: rec, score: score, relevance: relevance,
+			exact: isExact, order: order, signals: signals,
+		})
 	}
 
 	slices.SortStableFunc(out, compare)
-	return out
+	return out, filtered
 }
 
 // compare is the total order candidates are emitted in.
@@ -433,38 +467,68 @@ func compare(x, y scored) int {
 	return strings.Compare(x.rec.ID, y.rec.ID)
 }
 
-// lexical scores one record against the query terms.
+// lexical scores one record against the query terms, and reports how much of
+// the record the query accounts for.
+//
+// The second return is [recall.Candidate.Relevance]. A task is short and mostly
+// title, which is why this source wins the case the whole factor was added for:
+// "Make a dentist appointment" is four terms of which the query is one, against
+// a four-hundred-term document chunk that uses the same word in an aside, and
+// the concentration term is what tells those apart.
 func lexical(
 	rec taskRecord,
 	terms []string,
 	bodyHits map[string]map[string]struct{},
 	project string,
-) (float64, []recall.MatchSignal) {
+) (float64, float64, []recall.MatchSignal) {
 	title := strings.ToLower(rec.Title)
 	fields := rec.fieldText(project)
+	// The text scoring actually read, joined once. Concentration has to be
+	// measured over exactly this and no more: padding it with text no term
+	// could match would make every record look less about every query.
+	//
+	// The body is deliberately absent. Body matches arrive through a separate
+	// CLI probe that reports which records matched but not where or how often,
+	// so the occurrences are not knowable here; counting title and fields alone
+	// understates concentration for a body hit, which errs toward ranking a
+	// record lower rather than higher.
+	text := title + " " + fields
 
 	var score float64
 	var lexicalHit, fieldHit bool
+	// covered counts distinct query terms this record matched anywhere; hits
+	// counts their occurrences in the record's own searchable text.
+	var covered, hits int
 	for _, term := range terms {
+		matched := false
 		switch {
 		case containsWord(title, term):
 			score += weightTitleWord
 			lexicalHit = true
+			matched = true
 		case strings.Contains(title, term):
 			score += weightTitleSubstring
 			lexicalHit = true
+			matched = true
 		}
 		if containsWord(fields, term) {
 			score += weightField
 			fieldHit = true
+			matched = true
 		}
-		if hits, ok := bodyHits[term]; ok {
-			if _, hit := hits[rec.ID]; hit && !containsWord(title, term) {
+		if bh, ok := bodyHits[term]; ok {
+			if _, hit := bh[rec.ID]; hit && !containsWord(title, term) {
 				score += weightBody
 				lexicalHit = true
+				matched = true
 			}
 		}
+		if matched {
+			covered++
+			hits += strings.Count(text, term)
+		}
 	}
+	relevance := recall.Relevance(covered, len(terms), hits, recall.CountTerms(text))
 
 	var signals []recall.MatchSignal
 	if lexicalHit {
@@ -473,7 +537,7 @@ func lexical(
 	if fieldHit {
 		signals = append(signals, recall.MatchField)
 	}
-	return score, signals
+	return score, relevance, signals
 }
 
 // keepsRequest applies the filters that came with this request, as opposed to
@@ -541,6 +605,7 @@ func (a *Adapter) candidate(
 	observed time.Time,
 ) recall.Candidate {
 	score := s.score
+	relevance := s.relevance
 	return recall.Candidate{
 		// The id is stable within the revision and unique in a result list, so
 		// it serves as the candidate identity too. One task never produces two
@@ -554,6 +619,7 @@ func (a *Adapter) candidate(
 		Excerpt:        excerpt(s.rec),
 		LocalRank:      localRank,
 		LocalScore:     &score,
+		Relevance:      &relevance,
 		MatchSignals:   s.signals,
 
 		// A listing is a complete source boundary: it enumerated the whole

@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/tasks"
+	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -474,3 +476,173 @@ func find(t *testing.T, candidates []recall.Candidate, id string) recall.Candida
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestExcludeKeepsTheRecordWithNoContext is the case the allowlist got wrong,
+// and the reason the exclude form exists at all.
+//
+// Configuring contexts = ["home"] to keep work out of a home profile was tried
+// against the real store on 2026-07-24 and reverted: five of its records carry
+// no context, "Get Mike a birthday gift" among them, and the allowlist dropped
+// every one. The query then answered `coverage complete` over a task that
+// exists — a false absence arriving through configuration, where nothing
+// downstream can flag it.
+//
+// So the two forms are asserted against each other on the same record and the
+// same query. If they ever agree, the exclude form has stopped being worth
+// having.
+func TestExcludeKeepsTheRecordWithNoContext(t *testing.T) {
+	const contextless = "aaaa000f" // "Get Mike a birthday gift", contexts: []
+
+	t.Run("allowlist drops it", func(t *testing.T) {
+		a := newAdapter(t, recordedStore(t), map[string]any{
+			"contexts": []any{"home"},
+		})
+		resp, err := search(t, a, "birthday gift")
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if ids := recordIDs(resp); slices.Contains(ids, contextless) {
+			t.Fatalf("ids = %v, want the context-less record absent: this test "+
+				"documents why the allowlist is the wrong form, so it failing "+
+				"means the allowlist changed meaning", ids)
+		}
+	})
+
+	t.Run("exclude keeps it", func(t *testing.T) {
+		a := newAdapter(t, recordedStore(t), map[string]any{
+			"exclude_contexts": []any{"office"},
+		})
+		resp, err := search(t, a, "birthday gift")
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if ids := recordIDs(resp); !slices.Contains(ids, contextless) {
+			t.Errorf("ids = %v, want %s present: an exclusion naming a context "+
+				"the record does not carry must exclude nothing about it",
+				ids, contextless)
+		}
+	})
+
+	t.Run("exclude still drops what it names", func(t *testing.T) {
+		a := newAdapter(t, recordedStore(t), map[string]any{
+			"exclude_contexts": []any{"@office"},
+		})
+		resp, err := search(t, a, "water office plants birthday gift")
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		ids := recordIDs(resp)
+		if slices.Contains(ids, "aaaa0008") {
+			t.Errorf("ids = %v, want the @office task dropped; the @ sigil must "+
+				"normalize for exclusion exactly as it does for the allowlist", ids)
+		}
+		if !slices.Contains(ids, contextless) {
+			t.Errorf("ids = %v, want %s kept alongside the drop", ids, contextless)
+		}
+	})
+}
+
+// TestExcludeAndAllowlistOnOneFacetIsRefused pins the choice not to resolve the
+// combination. Intersecting them and letting the narrower win are both
+// defensible, a reader of the config cannot tell which was meant, and silently
+// picking one is how the allowlist defect got shipped in the first place.
+func TestExcludeAndAllowlistOnOneFacetIsRefused(t *testing.T) {
+	for _, facet := range []struct{ allow, exclude string }{
+		{"contexts", "exclude_contexts"},
+		{"tags", "exclude_tags"},
+		{"states", "exclude_states"},
+	} {
+		t.Run(facet.allow, func(t *testing.T) {
+			value := []any{"home"}
+			if facet.allow == "states" {
+				value = []any{"TODO"}
+			}
+			a := tasks.New(tasks.Options{Runner: recordedStore(t), Clock: fixedClock})
+			_, err := a.Initialize(context.Background(), adapter.Config{
+				ProtocolVersionMin: protocol.MinVersion,
+				ProtocolVersionMax: protocol.MaxVersion,
+				Workdir:            t.TempDir(),
+				SourceID:           "tasks",
+				Settings:           map[string]any{facet.allow: value, facet.exclude: value},
+			})
+			if err == nil {
+				t.Fatalf("%s + %s: want an error, got none", facet.allow, facet.exclude)
+			}
+		})
+	}
+}
+
+// TestCompletedWorkRanksBelowActive covers Marcus's condition from 2026-07-28:
+// finished work should not compete with live work on equal terms.
+//
+// It is a demotion and not a filter, and the difference is the point. "What did
+// I decide about the expense report" is answered by the done task, so dropping
+// it would be wrong; "what about the expense report" almost always means the
+// open one, so ranking them equally is also wrong.
+func TestCompletedWorkRanksBelowActive(t *testing.T) {
+	a := newAdapter(t, recordedStore(t), map[string]any{"scope": "all"})
+	resp, err := search(t, a, "expense report copy landing")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	ids := recordIDs(resp)
+	done := slices.Index(ids, "aaaa0007") // DONE  "File the Q4 expense report"
+	open := slices.Index(ids, "aaaa000c") // TODO  "Write the landing-page copy"
+	if done < 0 {
+		t.Fatalf("ids = %v, want the done task present: this is a demotion, not a filter", ids)
+	}
+	if open < 0 {
+		t.Fatalf("ids = %v, want the open task present", ids)
+	}
+	if done < open {
+		t.Errorf("done ranked %d, open ranked %d, in %v: a terminal record must "+
+			"not outrank active work that matched as well", done, open, ids)
+	}
+}
+
+// TestFilteredRecordsAreCounted is the home config's second stated condition
+// for restoring a filter. A filter is the one way a result set shrinks without
+// any query saying so, so the response has to be able to say it did.
+func TestFilteredRecordsAreCounted(t *testing.T) {
+	a := newAdapter(t, recordedStore(t), map[string]any{
+		"exclude_contexts": []any{"computer"},
+	})
+	resp, err := search(t, a, "planning outline generator static birthday")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	total, ok := resp.Diagnostics["filtered_records"].(int)
+	if !ok || total == 0 {
+		t.Fatalf("filtered_records = %v, want a positive count", resp.Diagnostics["filtered_records"])
+	}
+	by, ok := resp.Diagnostics["filtered_by"].(map[string]int)
+	if !ok || by["exclude_contexts"] != total {
+		t.Errorf("filtered_by = %v, want %d attributed to exclude_contexts: a "+
+			"count that cannot name the filter does not tell an operator which "+
+			"line of config to look at", resp.Diagnostics["filtered_by"], total)
+	}
+}
+
+// TestUnfilteredSearchReportsNoFilterCount keeps the diagnostic honest in the
+// common case: an always-present zero would read as "a filter ran and removed
+// nothing" on every request that has no filter at all.
+func TestUnfilteredSearchReportsNoFilterCount(t *testing.T) {
+	a := newAdapter(t, recordedStore(t), nil)
+	resp, err := search(t, a, "vendor renewal quote")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if _, present := resp.Diagnostics["filtered_records"]; present {
+		t.Errorf("filtered_records present with no filter configured: %v",
+			resp.Diagnostics["filtered_records"])
+	}
+}
+
+// recordIDs is the source record id of each candidate, in rank order.
+func recordIDs(resp recall.SearchResponse) []string {
+	out := make([]string, 0, len(resp.Candidates))
+	for _, c := range resp.Candidates {
+		out = append(out, c.SourceRecordID)
+	}
+	return out
+}

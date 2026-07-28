@@ -36,6 +36,7 @@ func Render(e recall.Explanation) string {
 	line("local rank", rank(e))
 	line("matches", signals(e.MatchSignals))
 	line("prior", prior(e.Prior))
+	line("relevance", relevance(e))
 	line("lineage", string(e.LineageRoot))
 	line("corroboration", corroboration(e.Corroboration))
 	line("freshness", freshness(e.Freshness))
@@ -161,6 +162,17 @@ func reranker(r recall.RerankerExplanation) string {
 		out += ", delta " + signed(r.Delta)
 	}
 	return out
+}
+
+// relevance renders the factor that scaled the prior, and distinguishes a
+// source that reported nothing from one that reported a perfect match. Fusion
+// reads both as 1.0; they are not the same claim, and only one of them is
+// evidence.
+func relevance(e recall.Explanation) string {
+	if e.Relevance == nil {
+		return "not reported by this source, so fused as 1 — an untested advantage over sources that report it"
+	}
+	return fmt.Sprintf("%s (scales the prior: how much this record is about the query)", num(*e.Relevance))
 }
 
 func score(e recall.Explanation) string {

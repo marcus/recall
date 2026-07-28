@@ -170,7 +170,7 @@ func (a *Adapter) search(
 	mark := watermark(gathered.corpusRaw)
 	candidates := make([]recall.Candidate, 0, len(ranked))
 	for i, s := range ranked {
-		candidates = append(candidates, a.candidate(s, i+1, sourceID, floor, ws, mark, started))
+		candidates = append(candidates, a.candidate(s, i+1, sourceID, floor, ws, mark, started, terms))
 	}
 
 	outcome := recall.SearchSuccess
@@ -658,6 +658,38 @@ func compare(x, y scored) int {
 	return strings.Compare(x.rec.ID, y.rec.ID)
 }
 
+// searchableText is the issue text td itself matches over: id, title, and
+// description. Acceptance is included because it is issue prose a query can
+// legitimately be about, and excluding it would overstate concentration for
+// issues that carry most of their content there.
+//
+// This is the measurement that demotes a tracker's own tickets on a query they
+// merely quote. A ticket documenting `recall query fujifilm` contains the word
+// once in six hundred, so it covers the query completely and is barely about
+// it, and only the concentration term can say so.
+func (r issue) searchableText() string {
+	return strings.ToLower(strings.Join([]string{
+		r.ID, r.Title, r.Description, r.Acceptance,
+	}, " "))
+}
+
+// relevance is [recall.Candidate.Relevance] for this issue.
+func (s scored) relevance(terms []string) float64 {
+	if len(terms) == 0 {
+		return 1
+	}
+	// queryTerms has already lowercased the query, so the terms arrive folded.
+	text := s.rec.searchableText()
+	covered, hits := 0, 0
+	for _, term := range terms {
+		if n := strings.Count(text, term); n > 0 {
+			covered++
+			hits += n
+		}
+	}
+	return recall.Relevance(covered, len(terms), hits, recall.CountTerms(text))
+}
+
 func (s scored) coverage() int {
 	if s.state == nil {
 		return 0
@@ -718,6 +750,7 @@ func (a *Adapter) candidate(
 	ws workspace,
 	mark string,
 	observed time.Time,
+	terms []string,
 ) recall.Candidate {
 	var hit *searchHit
 	var score *float64
@@ -726,6 +759,7 @@ func (a *Adapter) candidate(
 		native := float64(s.state.best)
 		score = &native
 	}
+	relevance := s.relevance(terms)
 
 	c := recall.Candidate{
 		// The id is stable within the workspace and unique in a result list,
@@ -743,6 +777,7 @@ func (a *Adapter) candidate(
 		Excerpt:        excerpt(s.rec),
 		LocalRank:      localRank,
 		LocalScore:     score,
+		Relevance:      &relevance,
 		MatchSignals:   s.signals,
 
 		ObservedAt: &observed,

@@ -106,14 +106,31 @@ func tokenize(s string) []string {
 	return out
 }
 
-// weigh records what a match on each token of text earns. A token appearing in
-// several fields keeps the strongest weight: a title hit says more about a
-// record than a body hit.
-func weigh(into map[string]float64, text string, weight float64) {
+// weigher accumulates both of the things a record's text is needed for: the
+// per-token weight that scores a match, and the per-token count that says how
+// much of the record that match accounts for.
+//
+// They are gathered together, over one list of fields, on purpose. Kept apart
+// they would be two lists of the same fields that a later edit could let drift,
+// and a concentration measured over text the scorer never read is a number
+// nothing supports.
+type weigher struct {
+	weights map[string]float64
+	counts  map[string]int
+	length  int
+}
+
+func newWeigher() *weigher {
+	return &weigher{weights: map[string]float64{}, counts: map[string]int{}}
+}
+
+func (w *weigher) add(text string, weight float64) {
 	for _, token := range tokenize(text) {
-		if into[token] < weight {
-			into[token] = weight
+		if w.weights[token] < weight {
+			w.weights[token] = weight
 		}
+		w.counts[token]++
+		w.length++
 	}
 }
 
