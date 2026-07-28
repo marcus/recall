@@ -106,8 +106,10 @@ a different profile from the one whose adapter pool is already open.
 `recall mcp --profile work` runs a Model Context Protocol server over stdio. It
 exposes four tools:
 
-- `recall_query` — typed query results with locators, explanations, source
-  outcomes, outcome, and coverage.
+- `recall_query` — ranked evidence pointers with locators, outcome, coverage,
+  and a source summary naming any source that could not answer. Pass
+  `explain: true` for the diagnostic tier: score explanations, cluster lineage,
+  the per-source ledger, and the resolved plan.
 - `recall_expand` — evidence behind one locator, with provenance and
   truncation.
 - `recall_refresh` — refresh one source or all eligible checkpoint-capable
@@ -115,10 +117,27 @@ exposes four tools:
 - `recall_sources` — configured source capabilities, health, and freshness.
 
 Tool results carry both a compact text block and `structuredContent`. The
-structured content is the same JSON type the CLI emits; the text projection
-does not replace it. A failed query sets `isError` while retaining the typed
-source outcomes, so a host cannot mistake “nothing searched” for “nothing
-matched.”
+structured content is the same JSON the CLI emits at the same tier — the
+pointer projection by default, the complete serialization under `explain` —
+and the text projection does not replace it. A failed query sets `isError`
+while retaining what the response claims, so a host cannot mistake “nothing
+searched” for “nothing matched.”
+
+The default projects for the reason `recall query --json` does: the consumer is
+a model paying context for every field, roughly 37% of a response is the
+per-source ledger and plan and another 36% is cluster members re-serializing
+each primary, and a model choosing which locator to expand needs neither. The
+response budget is denominated in the tier the call actually returns.
+
+`POST /v1/query` takes the same choice as a request field, and defaults the
+other way: `"tier": "pointer"` projects, and an absent tier or `"complete"`
+sends the whole response. `/v1` is a pinned API whose promise is that a client
+reading it keeps working, so the smaller shape is opt-in there; a tool
+description is read fresh by a model every session, so its default is a prompt
+decision rather than a compatibility one. `tier` is what the server sends and
+`budget.surface` is what the caller consumes: `recall query --server` receives
+the complete body, prints pointers, and declares `structured_pointer` so it is
+priced for what it renders.
 
 MCP requests run concurrently. A `notifications/cancelled` message cancels the
 matching application call and therefore the adapter work below it. Standard

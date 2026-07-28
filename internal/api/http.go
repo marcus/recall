@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/buildinfo"
+	"github.com/marcus/recall/internal/pointer"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -116,15 +117,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
-	var req recall.QueryRequest
-	if problem := decode(r, &req); problem != nil {
+	// The wire shape is the domain request plus the tier the caller wants back,
+	// which is a property of this transport rather than of a query: nothing
+	// about the search changes, only how much of the answer is serialized.
+	var body struct {
+		recall.QueryRequest
+		Tier string `json:"tier,omitempty"`
+	}
+	if problem := decode(r, &body); problem != nil {
 		writeProblem(w, http.StatusBadRequest, *problem)
 		return
 	}
-	// The body this handler writes is the whole serialized response, so that is
-	// what an undeclared budget is charged against. A client that renders a
-	// projection of it says so and is priced for that instead.
-	if problem := normalizeQuery(&req, h.core.Profile(), recall.SurfaceStructured); problem != nil {
+	req := body.QueryRequest
+	tier, problem := queryTier(body.Tier)
+	if problem != nil {
+		writeProblem(w, http.StatusBadRequest, *problem)
+		return
+	}
+	// What this handler writes is what an undeclared budget is charged against:
+	// the whole serialized response, or the projection when one was asked for.
+	// A client that renders a further projection of either says so and is
+	// priced for that instead.
+	if problem := normalizeQuery(&req, h.core.Profile(), tier); problem != nil {
 		writeProblem(w, requestStatus(*problem), *problem)
 		return
 	}
@@ -152,7 +166,41 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 	severity := Severity(resp)
 	w.Header().Set(HeaderOutcome, string(resp.Outcome))
 	w.Header().Set(HeaderCoverage, string(resp.Coverage))
+	if tier == recall.SurfaceStructuredPointer {
+		writeJSON(w, HTTPStatus(severity), pointer.Project(resp))
+		return
+	}
 	writeJSON(w, HTTPStatus(severity), resp)
+}
+
+// queryTier reads the requested body tier.
+//
+// The default is the complete serialization, and stays that way where the MCP
+// tool's default became the projection. The asymmetry is deliberate and is
+// about who is holding the contract. A tool description is read fresh by a
+// model on every session, so changing what it returns is a change to a prompt;
+// /v1 is a pinned API whose whole promise is that a client reading it keeps
+// working, and quietly halving the response shape is exactly the incompatible
+// change the version number exists to make loud. `recall query --server` is one
+// such client: it decodes the domain type and projects locally, so it must keep
+// receiving the whole of it.
+//
+// tier is separate from budget.surface because the two answer different
+// questions. surface is what the CALLER will consume — which may be a
+// projection this server never made, as it is for the CLI over a socket — and
+// tier is what this server SENDS. Reading a pricing declaration as an
+// instruction to project would have made the CLI's own remote path
+// undecodable.
+func queryTier(tier string) (recall.ResponseSurface, *Problem) {
+	switch tier {
+	case "", "complete":
+		return recall.SurfaceStructured, nil
+	case "pointer":
+		return recall.SurfaceStructuredPointer, nil
+	default:
+		return "", &Problem{CodeBadRequest, fmt.Sprintf(
+			"tier %q: want %q for the whole response or %q for one pointer per result", tier, "complete", "pointer")}
+	}
 }
 
 func (h *Handler) handleExpand(w http.ResponseWriter, r *http.Request) {

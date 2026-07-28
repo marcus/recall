@@ -1,4 +1,16 @@
-package cli
+// Package pointer projects a query response down to its pointer tier: what a
+// caller needs in order to choose a locator to expand, and nothing that only
+// says how the result got there.
+//
+// It is its own package because three surfaces project the same response and no
+// two of them can own the definition. `recall query --json` emits it, the MCP
+// tool result carries it as structured content, and the HTTP body carries it on
+// request — and the budget prices all three by serializing this shape, so a
+// second opinion about which fields survive would be a second answer to what a
+// budget buys. It sits below internal/cli and internal/api and above
+// internal/recall, which cannot reach internal/source for the degraded summary
+// without a cycle.
+package pointer
 
 import (
 	"time"
@@ -7,9 +19,9 @@ import (
 	"github.com/marcus/recall/internal/source"
 )
 
-// pointerResponse is the pointer tier of a response, serialized: what `recall
-// query --json` emits, and the machine counterpart of what renderQuery prints
-// without --explain.
+// Response is the pointer tier of a response, serialized: what `recall
+// query --json` emits, what the MCP tool returns as structured content, and the
+// machine counterpart of what the CLI prints without --explain.
 //
 // It exists because the parity rule is that the same facts are AVAILABLE from
 // each surface, not that every rendering prints all of them — and the argument
@@ -23,8 +35,8 @@ import (
 // (8,247 bytes, for four clusters that were all singletons).
 //
 // What is dropped is exactly the diagnostic tier: score, explanation, cluster
-// members, and the per-result provenance renderResultDetail prints. What is
-// kept is every fact that is a CLAIM — the outcome, the coverage, which sources
+// members, and the per-result provenance the human surface prints behind
+// --explain. What is kept is every fact that is a CLAIM — the outcome, the coverage, which sources
 // could not answer, what was suppressed, and what a budget removed. Those are
 // the same four exemptions the human surface makes, for the same reason: their
 // absence would read as an answer that had nothing more to give.
@@ -32,13 +44,13 @@ import (
 // `--json --explain` remains the complete serialization, byte for byte what
 // `--json` alone emitted before this projection existed, so a consumer that
 // needs a dropped field has an exact migration rather than a reconstruction.
-type pointerResponse struct {
+type Response struct {
 	// Tier names this shape so a consumer can tell which it is holding without
 	// inferring it from a missing key, and so the complete form stays byte-
 	// identical to what it has always been rather than gaining a field.
 	Tier string `json:"tier"`
 
-	Results []pointerResult `json:"results"`
+	Results []Result `json:"results"`
 
 	// SourceSummary is unconditional here, where the ledger it stands in for is
 	// not. The full ledger is the part that grows with the profile and that
@@ -66,7 +78,7 @@ type pointerResponse struct {
 	Elapsed time.Duration `json:"elapsed_ns"`
 }
 
-// pointerResult is one result as a pointer: what a caller needs in order to
+// Result is one result as a pointer: what a caller needs in order to
 // decide which locator to expand.
 //
 // It carries two fields the human tier deliberately leaves out. renderResult
@@ -78,7 +90,7 @@ type pointerResponse struct {
 // precisely the string surgery a structured surface exists to prevent. Both are
 // short, both are already in every candidate, and routing on them is the most
 // common thing a machine caller does with a result list.
-type pointerResult struct {
+type Result struct {
 	Rank       int               `json:"rank"`
 	Locator    recall.Locator    `json:"locator"`
 	SourceID   string            `json:"source_id"`
@@ -97,17 +109,17 @@ type pointerResult struct {
 	Corroboration int  `json:"corroboration,omitempty"`
 }
 
-// projectPointer reduces a response to its pointer tier.
+// Project reduces a response to its pointer tier.
 //
 // The summary is built here when the budget did not already build one, so this
 // surface reports the same source facts whether or not the ledger survived
 // shaping. A response that arrived with SourceSummary already standing in for
 // the ledger keeps that one: it is the same reduction, and rebuilding it from
 // an empty ledger would report zero sources for a request that asked many.
-func projectPointer(resp recall.QueryResponse) pointerResponse {
-	out := pointerResponse{
+func Project(resp recall.QueryResponse) Response {
+	out := Response{
 		Tier:           "pointer",
-		Results:        make([]pointerResult, 0, len(resp.Results)),
+		Results:        make([]Result, 0, len(resp.Results)),
 		SourceSummary:  resp.SourceSummary,
 		Suppressed:     resp.Suppressed,
 		Omitted:        resp.Omitted,
@@ -121,13 +133,16 @@ func projectPointer(resp recall.QueryResponse) pointerResponse {
 		out.SourceSummary = summarizeReports(resp.SourceOutcomes)
 	}
 	for i, r := range resp.Results {
-		out.Results = append(out.Results, projectResult(i+1, r))
+		out.Results = append(out.Results, ProjectResult(i+1, r))
 	}
 	return out
 }
 
-func projectResult(rank int, r recall.Result) pointerResult {
-	out := pointerResult{
+// ProjectResult reduces one result to its pointer form at a stated rank. It is
+// exported because the response budget prices a result by serializing exactly
+// this, one at a time, as it decides how many fit.
+func ProjectResult(rank int, r recall.Result) Result {
+	out := Result{
 		Rank:        rank,
 		Locator:     r.Primary.Locator,
 		SourceID:    r.Primary.SourceID,

@@ -160,7 +160,7 @@ func normalizeQuery(req *recall.QueryRequest, profile string, wire recall.Respon
 // than quietly reinterpreted — this server is not producing a tool result, and
 // pricing one is not something it can do on that caller's behalf.
 func normalizeSurface(req *recall.QueryRequest, wire recall.ResponseSurface) *Problem {
-	if wire == recall.SurfaceTool {
+	if wire == recall.SurfaceTool || wire == recall.SurfaceToolExplained {
 		req.Budget.Surface = wire
 		return nil
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/explain"
+	"github.com/marcus/recall/internal/pointer"
 	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
 )
@@ -56,6 +57,16 @@ recall expand takes, and choosing what to expand is what the list is for.
 Scores, provenance, lineage, source outcomes, and the plan are diagnostics —
 behind --explain on either encoding, and answered directly by recall sources
 and recall doctor when they are the question.
+
+Matching is lexical: query terms are folded and matched against indexed text,
+with English function words removed. Keyword-shaped queries work best. A full
+sentence widens the candidate pool without narrowing it, and ranks a document
+sharing one common word alongside the one that answers. Where a source offers
+an exact mode, naming a record outright marks it. A term the source holds no
+spelling of is looked for in the other grammatical number, so a singular
+reaches a corpus that only writes the plural; a term the source already spells
+your way is matched as written and never widened. --explain reports the
+analyzer each source used.
 
 The tier is --explain and the encoding is --json, and they are independent:
 
@@ -175,7 +186,7 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 		// --explain is the same request on this surface as on the human one:
 		// add the diagnostic tier. Without it the response is projected to
 		// pointers, which is what a caller choosing a locator to expand reads.
-		var body any = projectPointer(resp)
+		var body any = pointer.Project(resp)
 		if *explained {
 			body = resp
 		}

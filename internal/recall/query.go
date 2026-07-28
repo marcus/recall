@@ -123,9 +123,18 @@ const (
 	// with fewer results than the same query answers a human.
 	SurfaceStructuredPointer ResponseSurface = "structured_pointer"
 
-	// SurfaceTool is an MCP tool result: the structured response and the text
-	// projection of it, inside the JSON-RPC envelope that carries both.
+	// SurfaceTool is an MCP tool result: the pointer projection as structured
+	// content and the text rendering of it, inside the JSON-RPC envelope that
+	// carries both.
 	SurfaceTool ResponseSurface = "tool"
+
+	// SurfaceToolExplained is an MCP tool result whose structured half is the
+	// complete serialization, which is what the tool's `explain` argument asks
+	// for. It is a separate surface for the same reason SurfaceStructuredPointer
+	// is: the two differ by roughly the whole per-source ledger and plan, and
+	// pricing the projected one as the complete one would answer a model with
+	// fewer results than it asked for.
+	SurfaceToolExplained ResponseSurface = "tool_explained"
 
 	// SurfacePointer is the default human tier: rank, locator, title, excerpt.
 	SurfacePointer ResponseSurface = "pointer"

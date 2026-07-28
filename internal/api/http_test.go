@@ -461,6 +461,65 @@ func TestHTTPRefusesASurfaceItCannotPrice(t *testing.T) {
 	}
 }
 
+// The pointer tier is what a client that only needs locators asks for, and the
+// complete serialization stays the default: /v1 is a pinned API, and silently
+// halving its response shape is the incompatible change the version exists to
+// make loud.
+func TestHTTPQueryTierProjectsOnlyWhenAsked(t *testing.T) {
+	want := sampleQueryResponse()
+
+	for _, tc := range []struct {
+		tier      string
+		projected bool
+		surface   recall.ResponseSurface
+	}{
+		{"", false, recall.SurfaceStructured},
+		{"complete", false, recall.SurfaceStructured},
+		{"pointer", true, recall.SurfaceStructuredPointer},
+	} {
+		t.Run("tier="+tc.tier, func(t *testing.T) {
+			core := &stubCore{query: want}
+			server := httptest.NewServer(NewHandler(ServerOptions{Core: core}))
+			defer server.Close()
+
+			got := postRaw(t, server.URL+"/v1/query",
+				`{"query":"decision","tier":"`+tc.tier+`"}`)
+			if got.status != http.StatusOK {
+				t.Fatalf("status = %d\n%s", got.status, got.body)
+			}
+			if projected := strings.Contains(got.body, `"tier": "pointer"`); projected != tc.projected {
+				t.Errorf("body projected = %v, want %v\n%s", projected, tc.projected, got.body)
+			}
+			// Every tier states what the answer claims. A projection that
+			// dropped the outcome or the coverage would be a smaller body and a
+			// different contract.
+			for _, claim := range []string{`"outcome"`, `"coverage"`} {
+				if !strings.Contains(got.body, claim) {
+					t.Errorf("tier %q dropped %s\n%s", tc.tier, claim, got.body)
+				}
+			}
+			// An undeclared budget is charged against what this server sends,
+			// which is now two different sizes.
+			if surface := core.lastQuery.Budget.Surface; surface != tc.surface {
+				t.Errorf("tier %q priced as %q, want %q", tc.tier, surface, tc.surface)
+			}
+		})
+	}
+}
+
+// A tier outside the vocabulary is refused rather than repaired: a client that
+// misspelled it believes it asked for a smaller body and would be handed the
+// whole one.
+func TestHTTPRefusesAnUnknownTier(t *testing.T) {
+	server := httptest.NewServer(NewHandler(ServerOptions{Core: &stubCore{}}))
+	defer server.Close()
+
+	got := postRaw(t, server.URL+"/v1/query", `{"query":"decision","tier":"pointers"}`)
+	if got.status != http.StatusBadRequest || !strings.Contains(got.body, "tier") {
+		t.Fatalf("status = %d, body = %s; want 400 naming the tier", got.status, got.body)
+	}
+}
+
 // The budget bounds what the declaring caller consumes. Undeclared, that is the
 // body this transport sends, measured in the bytes it sends; declared, it is
 // the projection the client renders, measured the way that projection is
@@ -556,7 +615,14 @@ func post(t *testing.T, url string, req recall.QueryRequest) posted {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(body)))
+	return postRaw(t, url, string(body))
+}
+
+// postRaw sends a body this package's own types cannot express, which is the
+// point for tier: it is a transport field, not part of the domain request.
+func postRaw(t *testing.T, url, body string) posted {
+	t.Helper()
+	resp, err := http.Post(url, "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

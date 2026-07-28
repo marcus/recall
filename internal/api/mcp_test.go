@@ -16,6 +16,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/marcus/recall/internal/evidence"
+	"github.com/marcus/recall/internal/pointer"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -68,7 +69,10 @@ func TestMCPReturnsTheSameTypedQueryExpandAndRefreshResults(t *testing.T) {
 	if query.IsError {
 		t.Fatalf("answered query marked error: %+v", query)
 	}
-	assertSameJSON(t, query.StructuredContent, wantQuery)
+	// The default structured half is the pointer projection, not the response:
+	// the consumer is a model paying context for every field, which is the
+	// argument the CLI already applied to `--json`.
+	assertSameJSON(t, query.StructuredContent, pointer.Project(wantQuery))
 	if !strings.Contains(query.Content[0].Text, "notes:record-1#L1-2") {
 		t.Fatalf("query text omitted round-trippable locator: %s", query.Content[0].Text)
 	}
@@ -99,6 +103,48 @@ func TestMCPReturnsTheSameTypedQueryExpandAndRefreshResults(t *testing.T) {
 	assertSameJSON(t, refresh.StructuredContent, wantRefresh)
 	if core.lastRefresh.SourceID != "notes" || !core.lastRefresh.Full {
 		t.Fatalf("MCP refresh lost request fields: %+v", core.lastRefresh)
+	}
+
+}
+
+// explain is the diagnostic tier, and it is the complete serialization — byte
+// for byte what this surface returned before it projected, so a caller that
+// needs a dropped field has an exact migration rather than a reconstruction.
+func TestMCPQueryExplainIsTheCompleteSerialization(t *testing.T) {
+	want := sampleQueryResponse()
+	responses := runMCP(t, &stubCore{query: want},
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_query","arguments":{"query":"decision","explain":true}}}`,
+	)
+	var got callToolResult
+	decodeResult(t, responses["2"], &got)
+	assertSameJSON(t, got.StructuredContent, want)
+}
+
+// The budget is denominated in the tier the call will actually return, or a
+// model asking for pointers is shaped for a response several times the size and
+// receives fewer results than it asked for. One query per session: requests are
+// handled concurrently, so a stub's last-request field cannot be read across
+// two of them.
+func TestMCPQueryIsPricedForTheTierItReturns(t *testing.T) {
+	for _, tc := range []struct {
+		args string
+		want recall.ResponseSurface
+	}{
+		{`{"query":"decision"}`, recall.SurfaceTool},
+		{`{"query":"decision","explain":true}`, recall.SurfaceToolExplained},
+		{`{"query":"decision","explain":false}`, recall.SurfaceTool},
+	} {
+		core := &stubCore{query: sampleQueryResponse()}
+		runMCP(t, core,
+			`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`,
+			`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+			`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_query","arguments":`+tc.args+`}}`,
+		)
+		if got := core.lastQuery.Budget.Surface; got != tc.want {
+			t.Errorf("arguments %s priced as %q, want %q", tc.args, got, tc.want)
+		}
 	}
 }
 

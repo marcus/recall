@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marcus/recall/internal/pointer"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -94,7 +95,11 @@ Use it when answering depends on the user's own material and you do not already 
 
 Do NOT use it for general knowledge, for anything already visible in this conversation, or instead of reading a file whose path you already have. It searches configured sources only: it is not a web search, not a filesystem grep, and it knows nothing that is not in those sources.
 
-Results are pointers, not documents. Each carries a locator, a title, a short excerpt, and why it ranked where it did. Call recall_expand on the few locators you actually need, not on all of them.
+Results are pointers, not documents. Each carries a locator, a title, a short excerpt, and the two markers that say something the rank does not: "exact" when the query named the record outright, and "corroboration" when independent records agree. Call recall_expand on the few locators you actually need, not on all of them.
+
+Matching is lexical: query terms are folded and matched against indexed text, with English function words removed. Keyword-shaped queries work best. A full sentence widens the candidate pool without narrowing it, and ranks a document sharing one common word alongside the one that answers.
+
+Set "explain" only when you need to know WHY an answer came out the way it did — score explanations, cluster lineage, per-source outcomes, and the resolved plan. It is several times the size for the same evidence, and the facts you must not miss are in the default result already.
 
 Read "outcome" and "coverage" before you rely on anything:
   outcome=answered   evidence was found.
@@ -228,6 +233,10 @@ const queryInputSchema = `{
       "type": "integer",
       "minimum": 1,
       "description": "End-to-end latency budget in milliseconds. Omit for the configured default."
+    },
+    "explain": {
+      "type": "boolean",
+      "description": "Return the diagnostic tier instead of pointers: score explanations, cluster members and lineage, per-result provenance, the per-source ledger, and the resolved plan. Several times the size for the same evidence. Omit it unless you are diagnosing why an answer ranked as it did; outcome, coverage, degraded sources, suppressions and every locator are in the default result."
     }
   },
   "required": ["query"],
@@ -241,9 +250,20 @@ const queryInputSchema = `{
 // null in the results type is not sloppiness — an empty result set serializes
 // as null, and a schema that claimed otherwise would fail on exactly the
 // abstained response a caller most needs to read.
+//
+// It describes both tiers, because a schema that required source_outcomes would
+// reject every default result: the pointer tier reduces the per-source ledger
+// to source_summary, whose degraded list is the part that must survive. The
+// required set is what both shapes carry, and "tier" is how a caller tells them
+// apart without inferring it from a missing key.
 const queryOutputSchema = `{
   "type": "object",
   "properties": {
+    "tier": {
+      "type": "string",
+      "enum": ["pointer"],
+      "description": "Present on the default result and absent under explain, so the shape is stated rather than guessed. pointer: each result is rank, locator, source_id, record_type, title, excerpt, and the exact and corroboration markers, and the per-source ledger is reduced to source_summary."
+    },
     "outcome": {
       "type": "string",
       "enum": ["answered", "abstained", "failed"],
@@ -256,18 +276,26 @@ const queryOutputSchema = `{
     },
     "results": {
       "type": ["array", "null"],
-      "description": "Ranked clusters. Each carries a primary candidate with a locator to pass to recall_expand, and an explanation of why it ranked there."
+      "description": "Ranked results, each carrying a locator to pass to recall_expand. Under explain they are clusters carrying members and the explanation of why each ranked there."
+    },
+    "source_summary": {
+      "type": ["object", "null"],
+      "description": "On the default result: how many sources were asked, what each outcome was, and \"degraded\", naming every source that was eligible and could not answer. Read it before treating the answer as complete."
     },
     "source_outcomes": {
       "type": ["array", "null"],
-      "description": "Every source the request touched, including those that were skipped, denied, or failed. A source that did not answer appears here rather than being silently absent."
+      "description": "Under explain: every source the request touched, including those that were skipped, denied, or failed. A source that did not answer appears here rather than being silently absent."
+    },
+    "suppressed": {
+      "type": ["array", "null"],
+      "description": "Records withheld, counted with a reason, so \"nothing else was found\" is distinguishable from \"something was not shown\"."
     },
     "truncated": {
       "type": "boolean",
       "description": "Budget shaping dropped trailing results. Not the same as degraded coverage: this is about how much of the answer fit, not which sources were searched."
     }
   },
-  "required": ["outcome", "coverage", "results", "source_outcomes"]
+  "required": ["outcome", "coverage", "results"]
 }`
 
 const expandInputSchema = `{
@@ -306,14 +334,19 @@ const expandOutputSchema = `{
 
 // callToolResult is the MCP reply to tools/call.
 //
-// Both halves are always populated. StructuredContent carries the complete
-// typed response, unaltered — what `recall query --json --explain` emits, and
-// what `--json` alone emitted before the CLI grew a pointer projection. Content
-// carries a compact rendering for the model to read.
+// Both halves are always populated. StructuredContent carries the typed
+// response — for a query, the pointer projection, or the complete serialization
+// when the call passed explain. Content carries a compact rendering for the
+// model to read.
 //
-// That the CLI now projects its default JSON and this surface does not is a
-// gap, not a decision: the argument for projecting is strongest here, where the
-// consumer is a model paying context for every field. Tracked in td-8c7d41.
+// Projecting by default is the same decision the CLI made for `--json`, taken
+// where the argument for it is strongest: the consumer is a model paying
+// context for every field, and roughly 37% of a query response is the
+// per-source ledger and plan while another 36% is members[].candidates[]
+// re-serializing each primary. A model choosing which locator to expand needs
+// neither. The diagnostic tier is one argument away, and the two facts a
+// projection may never drop — degraded coverage and suppression — are in the
+// projection and in the text block both.
 //
 // The specification suggests also putting the serialized JSON in the text
 // block, for clients that predate structured content. This server does not: the
@@ -430,6 +463,16 @@ type queryArgs struct {
 	AsOf         string   `json:"as_of"`
 	BudgetTokens int      `json:"budget_tokens"`
 	BudgetMS     int      `json:"budget_ms"`
+	Explain      bool     `json:"explain"`
+}
+
+// toolSurface names what this call will actually put in a model's context, so
+// the response budget is denominated in it.
+func toolSurface(explain bool) recall.ResponseSurface {
+	if explain {
+		return recall.SurfaceToolExplained
+	}
+	return recall.SurfaceTool
 }
 
 func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *mcpError) {
@@ -464,8 +507,9 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 	}
 
 	// A tool result carries the structured response and its text
-	// projection inside one JSON-RPC frame; ToolCost prices all three.
-	if problem := normalizeQuery(&req, s.core.Profile(), recall.SurfaceTool); problem != nil {
+	// projection inside one JSON-RPC frame; ToolCost prices all three, at the
+	// tier this call will actually return.
+	if problem := normalizeQuery(&req, s.core.Profile(), toolSurface(args.Explain)); problem != nil {
 		return toolFailure("%s", problem.Message)
 	}
 
@@ -480,9 +524,16 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 		return toolFailure("the search could not be run: %v. This is not evidence that nothing matched.", err)
 	}
 
+	// The pointer projection unless the call asked to be explained. The tier is
+	// named inside the projection, so a model can tell which shape it is holding
+	// without inferring it from a missing key.
+	var structured any = pointer.Project(resp)
+	if args.Explain {
+		structured = resp
+	}
 	return callToolResult{
 		Content:           toolText("%s", renderQueryText(resp)),
-		StructuredContent: resp,
+		StructuredContent: structured,
 		// A query where every source that was asked failed is reported as a
 		// tool error even though the call itself worked. The distinction the
 		// whole system rests on is that "nothing matched" and "nothing looked"

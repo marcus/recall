@@ -5,6 +5,7 @@ import (
 
 	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/evidence"
+	"github.com/marcus/recall/internal/pointer"
 	"github.com/marcus/recall/internal/recall"
 )
 
@@ -22,6 +23,7 @@ func renderCosts() map[recall.ResponseSurface]evidence.Cost {
 		recall.SurfaceExplained:         humanCost{explained: true},
 		recall.SurfaceStructuredPointer: pointerJSONCost{},
 		recall.SurfaceTool:              api.ToolCost{},
+		recall.SurfaceToolExplained:     api.ToolCost{Explained: true},
 	}
 }
 
@@ -45,7 +47,7 @@ type pointerJSONCost struct{}
 // go below.
 func (pointerJSONCost) Frame(resp recall.QueryResponse) int {
 	resp.Results = nil
-	return chargeJSON(projectPointer(resp), "")
+	return chargeJSON(pointer.Project(resp), "")
 }
 
 // Result charges one projected result where it lands: two levels inside the
@@ -59,7 +61,7 @@ func (pointerJSONCost) Frame(resp recall.QueryResponse) int {
 // carries it as a field rather than as its position in the array, so at rank
 // 100 the number really is two characters wider than at rank 1.
 func (pointerJSONCost) Result(rank int, r recall.Result) int {
-	return chargeJSON(projectResult(rank, r), resultIndent) + estimateJSON(resultIndent+",\n")
+	return chargeJSON(pointer.ProjectResult(rank, r), resultIndent) + estimateJSON(resultIndent+",\n")
 }
 
 // resultIndent is how deep a result sits in a serialized response: inside the
