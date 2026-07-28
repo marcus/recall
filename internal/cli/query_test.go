@@ -248,12 +248,15 @@ func TestHumanAndJSONCarryTheSameFacts(t *testing.T) {
 		adapters: fakeAdapters(map[string]*fake{"fakedocs": docs, "faketasks": tasks}),
 	})
 
+	// Both surfaces at the diagnostic tier: parity is a claim about tiers that
+	// correspond, not about a projection matching a complete serialization.
+	// --json alone is the pointer tier and is checked by the test below.
 	_, human, _ := h.run("query", "--explain", "ranking")
-	_, machine, _ := h.run("query", "--json", "ranking")
+	_, machine, _ := h.run("query", "--json", "--explain", "ranking")
 
 	var resp recall.QueryResponse
 	if err := json.Unmarshal([]byte(machine), &resp); err != nil {
-		t.Fatalf("--json is not valid JSON: %v\n%s", err, machine)
+		t.Fatalf("--json --explain is not valid JSON: %v\n%s", err, machine)
 	}
 
 	// Every fact below is read off the parsed JSON, so the table cannot drift
@@ -296,11 +299,13 @@ func TestHumanAndJSONCarryTheSameFacts(t *testing.T) {
 	}
 }
 
-// --json is the complete serialization, and the human tiers are projections of
-// it. That only holds if no rendering decision can reach the machine surface,
-// so this pins the bytes: a golden file over a fixed response, plus the check
-// that --explain — the flag that decides how much a person is shown — changes
-// nothing about what a program reads.
+// The machine surface has two tiers and both are pinned, because a rendering
+// decision that reached either one silently would be the failure this golden
+// exists to catch.
+//
+// query_json.golden is deliberately unchanged from when it pinned --json alone:
+// --json --explain has to be byte for byte what --json used to emit, or the
+// migration this projection promises is a rewrite instead of a flag.
 func TestJSONIsTheUnprojectedResponse(t *testing.T) {
 	deadline := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	observed := time.Date(2026, 3, 4, 5, 0, 0, 0, time.UTC)
@@ -345,12 +350,14 @@ func TestJSONIsTheUnprojectedResponse(t *testing.T) {
 		Elapsed:    12 * time.Millisecond,
 	}}
 
-	_, plain, _ := runSurfaceCLI(t, core, nil, "query", "--json", "anything")
-	_, explained, _ := runSurfaceCLI(t, core, nil, "query", "--json", "--explain", "anything")
-	if plain != explained {
-		t.Errorf("--explain changed the machine surface:\n--- plain ---\n%s\n--- explained ---\n%s", plain, explained)
+	_, pointer, _ := runSurfaceCLI(t, core, nil, "query", "--json", "anything")
+	_, complete, _ := runSurfaceCLI(t, core, nil, "query", "--json", "--explain", "anything")
+	if pointer == complete {
+		t.Error("--explain changed nothing on the machine surface; the diagnostic " +
+			"tier is what it asks for on either encoding")
 	}
-	compareGolden(t, "query_json", plain)
+	compareGolden(t, "query_json", complete)
+	compareGolden(t, "query_json_pointer", pointer)
 }
 
 // The score explanation is the product surface for ranking decisions, and it is

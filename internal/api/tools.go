@@ -306,10 +306,14 @@ const expandOutputSchema = `{
 
 // callToolResult is the MCP reply to tools/call.
 //
-// Both halves are always populated. StructuredContent carries the same typed
-// response the CLI's --json emits, unaltered, which is what keeps the two
-// surfaces from becoming two contracts. Content carries a compact rendering for
-// the model to read.
+// Both halves are always populated. StructuredContent carries the complete
+// typed response, unaltered — what `recall query --json --explain` emits, and
+// what `--json` alone emitted before the CLI grew a pointer projection. Content
+// carries a compact rendering for the model to read.
+//
+// That the CLI now projects its default JSON and this surface does not is a
+// gap, not a decision: the argument for projecting is strongest here, where the
+// consumer is a model paying context for every field. Tracked in td-8c7d41.
 //
 // The specification suggests also putting the serialized JSON in the text
 // block, for clients that predate structured content. This server does not: the

@@ -93,11 +93,20 @@ type Budget struct {
 type ResponseSurface string
 
 const (
-	// SurfaceStructured is the response serialized whole: `--json`, the HTTP
-	// body, the MCP tool's structured content. It is the default because it is
-	// what a caller receives when no surface projects it, and it is the most
-	// expensive of them.
+	// SurfaceStructured is the response serialized whole: `recall query --json
+	// --explain`, the HTTP body, the MCP tool's structured content. It is the
+	// default because it is what a caller receives when no surface projects it,
+	// and it is the most expensive of them.
 	SurfaceStructured ResponseSurface = "structured"
+
+	// SurfaceStructuredPointer is the pointer tier serialized: `recall query
+	// --json`. It is to SurfaceStructured what SurfacePointer is to
+	// SurfaceExplained — the same response with the diagnostic tier projected
+	// out — and it exists as its own surface because a budget denominated in
+	// the whole serialization would shape a projection of it as though the
+	// dropped fields were still being paid for, and answer a machine caller
+	// with fewer results than the same query answers a human.
+	SurfaceStructuredPointer ResponseSurface = "structured_pointer"
 
 	// SurfaceTool is an MCP tool result: the structured response and the text
 	// projection of it, inside the JSON-RPC envelope that carries both.

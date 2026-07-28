@@ -178,14 +178,11 @@ func TestQueryAndExpandOverAnExternalAdapter(t *testing.T) {
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	var resp recall.QueryResponse
-	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
-		t.Fatal(err)
-	}
+	resp := parsePointerJSON(t, stdout)
 	if len(resp.Results) == 0 {
 		t.Fatalf("a stream containing the query terms produced no results\n%s", stdout)
 	}
-	locator := resp.Results[0].Primary.Locator.String()
+	locator := resp.Results[0].Locator
 	if !strings.HasPrefix(locator, "events:") {
 		t.Fatalf("locator = %q, want it prefixed with the configured source name", locator)
 	}

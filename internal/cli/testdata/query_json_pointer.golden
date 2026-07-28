@@ -1,0 +1,31 @@
+{
+  "tier": "pointer",
+  "results": [
+    {
+      "rank": 1,
+      "locator": "notes:record",
+      "source_id": "notes",
+      "record_type": "document",
+      "title": "Ranking",
+      "excerpt": "Cross-source fusion uses rank.",
+      "excerpt_kind": "matched"
+    }
+  ],
+  "source_summary": {
+    "sources": 1,
+    "outcomes": {
+      "success": 1
+    }
+  },
+  "suppressed": [
+    {
+      "reason": "above profile ceiling",
+      "count": 1,
+      "lineage_root": "01UIDNOTES:sealed"
+    }
+  ],
+  "outcome": "answered",
+  "coverage": "complete",
+  "truncated": false,
+  "elapsed_ns": 12000000
+}

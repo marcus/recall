@@ -250,21 +250,47 @@ normalized comparison passes on a reflow that moves every offset.
 ### Output Tiers And Parity
 
 The parity rule is that the human and machine surfaces carry the same facts. It
-is read as **the same facts are available from the surface**, not that the
-default human view prints all of them. The human surface is a projection chosen
-for a reader with finite attention; `--json` is the complete serialization;
-`--explain` is the bridge between them.
+is read as **the same facts are available from the surface**, not that any one
+view prints all of them.
+
+The tier and the encoding are independent. `--explain` picks the tier: pointers,
+or pointers plus diagnostics. `--json` picks the encoding: text for a reader, or
+JSON for a program. Both renderings are projections chosen for their reader at
+the pointer tier, and both are complete at the diagnostic tier.
 
 ```text
-default    outcome, coverage, and one pointer per result — rank, locator,
-           title, and excerpt, plus two markers: `exact` when the query
-           named the record outright, and the corroboration count when a
-           result stands on more than one independent record
---explain  per-result provenance, cluster lineage, score explanations,
-           per-source outcomes, and the resolved plan
---json     the whole response, unprojected and identical under every
-           rendering flag
+tier \ encoding    human                    --json
+
+pointer            outcome, coverage, and   the same facts as JSON, plus
+(default)          one pointer per result   source_id and record_type per
+                   — rank, locator, title,  result so a consumer routes
+                   excerpt, plus `exact`    without parsing a locator;
+                   and the corroboration    tier: "pointer"
+                   count
+
+--explain          the above plus           the whole response, every field,
+                   per-result provenance,   nothing projected
+                   cluster lineage, score
+                   explanations, per-source
+                   outcomes, and the plan
 ```
+
+`--json` alone was the complete serialization until the pointer projection
+existed, and the sentence that said so — "the whole response, unprojected and
+identical under every rendering flag" — is what this section replaced. The
+complete serialization is now `--json --explain`, byte for byte what `--json`
+used to emit, so a consumer that needs a projected-out field has an exact
+migration rather than a reconstruction.
+
+The change was made because the argument for projecting the human surface, set
+out below, is stronger on the machine one and had never been applied to it. On
+`recall query dentist`, four results: 22,698 bytes, of which the four primaries
+were 3,226. The per-source ledger and plan were 8,478 — unchanged by `--limit`,
+identical on a query that found nothing — and `members[].candidates[]`
+re-serialized each primary verbatim for 8,247 more, across four clusters that
+were all singletons. Held against result count the total was flat: a
+twenty-result query serialized to within a few hundred bytes of a four-result
+one, which is the diagnostic that the payload was not the answer.
 
 The two markers are the documented exceptions to "pointer only", and each is
 there because it states something the position in the list does not. `exact` is
@@ -285,14 +311,23 @@ The reasoning, recorded because the question recurs:
   reading the first result: the source outcomes and plan alone were a fixed
   ~6.5 KB on every query, unreduced by `--limit`, and were the entire cost of a
   query that found nothing.
-- **Available, not omitted.** Every fact the default view drops is one flag away
-  and unconditionally present in `--json`. A projection that made a fact
-  unreachable would break the rule; one that ranks facts by whether they change
-  a reader's next action does not.
-- **Two facts are exempt, because their absence is itself a claim.** Degraded
-  coverage and suppression print unflagged in every mode. A source that could
-  not answer, or a record withheld, reads as an answer that had nothing more
-  when it is not stated — which is the one thing this system does not do.
+- **Available, not omitted.** Every fact a pointer tier drops is one flag away
+  and unconditionally present under `--explain`, on either encoding. A
+  projection that made a fact unreachable would break the rule; one that ranks
+  facts by whether they change a reader's next action does not. The flag is the
+  same one on both encodings on purpose: a caller who has learned that
+  `--explain` means "and tell me why" does not learn a second vocabulary for
+  having asked in JSON.
+- **What a response CLAIMS is exempt, because its absence is itself a claim.**
+  The outcome, the coverage, any source that could not answer, any suppression,
+  and anything a budget omitted print unflagged in every mode and every
+  encoding. A source that could not answer, or a record withheld, reads as an
+  answer that had nothing more when it is not stated — which is the one thing
+  this system does not do. This is why the JSON pointer tier drops the
+  per-source ledger but never the summary standing in for it: the ledger is
+  freshness evidence that `recall sources` answers on demand, while the
+  degraded list inside the summary is the response's own account of how
+  complete it is.
 - **One flag, not two.** `--explain` already means "why did this answer come out
   this way", and every block behind it answers that question. A second
   verbosity flag would split the diagnostics across two axes and leave a caller

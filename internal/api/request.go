@@ -168,10 +168,17 @@ func normalizeSurface(req *recall.QueryRequest, wire recall.ResponseSurface) *Pr
 	case "":
 		// No declaration is the safe default: the bytes this transport sends.
 		req.Budget.Surface = wire
-	case recall.SurfaceStructured, recall.SurfacePointer, recall.SurfaceExplained:
+	case recall.SurfaceStructured, recall.SurfaceStructuredPointer,
+		recall.SurfacePointer, recall.SurfaceExplained:
+		// structured_pointer is accepted for the same reason pointer is: the
+		// body this server sends is the whole response, and `recall query
+		// --server --json` projects it before printing. A client that renders a
+		// projection of what it receives declares that projection and is priced
+		// for it, so a query answers identically in process and over a socket.
 	default:
-		return &Problem{CodeBadRequest, fmt.Sprintf("budget surface %q: want %q, %q, or %q",
-			req.Budget.Surface, recall.SurfaceStructured, recall.SurfacePointer, recall.SurfaceExplained)}
+		return &Problem{CodeBadRequest, fmt.Sprintf("budget surface %q: want %q, %q, %q, or %q",
+			req.Budget.Surface, recall.SurfaceStructured, recall.SurfaceStructuredPointer,
+			recall.SurfacePointer, recall.SurfaceExplained)}
 	}
 	return nil
 }

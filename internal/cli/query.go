@@ -21,10 +21,14 @@ remaining arguments, joined by spaces.
 
 flags:
   --profile NAME       profile to resolve; default is the configured one
-  --json               emit the response as JSON: every field, unprojected
+  --json               emit the response as JSON, projected to the pointer
+                       tier: the outcome, one pointer per result, the source
+                       summary, and anything suppressed or omitted
   --explain            add the diagnostic tier: per-result provenance and
                        cluster lineage, score explanations, per-source
-                       outcomes, and the resolved retrieval plan
+                       outcomes, and the resolved retrieval plan. Combines
+                       with --json, and --json --explain is the complete
+                       serialization — every field, nothing projected
   --limit N            maximum fused results. Unset AND 0 both mean the
                        profile's max_results; for an unbounded answer set
                        max_results = 0 in [defaults], or name a larger number
@@ -46,8 +50,25 @@ A default result is a pointer: rank, locator, title, and the excerpt, marked
 result stands on more than one independent record. The locator is the handle
 recall expand takes, and choosing what to expand is what the list is for.
 Scores, provenance, lineage, source outcomes, and the plan are diagnostics —
-behind --explain here, complete in --json, and answered directly by recall
-sources and recall doctor when they are the question.
+behind --explain on either encoding, and answered directly by recall sources
+and recall doctor when they are the question.
+
+The tier is --explain and the encoding is --json, and they are independent:
+
+  (neither)         pointers, for a person
+  --explain         pointers plus diagnostics, for a person
+  --json            pointers, as JSON: tier "pointer"
+  --json --explain  the complete serialization, every field, nothing projected
+
+--json alone no longer emits every field. It did until the pointer projection
+existed, and the fields it dropped are the diagnostic tier and nothing else:
+score, explanation, cluster members, per-result provenance, the per-source
+ledger, and the plan. Reach them with --json --explain, which is byte for byte
+what --json used to print. What --json still carries unconditionally is what
+the response CLAIMS — the outcome, the coverage, a summary naming any source
+that could not answer, every suppression, and anything a budget omitted — on
+the same rule the human surface follows: a fact whose absence would read as an
+answer having nothing more to give is not a fact any tier may drop.
 
 Every response is bounded. --budget-tokens is charged against the whole
 rendering — the outcome line, each result as this surface prints it, and the
@@ -147,7 +168,14 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 	}
 
 	if *asJSON {
-		if code := report(env, emitJSON(env.Stdout, resp)); code != ExitOK {
+		// --explain is the same request on this surface as on the human one:
+		// add the diagnostic tier. Without it the response is projected to
+		// pointers, which is what a caller choosing a locator to expand reads.
+		var body any = projectPointer(resp)
+		if *explained {
+			body = resp
+		}
+		if code := report(env, emitJSON(env.Stdout, body)); code != ExitOK {
 			return code
 		}
 		return queryExit(resp)
@@ -177,12 +205,21 @@ func responseTokens(asked int) int {
 }
 
 // surface names the rendering this invocation will print, so the budget is
-// charged against what the caller actually receives. --json is the whole
-// response whether or not --explain was named, which is why it decides first.
+// charged against what the caller actually receives.
+//
+// The two flags are orthogonal and both matter: --json picks the encoding,
+// --explain picks the tier, and the four combinations are four different sizes.
+// Pricing projected JSON as the whole serialization would be safe in the sense
+// that it never underestimates, and wrong in the sense that matters — the
+// budget would shape the response for bytes this invocation is not going to
+// print, and a machine caller would get a shorter answer than a person running
+// the same query.
 func surface(asJSON, explained bool) recall.ResponseSurface {
 	switch {
-	case asJSON:
+	case asJSON && explained:
 		return recall.SurfaceStructured
+	case asJSON:
+		return recall.SurfaceStructuredPointer
 	case explained:
 		return recall.SurfaceExplained
 	default:

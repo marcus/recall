@@ -54,7 +54,8 @@ var surfaces = []struct {
 }{
 	{name: "pointer", want: recall.SurfacePointer},
 	{name: "explained", args: []string{"--explain"}, want: recall.SurfaceExplained},
-	{name: "structured", args: []string{"--json"}, want: recall.SurfaceStructured},
+	{name: "structured_pointer", args: []string{"--json"}, want: recall.SurfaceStructuredPointer},
+	{name: "structured", args: []string{"--json", "--explain"}, want: recall.SurfaceStructured},
 }
 
 func queryTokens(t *testing.T, h *harness, args ...string) int {
@@ -126,10 +127,10 @@ func TestASummarizedFrameStillNamesDegradedSources(t *testing.T) {
 	contains(t, out, "ledger omitted for the response budget",
 		"an omission a reader cannot see reads as a source that was never asked")
 
-	_, structured, _ := h.run("query", "--budget-tokens", "1", "--json", "anything")
+	_, structured, _ := h.run("query", "--budget-tokens", "1", "--json", "--explain", "anything")
 	var resp recall.QueryResponse
 	if err := json.Unmarshal([]byte(structured), &resp); err != nil {
-		t.Fatalf("--json output is not a response: %v", err)
+		t.Fatalf("--json --explain output is not a response: %v", err)
 	}
 	if resp.SourceOutcomes != nil || resp.SourceSummary == nil {
 		t.Fatalf("the ledger was kept in a response that could not afford it: %+v", resp)
@@ -140,6 +141,22 @@ func TestASummarizedFrameStillNamesDegradedSources(t *testing.T) {
 	if !slices.Contains(resp.Omitted, recall.OmittedSourceOutcomes) ||
 		!slices.Contains(resp.Omitted, recall.OmittedPlanSources) {
 		t.Errorf("omitted = %v; a fact removed for budget is named, not silently absent", resp.Omitted)
+	}
+
+	// The pointer tier reaches the same claim by never charging for the ledger
+	// in the first place. "omitted" stays empty here and that is the point: it
+	// means a budget removed something, and on this surface nothing was removed
+	// — the ledger is not part of the shape. What must survive either way is
+	// the degraded source, and it does.
+	_, projected, _ := h.run("query", "--budget-tokens", "1", "--json", "anything")
+	pointer := parsePointerJSON(t, projected)
+	if pointer.SourceSummary == nil || len(pointer.SourceSummary.Degraded) != 1 {
+		t.Errorf("the projected surface lost the degraded source: %+v", pointer.SourceSummary)
+	}
+	if len(pointer.Omitted) != 0 {
+		t.Errorf("omitted = %v; the projection is documented and identical on every "+
+			"query, so naming it here would confuse a budget fact with a shape",
+			pointer.Omitted)
 	}
 }
 
