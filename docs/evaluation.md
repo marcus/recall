@@ -47,14 +47,19 @@ config trust boundary, and suppression.
 
 **First-use pack.** Committed, network-free, and not synthetic. Six queries an
 agent put to Recall on 2026-07-27 on its first use of the tool, against the
-configured home profile, plus the four things that session found wrong. Two
-cases assert what worked and must keep working — a single-term query reaching a
-person's profile, and a clean abstention with complete coverage. Four are marked
-`expected_fail` against the tickets that fix them: a document that uses a word
-in an example outranking the task that is one, an excerpt that does not contain
-the term that matched, one record rendered as two results by two source
-instances over one catalog, and a natural-language phrasing returning several
-times the results its keyword form does.
+configured home profile, plus the four things that session found wrong. Three
+cases are enforced outright — a single-term query reaching a person's profile, a
+clean abstention with complete coverage, and the excerpt case td-b94f6e closed,
+which asserts that the text shown for a hit contains the term that produced it.
+That last claim is made twice, on the two cases whose matching term sits in the
+middle of its chunk rather than at the head, because it is the one defect here
+that no ranking metric can see. Three cases remain marked `expected_fail`
+against the tickets that fix them: a document that uses a word in an example
+outranking the task that is one, one
+record rendered as two results by two source instances over one catalog, and a
+natural-language phrasing returning several times the results its keyword form
+does. A marking comes off the case the moment it stops failing; the
+`expected_failures_current` gate fails the run otherwise.
 
 Its corpus is **pinned and committed**, which the development pack's is not, and
 the reason is what it gates. Every change to ranking or admission has to pass

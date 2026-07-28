@@ -2,7 +2,7 @@ outcome answered  coverage complete  results 3
 
 1. tasks:td-c53986  score 0.0163934  exact
    Build the CLI
-   query, expand, sources, doctor, config.
+ ~ query, expand, sources, doctor, config.
    type task  sensitivity internal  id td-c53986  candidate td-c53986#1  signals exact_identifier  local rank 1
    lineage 01UIDTASKS:td-c53986
      tasks:td-c53986  source tasks  local rank 1  signals exact_identifier
@@ -17,7 +17,7 @@ outcome answered  coverage complete  results 3
    score:         0.0163934 (rank constant 60), promoted on exact identifier
 2. docs:ranking.md#L1-20  score 0.0196721
    Ranking
-   Cross-source fusion uses rank, never raw scores.
+ > Cross-source fusion uses rank, never raw scores.
    type document  sensitivity internal  id ranking.md#L1-20  candidate ranking.md#L1-20#1  revision rev-9  signals lexical  local rank 1  observed 2026-03-04T05:06:07Z
    lineage 01UIDDOCS:ranking.md#L1-20
      docs:ranking.md#L1-20  source docs  local rank 1  signals lexical

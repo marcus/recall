@@ -144,6 +144,10 @@ func healthyPair(docs, tasks *fake) {
 		candidate("ranking.md#L1-20", 1, func(c *recall.Candidate) {
 			c.Title = "Ranking"
 			c.Excerpt = "Cross-source fusion uses rank, never raw scores."
+			// The two excerpt kinds are set apart here deliberately: the marker
+			// that tells a matched span from a record's opening is the whole of
+			// what a caller has without --explain, so it is pinned.
+			c.ExcerptKind = recall.ExcerptMatched
 			c.ObservedAt = &observed
 			c.SourceRevision = "rev-9"
 		}),
@@ -161,6 +165,7 @@ func healthyPair(docs, tasks *fake) {
 			c.RecordType = recall.RecordTask
 			c.Title = "Build the CLI"
 			c.Excerpt = "query, expand, sources, doctor, config."
+			c.ExcerptKind = recall.ExcerptPreview
 			c.MatchSignals = []recall.MatchSignal{recall.MatchExactIdentifier}
 		}),
 	}

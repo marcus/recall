@@ -3,7 +3,7 @@ degraded coverage: tasks (unreachable)
 
 1. docs:ranking.md#L1-20  score 0.0196721
    Ranking
-   Cross-source fusion uses rank, never raw scores.
+ > Cross-source fusion uses rank, never raw scores.
    type document  sensitivity internal  id ranking.md#L1-20  candidate ranking.md#L1-20#1  revision rev-9  signals lexical  local rank 1  observed 2026-03-04T05:06:07Z
    lineage 01UIDDOCS:ranking.md#L1-20
      docs:ranking.md#L1-20  source docs  local rank 1  signals lexical

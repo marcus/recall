@@ -33,7 +33,10 @@ flags:
   --auth-token-env ENV read the server bearer token from ENV
 
 Human output states coverage inline: a source that was eligible and could not
-answer is named, never silently absent.
+answer is named, never silently absent. An excerpt is marked by what it is:
+"> " is the span that matched the query, "~ " is the record's opening shown
+because nothing in its text matched, and an unmarked excerpt is one whose
+source did not say which. --json reports the same as excerpt_kind.
 
 ` + exitCodes
 
@@ -210,7 +213,7 @@ func renderResults(o *out, results []recall.Result, explained bool) {
 			o.block("   ", r.Primary.Title)
 		}
 		if r.Primary.Excerpt != "" {
-			o.block("   ", r.Primary.Excerpt)
+			o.block(excerptIndent(r.Primary.ExcerptKind), r.Primary.Excerpt)
 		}
 		if !meta.empty() {
 			o.block("   ", meta.String())
@@ -219,6 +222,28 @@ func renderResults(o *out, results []recall.Result, explained bool) {
 		if explained {
 			o.block("   ", explain.Render(r.Explanation))
 		}
+	}
+}
+
+// excerptIndent marks what the excerpt is, in the three states the JSON form
+// carries: "> " quotes the span the query matched, "~ " stands in for it with
+// the record's opening because nothing in its text matched, and no marker means
+// the source claimed neither.
+//
+// All three are one glyph wide so the block stays aligned with everything else
+// under a result. A marker rather than a label because the distinction has to
+// survive without --explain: a caller shown the head of a document has no way
+// to tell a real hit from a false one, and establishing it by hand is what that
+// costs. The unmarked case is a third state and not a preview — collapsing the
+// two would make the human surface assert something the JSON does not.
+func excerptIndent(kind recall.ExcerptKind) string {
+	switch kind {
+	case recall.ExcerptMatched:
+		return " > "
+	case recall.ExcerptPreview:
+		return " ~ "
+	default:
+		return "   "
 	}
 }
 

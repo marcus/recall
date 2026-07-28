@@ -104,6 +104,9 @@ func (s Shaper) Shape(results []recall.Result, budget recall.Budget) Shaped {
 // a label and a locator.
 func compress(r recall.Result) recall.Result {
 	r.Primary.Excerpt = ""
+	// The kind described an excerpt that is no longer there. Keeping it would
+	// claim a match the caller was never shown.
+	r.Primary.ExcerptKind = ""
 	r.Members = nil
 	return r
 }

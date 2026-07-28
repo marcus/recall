@@ -32,7 +32,10 @@ import (
 // either the previous generation or the new one, never a half-written index —
 // which is why an interrupted build costs freshness and nothing else.
 const (
-	indexFormat  = 1
+	// indexFormat 2 added the chunk body digest. A generation without it cannot
+	// prove that a live document still holds the bytes that were ranked, so it
+	// is rebuilt rather than read.
+	indexFormat  = 2
 	indexFile    = "index.jsonl"
 	currentFile  = "current"
 	genPrefix    = "gen-"
@@ -75,16 +78,26 @@ type indexedDoc struct {
 func (d indexedDoc) RecordID() string { return d.Path }
 
 type indexedChunk struct {
-	Path        string         `json:"path"`
-	Ord         int            `json:"ord"`
-	StartLine   int            `json:"start_line"`
-	EndLine     int            `json:"end_line"`
-	Heading     string         `json:"heading,omitempty"`
-	HeadingPath []string       `json:"heading_path,omitempty"`
-	Excerpt     string         `json:"excerpt,omitempty"`
-	Fingerprint string         `json:"fingerprint"`
-	Length      int            `json:"length"`
-	Terms       map[string]int `json:"terms,omitempty"`
+	Path        string   `json:"path"`
+	Ord         int      `json:"ord"`
+	StartLine   int      `json:"start_line"`
+	EndLine     int      `json:"end_line"`
+	Heading     string   `json:"heading,omitempty"`
+	HeadingPath []string `json:"heading_path,omitempty"`
+	Excerpt     string   `json:"excerpt,omitempty"`
+	Fingerprint string   `json:"fingerprint"`
+
+	// BodyDigest hashes the chunk body byte for byte, which Fingerprint
+	// deliberately does not: a fingerprint is normalized over tokens so that
+	// reflowing a paragraph does not look like a second piece of text, and that
+	// is exactly the property a query-time excerpt cannot be gated on. Reflow
+	// preserves the tokens and moves the words, so a normalized gate would let
+	// the same query over the same generation cut a different window while the
+	// candidate still reported the generation's watermark.
+	BodyDigest string `json:"body_digest"`
+
+	Length int            `json:"length"`
+	Terms  map[string]int `json:"terms,omitempty"`
 }
 
 // Local is this chunk's locator local part: path plus line range, which is
@@ -390,6 +403,7 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 			HeadingPath: c.HeadingPath,
 			Excerpt:     c.excerpt(),
 			Fingerprint: c.fingerprint(),
+			BodyDigest:  bodyDigest(c.Body),
 			Length:      length,
 			Terms:       terms,
 		})

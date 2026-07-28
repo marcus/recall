@@ -415,6 +415,28 @@ An excerpt is a bounded preview, not a payload. A candidate is a pointer; the
 locator is how a caller gets the rest. Bound it in bytes, cut at a character
 boundary, and mark that it was cut.
 
+Cut it around the span that matched, and say so with `excerpt_kind: matched`.
+An excerpt selected before the query exists — at index time, or from the head of
+the record — cannot contain the term that produced the hit, so a caller cannot
+tell a real match from a false one without re-deriving it by hand. When nothing
+in the record's text matched, because the query named the record outright or
+matched a field the excerpt does not carry, its opening is the honest preview
+and `excerpt_kind: preview` is what keeps it from reading as the match. When you
+could not establish which it is — the record was unreadable, or moved past the
+revision you ranked — omit the kind entirely. `preview` is a claim that nothing
+matched, and a failed read is not evidence of that.
+
+Whatever you select, select it deterministically: the same query against the
+same revision must produce the same window, or evaluation runs cannot compare.
+If the window is cut from live content rather than from the index, verify the
+content byte for byte first — a normalized or token-level hash passes on a
+reflow that moves every offset the window is cut at, which is a different
+excerpt under an unchanged watermark. `internal/adapters/docs` re-reads the
+document for the results it is about to return, gates on a byte-exact body
+digest, and reports the count it could not read in its search diagnostics; see
+the note at the top of `excerpt.go` for why it does that rather than store
+positions in its index.
+
 Everything you emit is untrusted source text on its way to a terminal and to a
 model, and the core's sanitizer only walks top-level string fields — anything
 nested one level down, such as a list inside `metadata`, arrives exactly as your

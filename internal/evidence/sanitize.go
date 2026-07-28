@@ -69,6 +69,17 @@ func Sanitize(c recall.Candidate, lim Limits) (recall.Candidate, []Note) {
 	c.Title, notes = cleanField(c.Title, "title", lim.Title, notes)
 	c.Excerpt, notes = cleanField(c.Excerpt, "excerpt", lim.Excerpt, notes)
 
+	// The excerpt kind is a closed vocabulary the core reads, not text it
+	// forwards. Anything else asserts nothing: dropping it keeps unrecognized
+	// source-controlled bytes out of every surface that renders a result, and
+	// an absent kind already means the source made no claim.
+	switch c.ExcerptKind {
+	case "", recall.ExcerptMatched, recall.ExcerptPreview:
+	default:
+		notes = append(notes, Note{Field: "excerpt_kind", Action: "dropped_unknown"})
+		c.ExcerptKind = ""
+	}
+
 	// The locator's source part is assigned by the core, so only the
 	// adapter-defined local part is untrusted. Cleaning is applied to that
 	// alone, and never to the separator structure, or the reference would stop

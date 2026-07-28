@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"context"
 	"math"
 	"sort"
 	"strconv"
@@ -262,8 +263,22 @@ func docFilter(g *generation, req recall.SearchRequest) func(indexedChunk) bool 
 	}
 }
 
-// candidates renders ranked hits as the envelope the core consumes.
-func candidates(g *generation, sourceID string, hits []hit, limit int) []recall.Candidate {
+// candidates renders ranked hits as the envelope the core consumes, and reports
+// how many of them could not be read from the corpus to select an excerpt.
+//
+// The excerpt is chosen here rather than at index time, so it can be the span
+// the query matched. bodies reads the live document for that, at most once per
+// distinct document in the truncated result list; see excerpt.go. A nil bodies
+// reads nothing, and every excerpt is the indexed one with no claim about it.
+func candidates(
+	ctx context.Context,
+	g *generation,
+	sourceID string,
+	hits []hit,
+	limit int,
+	query queryAnalysis,
+	bodies *bodyReader,
+) ([]recall.Candidate, int) {
 	if limit <= 0 {
 		limit = defaultLimit
 	}
@@ -272,6 +287,8 @@ func candidates(g *generation, sourceID string, hits []hit, limit int) []recall.
 	}
 	confirmed := g.confirmedAt()
 	observed := g.header.BuiltAt
+	terms := excerptTerms(query)
+	unavailable := 0
 
 	out := make([]recall.Candidate, 0, len(hits))
 	for i, h := range hits {
@@ -288,6 +305,19 @@ func candidates(g *generation, sourceID string, hits []hit, limit int) []recall.
 			signals = append(signals, recall.MatchAlias)
 		}
 
+		// An excerpt the adapter could not verify against the corpus asserts
+		// nothing. Calling it a preview would claim the query matched nothing in
+		// the record, which is not what an unreadable file says.
+		excerpt, kind := c.Excerpt, recall.ExcerptKind("")
+		switch window, basis := bodies.excerpt(ctx, c, terms); basis {
+		case basisMatched:
+			excerpt, kind = window, recall.ExcerptMatched
+		case basisNoMatch:
+			kind = recall.ExcerptPreview
+		default:
+			unavailable++
+		}
+
 		out = append(out, recall.Candidate{
 			CandidateID: chunkCandidateID(c),
 			// The identity of the DOCUMENT. Two chunks of one file are one
@@ -296,7 +326,8 @@ func candidates(g *generation, sourceID string, hits []hit, limit int) []recall.
 			Locator:        recall.Locator{SourceID: sourceID, Local: c.Local()},
 			RecordType:     recall.RecordDocument,
 			Title:          chunkTitle(doc, c),
-			Excerpt:        c.Excerpt,
+			Excerpt:        excerpt,
+			ExcerptKind:    kind,
 			LocalRank:      i + 1,
 			LocalScore:     &score,
 			MatchSignals:   signals,
@@ -320,7 +351,7 @@ func candidates(g *generation, sourceID string, hits []hit, limit int) []recall.
 			ContentFingerprint: c.Fingerprint,
 		})
 	}
-	return out
+	return out, unavailable
 }
 
 // chunkCandidateID is stable within a generation and survives edits that move
@@ -349,6 +380,7 @@ func searchDiagnostics(
 	req recall.SearchRequest,
 	query queryAnalysis,
 	pool int,
+	unreadable int,
 	elapsed time.Duration,
 ) map[string]any {
 	diag := map[string]any{
@@ -370,6 +402,14 @@ func searchDiagnostics(
 	if len(g.failures) > 0 {
 		diag["failed_count"] = len(g.failures)
 	}
+	if unreadable > 0 {
+		// Results whose document could not be read to select an excerpt: gone,
+		// unreadable, grown past the corpus boundary, or no longer holding the
+		// bytes this generation ranked. Their excerpts are the indexed ones and
+		// claim nothing, and the count is what makes a corpus drifting under a
+		// published generation visible without diffing it by hand.
+		diag["excerpt_basis_unavailable"] = unreadable
+	}
 	if len(req.Filters.Entities) > 0 {
 		diag["entity_filter"] = "lexical_tokens"
 	}
@@ -384,4 +424,22 @@ func queryRetainedTermCount(query queryAnalysis) int {
 		return len(uniqueTerms(query.retained))
 	}
 	return len(uniqueTerms(query.terms))
+}
+
+// excerptTerms are the terms an excerpt window may be anchored on.
+//
+// It is the same population query_term_count reports, so the query the
+// diagnostics describe is the query the excerpt was selected against. Function
+// words are excluded for the same reason they are excluded from proving
+// relevance: a window anchored on "the" shows a match nobody asked about.
+func excerptTerms(query queryAnalysis) map[string]bool {
+	terms := query.terms
+	if query.normalized {
+		terms = query.retained
+	}
+	out := make(map[string]bool, len(terms))
+	for _, t := range terms {
+		out[t] = true
+	}
+	return out
 }

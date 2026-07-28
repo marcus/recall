@@ -377,3 +377,28 @@ func TestSanitizeMarksEvidenceItTruncated(t *testing.T) {
 		t.Error("the boundary that applied should be named")
 	}
 }
+
+// An excerpt kind is a claim the core reads, so only the two it defines may
+// cross the boundary. Anything else is source-controlled text arriving in a
+// field every surface renders beside evidence.
+func TestSanitizeDropsAnUnknownExcerptKind(t *testing.T) {
+	lim := evidence.DefaultLimits()
+
+	got, notes := evidence.Sanitize(recall.Candidate{
+		Excerpt:     "text",
+		ExcerptKind: recall.ExcerptKind("matched\x1b[31m"),
+	}, lim)
+	if got.ExcerptKind != "" {
+		t.Errorf("excerpt kind = %q, want it dropped", got.ExcerptKind)
+	}
+	if len(notes) == 0 {
+		t.Error("dropping a field must be reported")
+	}
+
+	for _, kind := range []recall.ExcerptKind{"", recall.ExcerptMatched, recall.ExcerptPreview} {
+		got, _ := evidence.Sanitize(recall.Candidate{Excerpt: "text", ExcerptKind: kind}, lim)
+		if got.ExcerptKind != kind {
+			t.Errorf("excerpt kind %q became %q", kind, got.ExcerptKind)
+		}
+	}
+}

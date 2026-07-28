@@ -243,13 +243,16 @@ func (a *Adapter) setBuildError(err error) {
 
 // Search ranks chunks against the query, from the published generation only.
 //
-// It does not stat the corpus. Staleness is a property of the source over time
-// and belongs to Health, which the core probes on its own cadence; walking the
+// It does not walk the corpus. Staleness is a property of the source over time
+// and belongs to Health, which the core probes on its own cadence; scanning the
 // corpus on every query would make every search pay for a fact that changes far
-// more slowly than queries arrive.
+// more slowly than queries arrive. Ranking therefore reads the index alone; the
+// documents behind the results it is about to return are read once each, to cut
+// each excerpt around the span that matched.
 func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	a.mu.RLock()
 	gen, sourceID, closed := a.gen, a.sourceID, a.closed
+	root, maxBytes := a.root, a.settings.MaxFileBytes
 	a.mu.RUnlock()
 
 	switch {
@@ -265,7 +268,17 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 
 	start := time.Now()
 	hits, query := searchIndex(gen, req)
-	found := candidates(gen, sourceID, hits, req.Limit)
+
+	// Excerpt selection reads files, so it is the one part of a search that can
+	// run out of time. Both bounds are folded into one context here; a read that
+	// does not happen costs the result its excerpt basis and nothing else.
+	if !req.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
+		defer cancel()
+	}
+	found, unreadable := candidates(
+		ctx, gen, sourceID, hits, req.Limit, query, newBodyReader(root, maxBytes))
 
 	// A generation built over a partial boundary answers partial, every time it
 	// answers. The alternative is a source reporting success over a corpus it
@@ -276,7 +289,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 	return recall.SearchResponse{
 		Candidates:      found,
-		Diagnostics:     searchDiagnostics(gen, req, query, len(hits), time.Since(start)),
+		Diagnostics:     searchDiagnostics(gen, req, query, len(hits), unreadable, time.Since(start)),
 		SourceWatermark: gen.header.Watermark,
 		Outcome:         outcome,
 	}, nil

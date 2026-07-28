@@ -216,6 +216,22 @@ excerpts; trailing results compress to one line plus locator. The same
 structure serializes to JSON and renders as tiered text. Neither surface gets
 extra fields.
 
+An excerpt says which of two things it is. `excerpt_kind: matched` is the span
+the query matched; `excerpt_kind: preview` is the record's opening, shown
+because nothing in its text matched — the query named the document outright, or
+matched a field the excerpt does not carry. Absent is a third state and not a
+default: the source asserts neither, either because it does not select excerpts
+by query or because it could not read the record to find out. All three are
+distinguishable without `--explain`, because a caller shown the head of a record
+has no way to tell a real hit from a false one and re-deriving it by hand is the
+cost.
+
+A matched excerpt is a claim about a revision, so it must be selected from text
+that revision actually holds: the same query against the same generation always
+yields the same window, or it yields none. An adapter that cuts the window from
+live content verifies the content is unchanged first — byte for byte, since a
+normalized comparison passes on a reflow that moves every offset.
+
 ### Abstention
 
 Recall abstains when nothing survived selection and at least one source

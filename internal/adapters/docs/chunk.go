@@ -76,6 +76,17 @@ func (c parsedChunk) fingerprint() string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// bodyDigest identifies the chunk body byte for byte.
+//
+// It is the opposite of fingerprint on purpose. Corroboration must not be
+// fooled by a reflowed paragraph; a query-time excerpt must be, because the
+// window it cuts is a position in those bytes. Anything that moves a word moves
+// the window, so anything that moves a word has to change this value.
+func bodyDigest(body []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(body, "\n")))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
 // parseChunks splits a Markdown document into heading-bounded chunks.
 //
 // Only ATX headings ("## Title") open a chunk. Setext underlines are not

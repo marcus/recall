@@ -29,6 +29,12 @@ type Candidate struct {
 	Title      string     `json:"title"`
 	Excerpt    string     `json:"excerpt,omitempty"`
 
+	// ExcerptKind reports whether the excerpt is the span that matched or the
+	// record's opening. Empty is a third state and not a default: the source
+	// asserts nothing, either because it does not select excerpts by query or
+	// because it could not establish which this one is.
+	ExcerptKind ExcerptKind `json:"excerpt_kind,omitempty"`
+
 	// LocalRank is the candidate's position in its source's own result list,
 	// one-based. It is the only mandatory relevance signal and the only one
 	// fusion consumes.

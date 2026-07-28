@@ -13,6 +13,11 @@ const maxTokenRunes = 64
 type scannedToken struct {
 	value  string
 	quoted bool
+	// start is the token's rune offset in the scanned text. Excerpt selection
+	// needs it to cut around a match, and deriving it from a second scan with
+	// different rules is how the cut ends up in the middle of the word it was
+	// supposed to show.
+	start int
 }
 
 // tokenize folds text into lowercase alphanumeric tokens.
@@ -40,6 +45,7 @@ func scanTokens(s string, quoteAware bool) []scannedToken {
 	var out []scannedToken
 	var b strings.Builder
 	quoted := false
+	start := 0
 
 	flush := func() {
 		if b.Len() == 0 {
@@ -48,17 +54,23 @@ func scanTokens(s string, quoteAware bool) []scannedToken {
 		tok := b.String()
 		b.Reset()
 		if len([]rune(tok)) <= maxTokenRunes {
-			out = append(out, scannedToken{value: tok, quoted: quoted})
+			out = append(out, scannedToken{value: tok, quoted: quoted, start: start})
 		}
 	}
 
+	// Rune offsets, not the byte offsets ranging a string yields.
+	at := -1
 	for _, r := range s {
+		at++
 		if quoteAware && r == '"' {
 			flush()
 			quoted = !quoted
 			continue
 		}
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if b.Len() == 0 {
+				start = at
+			}
 			b.WriteRune(unicode.ToLower(r))
 			continue
 		}

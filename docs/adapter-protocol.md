@@ -285,6 +285,11 @@ derived_from         optional upstream locators, for lineage
 record_type          person | task | document | message | event | ...
 title                compact human-readable label
 excerpt              bounded evidence preview
+excerpt_kind         matched | preview; what the excerpt is evidence of.
+                     Omit it when you cannot say which — because the excerpt
+                     does not depend on the query, or because the record could
+                     not be read to find out. Omitted is a third state and not
+                     a default: preview asserts that nothing matched.
 local_rank           mandatory rank within this source's result list
 local_score          optional native score, diagnostic only
 match_signals        exact_identifier | lexical | semantic | field | alias

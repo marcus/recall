@@ -130,6 +130,29 @@ const (
 	MatchAlias           MatchSignal = "alias"
 )
 
+// ExcerptKind says what a candidate's excerpt is evidence of.
+//
+// The two values are not interchangeable. A matched excerpt is the reason the
+// record was returned; a preview is the record's opening, shown because nothing
+// in its text matched — the query named the document outright, or matched a
+// field the excerpt does not carry. A caller that cannot tell them apart has to
+// re-derive the match by hand to find out whether a hit was real.
+//
+// The empty value is neither, and is not a default standing in for preview: it
+// says the source made no claim. A source that does not select excerpts by
+// query leaves it empty, and so does one that could not read the record to find
+// out. Reporting either of those as a preview would assert that nothing
+// matched, which is a claim about the record rather than about the source.
+type ExcerptKind string
+
+const (
+	// ExcerptMatched means the excerpt is the span the query matched.
+	ExcerptMatched ExcerptKind = "matched"
+	// ExcerptPreview means nothing in the record's text matched and the
+	// excerpt is its opening.
+	ExcerptPreview ExcerptKind = "preview"
+)
+
 // QueryMode is a kind of retrieval an adapter supports.
 type QueryMode string
 

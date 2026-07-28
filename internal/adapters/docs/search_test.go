@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/recall"
@@ -433,5 +434,180 @@ func TestSearchReportsTheRevisionItSearched(t *testing.T) {
 	}
 	if diag, ok := resp.Diagnostics["generation"].(string); !ok || diag == "" {
 		t.Error("diagnostics do not name the generation that answered")
+	}
+}
+
+// TestExcerptShowsTheSpanThatMatched is the one an agent's first session paid
+// for: the indexed excerpt is the head of the chunk, so a term further down
+// produced a hit whose displayed text carried nothing of the query, and
+// establishing that the hit was real took reading the file by hand.
+func TestExcerptShowsTheSpanThatMatched(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, cleanCorpus(t), nil)
+
+	// "rename" is in the second paragraph of the Indexing section, which the
+	// head-of-chunk preview never reaches.
+	resp := search(t, a, "rename")
+	if len(resp.Candidates) == 0 {
+		t.Fatal("no candidate for a term that is in the corpus")
+	}
+	c := resp.Candidates[0]
+	if !strings.Contains(c.Excerpt, "rename") {
+		t.Errorf("excerpt of %s does not contain the term that matched: %q", c.Locator.Local, c.Excerpt)
+	}
+	if c.ExcerptKind != recall.ExcerptMatched {
+		t.Errorf("excerpt kind = %q, want %q", c.ExcerptKind, recall.ExcerptMatched)
+	}
+	if strings.HasPrefix(c.Excerpt, "An index is a rebuildable projection") {
+		t.Errorf("excerpt is still the head of the chunk: %q", c.Excerpt)
+	}
+	for _, c := range resp.Candidates {
+		if n := utf8.RuneCountInString(c.Excerpt); n > 400 {
+			t.Errorf("excerpt of %s is %d runes; the bound is 400", c.Locator.Local, n)
+		}
+	}
+}
+
+// TestExcerptIsStableAcrossSearches. Eval runs compare excerpts between runs,
+// so the same query against the same generation has to select the same window.
+func TestExcerptIsStableAcrossSearches(t *testing.T) {
+	t.Parallel()
+	a, _ := newAdapter(t, cleanCorpus(t), nil)
+
+	first := search(t, a, "generation rename publishes")
+	for i := range 5 {
+		again := search(t, a, "generation rename publishes")
+		if len(again.Candidates) != len(first.Candidates) {
+			t.Fatalf("run %d returned %d candidates, first run returned %d",
+				i, len(again.Candidates), len(first.Candidates))
+		}
+		for j, c := range again.Candidates {
+			if c.Excerpt != first.Candidates[j].Excerpt {
+				t.Fatalf("run %d, result %d: excerpt %q, first run %q",
+					i, j, c.Excerpt, first.Candidates[j].Excerpt)
+			}
+		}
+	}
+}
+
+// TestNamedDocumentKeepsTheIndexedPreview. A document the query named outright
+// matched no text at all, so the head of the chunk is the honest preview — and
+// it has to be reported as a preview rather than as the span that matched.
+func TestNamedDocumentKeepsTheIndexedPreview(t *testing.T) {
+	t.Parallel()
+	root := cleanCorpus(t)
+	if err := os.MkdirAll(filepath.Join(root, "guides"), 0o755); err != nil {
+		t.Fatalf("create guides: %v", err)
+	}
+	body := "# Welcome\n\nThe kitchen is on the second floor.\n\nCoffee is downstairs.\n"
+	if err := os.WriteFile(filepath.Join(root, "guides", "onboarding.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write document: %v", err)
+	}
+	a, _ := newAdapter(t, root, nil)
+
+	resp := search(t, a, "guides/onboarding.md")
+	if len(resp.Candidates) == 0 {
+		t.Fatal("naming a document returned nothing")
+	}
+	c := resp.Candidates[0]
+	if !c.Exact() {
+		t.Fatalf("top candidate %s is not the named document", c.Locator.Local)
+	}
+	if c.ExcerptKind != recall.ExcerptPreview {
+		t.Errorf("excerpt kind = %q, want %q: nothing in the body matched",
+			c.ExcerptKind, recall.ExcerptPreview)
+	}
+	if !strings.HasPrefix(c.Excerpt, "The kitchen is on the second floor.") {
+		t.Errorf("excerpt = %q, want the opening of the named document", c.Excerpt)
+	}
+}
+
+// TestExcerptClaimsNothingWhenTheChunkChanged. The window is cut from the live
+// file, so a document edited after the build could otherwise be quoted at
+// offsets this generation never ranked. The indexed excerpt is what is shown
+// instead, and no kind is claimed for it: an unreadable body says nothing about
+// whether the query matched the record, so calling it a preview would assert
+// something the adapter did not establish.
+func TestExcerptClaimsNothingWhenTheChunkChanged(t *testing.T) {
+	t.Parallel()
+	root := cleanCorpus(t)
+	a, _ := newAdapter(t, root, nil)
+
+	rewritten := "# Recall Architecture\n\n## Indexing\n\nEverything here is different now.\n"
+	path := filepath.Join(root, "projects", "recall", "architecture.md")
+	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+		t.Fatalf("rewrite document: %v", err)
+	}
+
+	resp := search(t, a, "rename")
+	if len(resp.Candidates) == 0 {
+		t.Fatal("no candidate from the still-published generation")
+	}
+	c := resp.Candidates[0]
+	if c.ExcerptKind != "" {
+		t.Errorf("excerpt kind = %q, want no claim for a chunk the file no longer holds",
+			c.ExcerptKind)
+	}
+	if strings.Contains(c.Excerpt, "Everything here is different now") {
+		t.Errorf("excerpt quotes text this generation never ranked: %q", c.Excerpt)
+	}
+	if !strings.HasPrefix(c.Excerpt, "An index is a rebuildable projection") {
+		t.Errorf("excerpt = %q, want the indexed excerpt", c.Excerpt)
+	}
+	if got := resp.Diagnostics["excerpt_basis_unavailable"]; got != 1 {
+		t.Errorf("diagnostics report %v results with no excerpt basis, want 1", got)
+	}
+}
+
+// TestExcerptRefusesAReflowedBody is the determinism criterion at the seam it
+// is easiest to lose. The content fingerprint is normalized over tokens, so a
+// paragraph rewrapped with different punctuation is the same fingerprint and a
+// different set of line offsets — a fingerprint gate would accept it and cut a
+// different window for the same query against the same generation, while the
+// candidate still reported that generation's watermark.
+func TestExcerptRefusesAReflowedBody(t *testing.T) {
+	t.Parallel()
+	root := cleanCorpus(t)
+	a, _ := newAdapter(t, root, nil)
+
+	path := filepath.Join(root, "projects", "recall", "architecture.md")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read document: %v", err)
+	}
+	before := search(t, a, "rename")
+	if len(before.Candidates) == 0 {
+		t.Fatal("no candidate for a term that is in the corpus")
+	}
+
+	// Same tokens in the same order, rewrapped: one line instead of two, and a
+	// comma moved. Nothing a token-normalized hash can see.
+	reflowed := strings.Replace(string(original),
+		"The builder writes a whole generation and publishes it with a single rename, so\n"+
+			"an interrupted build costs freshness and nothing else. Example of the layout:",
+		"The builder writes a whole generation and publishes it with a single rename "+
+			"so an interrupted build costs freshness and nothing else — example of the layout:",
+		1)
+	if reflowed == string(original) {
+		t.Fatal("fixture text moved; the reflow no longer applies")
+	}
+	if err := os.WriteFile(path, []byte(reflowed), 0o644); err != nil {
+		t.Fatalf("reflow document: %v", err)
+	}
+
+	after := search(t, a, "rename")
+	if len(after.Candidates) == 0 {
+		t.Fatal("no candidate after the reflow")
+	}
+	got := after.Candidates[0]
+	if got.ContentFingerprint != before.Candidates[0].ContentFingerprint {
+		t.Fatal("the reflow changed the fingerprint; it no longer tests the gate it was written for")
+	}
+	if got.ExcerptKind != "" {
+		t.Errorf("excerpt kind = %q, want no claim for a body that is no longer byte for byte "+
+			"what was indexed", got.ExcerptKind)
+	}
+	if !strings.HasPrefix(got.Excerpt, "An index is a rebuildable projection") {
+		t.Errorf("excerpt = %q, want the indexed excerpt", got.Excerpt)
 	}
 }
