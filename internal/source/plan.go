@@ -2,7 +2,9 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 // to the caller and asserted on by evaluation gates.
 const (
 	ReasonOutOfScope         = "out_of_scope"
+	ReasonOutOfProfile       = "out_of_profile"
 	ReasonDisabled           = "disabled"
 	ReasonSensitivity        = "sensitivity_ceiling"
 	ReasonUnhealthy          = "unhealthy"
@@ -219,11 +222,17 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		return Plan{}, err
 	}
 
+	outside, err := r.scopedOutOfProfile(req, profile, instances)
+	if err != nil {
+		return Plan{}, err
+	}
+
 	start := now()
 	plan := Plan{
 		Profile:  profile.Name,
 		Reserve:  reserve,
 		Deadline: start.Add(time.Duration(req.Budget.LatencyMS) * time.Millisecond),
+		Excluded: outside,
 	}
 	if req.Budget.LatencyMS <= 0 {
 		// No stated budget is not the same as no budget: an unbounded query
@@ -266,6 +275,102 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		}
 	}
 	return plan, nil
+}
+
+// scopedOutOfProfile answers what a `scope source=` naming something the
+// profile does not contain means.
+//
+// A source id is a thing the caller can see in `recall sources` and reasonably
+// expects to be askable, so naming one is a request that either narrows the
+// profile or cannot be satisfied as written. There is no third reading in which
+// it narrows the profile to nothing and the empty answer is a fact about the
+// corpus:
+//
+//   - every named source outside the profile is refused outright, because the
+//     alternative is `outcome abstained  coverage complete  elapsed 0s`, which
+//     says every eligible source answered and none knows. Nothing was asked.
+//     The message names a profile that does contain the source, which
+//     `recall sources` already knows.
+//   - a partial overlap answers from the sources that are in the profile and
+//     reports the rest as excluded, which degrades coverage. The caller asked
+//     for evidence from a set this profile cannot fully reach, and that is
+//     exactly what degraded means.
+//
+// Only `scope source=` is treated this way. A type, project, or entity that
+// matches nothing is a true absence — the caller named a property of records,
+// not a source that exists and was not asked.
+func (r *Registry) scopedOutOfProfile(
+	req recall.QueryRequest,
+	profile config.Profile,
+	instances []*config.SourceInstance,
+) ([]recall.SourceReport, error) {
+	if req.Scope == nil || len(req.Scope.SourceIDs) == 0 {
+		return nil, nil
+	}
+	member := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		member[inst.ID] = true
+	}
+
+	var (
+		reports   []recall.SourceReport
+		inside    int
+		elsewhere []string
+		unknown   []string
+	)
+	for _, id := range req.Scope.SourceIDs {
+		if member[id] {
+			inside++
+			continue
+		}
+		inst, configured := r.cfg.Source(id)
+		if !configured {
+			unknown = append(unknown, id)
+			continue
+		}
+		elsewhere = append(elsewhere, id)
+		reports = append(reports, recall.SourceReport{
+			SourceUID: inst.UID,
+			SourceID:  inst.ID,
+			Outcome:   recall.SearchSkipped,
+			Reason:    ReasonOutOfProfile,
+			Diagnostics: map[string]any{
+				"profile":  profile.Name,
+				"profiles": r.cfg.ProfilesContaining(id),
+			},
+		})
+	}
+	if inside > 0 {
+		// Some of what was named is here. Answer from it, and let the rest
+		// degrade coverage rather than disappear. An id that is not configured
+		// at all names nothing this installation could report on, so it is not
+		// in the ledger — but it is still part of a scope that cannot be met,
+		// and a request naming only unconfigured sources is refused below.
+		return reports, nil
+	}
+	return nil, unsatisfiableScope(r.cfg, profile.Name, elsewhere, unknown)
+}
+
+// unsatisfiableScope writes the refusal, naming where the source can be asked.
+func unsatisfiableScope(cfg *config.Config, profile string, elsewhere, unknown []string) error {
+	named := append(append([]string(nil), elsewhere...), unknown...)
+	slices.Sort(named)
+	switch {
+	case len(elsewhere) == 0:
+		return fmt.Errorf("%w: scope source=%s: no such source is configured; `recall sources` lists what this installation has",
+			recall.ErrUnsatisfiableScope, strings.Join(named, ","))
+	default:
+		var advice []string
+		for _, id := range elsewhere {
+			if profiles := cfg.ProfilesContaining(id); len(profiles) > 0 {
+				advice = append(advice, fmt.Sprintf("%s is in %s", id, strings.Join(profiles, ", ")))
+			} else {
+				advice = append(advice, fmt.Sprintf("%s is in no profile", id))
+			}
+		}
+		return fmt.Errorf("%w: scope source=%s: not in profile %q, so nothing would be asked; %s. Use --profile, or widen the scope",
+			recall.ErrUnsatisfiableScope, strings.Join(named, ","), profile, strings.Join(advice, "; "))
+	}
 }
 
 // refuseDuplicateStores prevents one physical store from entering a plan as

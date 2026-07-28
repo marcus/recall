@@ -158,6 +158,23 @@ func (c *Config) ProfileNames() []string {
 	return names
 }
 
+// ProfilesContaining names every profile that has a source as a member, sorted.
+//
+// It exists so a request that named a source the active profile does not
+// contain can be told where the source can be asked, rather than only that it
+// cannot be asked here. The mapping is already what `recall sources` reports;
+// this is the same fact read the other way round.
+func (c *Config) ProfilesContaining(sourceID string) []string {
+	var out []string
+	for name, p := range c.Profiles {
+		if p.Contains(sourceID) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // ProfileSources returns a profile's members in profile order.
 //
 // Every member is returned, including disabled ones and ones the ceiling

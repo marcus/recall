@@ -857,7 +857,15 @@ source whose contract retains history, such as an archive stream.
 
 Eligibility uses hard constraints only:
 
-- Explicit scope from the request.
+- Explicit scope from the request. A `source` scope names members of the
+  resolved profile. Naming only sources the profile does not contain — whether
+  configured elsewhere or not configured at all — is refused as an
+  unsatisfiable scope rather than answered, because the alternative asserts
+  `coverage: complete` over a source set the scope narrowed to zero. A scope
+  that names some members and some non-members answers from the members and
+  reports the rest as `out_of_profile`, which degrades coverage. Every other
+  scope key naming nothing is a true absence and stays one: it constrains
+  records, not the source set.
 - Permission and sensitivity policy.
 - Adapter health and remaining latency budget.
 - `as_of` support when the request carries `as_of`.

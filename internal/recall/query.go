@@ -1,6 +1,9 @@
 package recall
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // QueryRequest is the host-facing contract. Everything Recall knows about the
 // caller arrives here: it reads no transcript, no session log, and holds no
@@ -38,6 +41,18 @@ type QueryRequest struct {
 	Budget Budget         `json:"budget"`
 	Limit  int            `json:"limit"`
 }
+
+// ErrUnsatisfiableScope means the request named a scope this profile cannot
+// satisfy as written — every source it named is outside the profile, or is not
+// configured at all.
+//
+// It is an error rather than an empty answer on purpose. Everywhere else,
+// `coverage: complete` means every eligible source was asked; a scope that
+// narrowed the source set to nothing makes that claim over nothing, and a
+// caller reading outcome and coverage concludes the named source holds nothing
+// on the subject. That is the one thing this system may not say by accident,
+// so the request is refused and names the profile that would serve it.
+var ErrUnsatisfiableScope = errors.New("unsatisfiable scope")
 
 // Scope narrows which sources and records a request may reach.
 type Scope struct {

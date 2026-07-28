@@ -38,7 +38,11 @@ flags:
                        8000; -1 is unbounded
   --scope KEY=VALUE    narrow the request; repeatable and comma-separable.
                        Keys: source, type, project, entity, since, until.
-                       Times are RFC 3339.
+                       Times are RFC 3339. source= names sources in the
+                       resolved profile: naming only sources outside it is an
+                       error naming a profile that has them, never an empty
+                       answer, and naming some of each answers from the ones
+                       inside and reports the rest as degraded coverage.
   --as-of TIME         answer as of a past instant (RFC 3339). Sources that
                        cannot honor a historical boundary are excluded and
                        reported, and coverage becomes degraded.

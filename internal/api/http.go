@@ -131,6 +131,13 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.core.Query(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, recall.ErrUnsatisfiableScope) {
+			// The caller's to fix, not this installation's: a scope naming
+			// sources this profile does not contain. 400 rather than 500, and
+			// the message carries the profile that would serve it.
+			writeProblem(w, http.StatusBadRequest, Problem{CodeBadRequest, err.Error()})
+			return
+		}
 		// A request that could not be planned or fused made no claim about the
 		// corpus at all. It is reported as a Recall failure rather than as an
 		// empty answer, because an empty answer would be a statement about what

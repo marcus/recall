@@ -188,7 +188,7 @@ const queryInputSchema = `{
     "sources": {
       "type": "array",
       "items": {"type": "string"},
-      "description": "Restrict the search to these source ids, as shown by recall_sources. Omit to search every source the profile allows. A source id that is not configured narrows the search to nothing rather than being ignored."
+      "description": "Restrict the search to these source ids, as shown by recall_sources. Omit to search every source the profile allows. Naming only sources this profile does not contain is an error naming the profile that does, never an empty answer; naming some inside it and some outside answers from the ones inside and reports the rest, so coverage becomes degraded."
     },
     "record_types": {
       "type": "array",
@@ -471,6 +471,12 @@ func (s *mcpServer) callQuery(ctx context.Context, raw json.RawMessage) (any, *m
 
 	resp, err := s.core.Query(ctx, req)
 	if err != nil {
+		if errors.Is(err, recall.ErrUnsatisfiableScope) {
+			// Something the model can correct on the next call: it named
+			// sources this profile does not contain. The message says which
+			// profile does, so the retry is a real one rather than a guess.
+			return toolFailure("%v", err)
+		}
 		return toolFailure("the search could not be run: %v. This is not evidence that nothing matched.", err)
 	}
 
