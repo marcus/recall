@@ -35,8 +35,16 @@ type Request struct {
 	Limit int
 
 	// QueryClass names the request's query class, selecting at most one intent
-	// prior per source. Empty means no intent rule fires and base priors apply.
+	// prior per source and governing intent-sensitive ranking rules. Empty
+	// means no intent rule fires and exact identifiers retain their legacy
+	// lookup behavior.
 	QueryClass string
+
+	// StableIdentifiers are the normalized identifier-shaped tokens the query
+	// named. In a multi-token identifier query, only an exact candidate whose
+	// own identity matches one of these may partition; a stable td id elsewhere
+	// in a sentence must not promote an unrelated project-name exact hit.
+	StableIdentifiers []string
 
 	// Mode distinguishes a user-visible request from a host's pre-reply budget.
 	// SuppressLineages applies only to pre-reply: suppression filters passive
@@ -98,23 +106,55 @@ func (r *Ranker) Fuse(req Request) (Fusion, error) {
 		return Fusion{}, err
 	}
 	clusters := r.clusterGroups(groups)
-	promote(clusters)
+	promote(clusters, req)
 	return r.selectResults(clusters, req), nil
 }
 
 // promote performs step 5. A cluster containing an exact identifier match sorts
-// above every cluster without one, ordered among themselves by cluster score.
-// It is a partition, not a bonus: no amount of corroboration lets a lexical
-// cluster overtake an exact hit, and no exact hit gets an unexplainable number
-// added to its score.
-func promote(clusters []*cluster) {
+// above every cluster without one for an identifier-shaped or unclassified
+// request, ordered among themselves by cluster score. Natural-language
+// requests keep the adapter's exact signal and its scored relevance, but do
+// not interpret a named subject inside a sentence as an identifier lookup. A
+// declared alias remains promotable because MatchAlias is candidate-specific
+// evidence that this exact candidate, rather than some other word in the
+// query, was named.
+//
+// The active promotion remains a partition, not a bonus: no amount of
+// corroboration lets a lexical cluster overtake an exact hit, and no exact hit
+// gets an unexplainable number added to its score.
+func promote(clusters []*cluster, req Request) {
+	for _, c := range clusters {
+		c.explain.ExactPromoted = promotable(c, req)
+	}
 	slices.SortFunc(clusters, func(a, b *cluster) int {
-		if a.exact != b.exact {
-			if a.exact {
+		aExact := promotable(a, req)
+		bExact := promotable(b, req)
+		if aExact != bExact {
+			if aExact {
 				return -1
 			}
 			return 1
 		}
 		return compareRelevance(a, b)
 	})
+}
+
+func promotable(c *cluster, req Request) bool {
+	if !c.exact {
+		return false
+	}
+	if c.exactAlias {
+		return true
+	}
+	switch req.QueryClass {
+	case QueryClassNaturalLanguage:
+		return false
+	case QueryClassIdentifier:
+		// A plain one-token name has no stable syntax to correlate. Preserve
+		// its original exact behavior. Stable syntax, including when wrapped
+		// in prose, must name this candidate specifically.
+		return len(req.StableIdentifiers) == 0 || c.exactIdentity
+	default:
+		return true
+	}
 }

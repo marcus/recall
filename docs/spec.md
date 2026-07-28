@@ -881,8 +881,30 @@ evidence score below a single group), priors in `[0.5, 2.0]`.
 ### 5. Exact-Match Promotion
 
 Clusters containing a candidate with an `exact_identifier` match signal sort
-above all clusters without one, ordered among themselves by `cluster_score`.
-This is a deterministic partition, not a score bonus.
+above all clusters without one for an identifier-shaped or terse one-token
+query, ordered among themselves by `cluster_score`. This is a deterministic
+partition, not a score bonus.
+
+The core classifies every multi-token query without stable identifier syntax as
+`natural_language`. For that class, an `exact_identifier` signal remains on the
+candidate and its relevance and source prior still participate in ordinary
+scoring, but it does not partition the result set. A project named `clara`, for
+example, is a lookup in the one-token query `clara` and a subject in either
+`how does clara decide what to remember` or `summarize clara memory`. Stable
+identifier syntax — paths, scheme-shaped IDs, sufficiently strong compact IDs,
+and underscore project IDs — takes precedence, so both `What is the state of
+aaaa0001?` and `What is the state of project_recall?` remain identifier
+lookups. In a multi-token identifier query, that precedence is candidate
+specific: the exact candidate's candidate ID, source record ID, locator-local
+identity, title, or narrowly identity-bearing `name`, `path`, or `relative_path`
+metadata must match the stable query token (either as the whole identity or its
+path basename). Descriptions, notes, excerpts, and arbitrary metadata are not
+identity. Thus the td record partitions for `how does clara address
+td-6c98c1?`, but an unrelated exact project-name match for `clara` does not.
+Weak version words such as `v2` are not stable identifiers. A declared
+multi-word alias is candidate-specific identity rather than request syntax: the
+same candidate must carry both `exact_identifier` and `alias`; one cluster
+cannot assemble that permission from separate members.
 
 ### 6. Optional Shared-Scale Reranking
 

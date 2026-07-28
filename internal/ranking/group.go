@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/marcus/recall/internal/lineage"
 	"github.com/marcus/recall/internal/recall"
@@ -40,6 +41,16 @@ type group struct {
 	// exact is set when any candidate in the group matched an identifier
 	// exactly. Promotion partitions on it rather than adding to score.
 	exact bool
+
+	// exactAlias is set only when the SAME candidate carries exact_identifier
+	// and alias. Two members of one lineage group cannot assemble the stronger
+	// signal between them: candidate-specific evidence must stay specific.
+	exactAlias bool
+
+	// exactIdentity is likewise candidate-specific: the candidate carries
+	// exact_identifier and one of its existing identity fields names a stable
+	// identifier token from this request.
+	exactIdentity bool
 }
 
 // groupByLineage performs step 3 of the ranking pipeline: it resolves each
@@ -89,6 +100,10 @@ func (r *Ranker) groupByLineage(req Request) ([]*group, error) {
 			g.bestRelevance[c.SourceUID] = relevanceOf(c)
 		}
 		g.exact = g.exact || c.Exact()
+		g.exactAlias = g.exactAlias ||
+			(c.Exact() && c.HasSignal(recall.MatchAlias))
+		g.exactIdentity = g.exactIdentity ||
+			(c.Exact() && candidateNamesStableIdentifier(c, req.StableIdentifiers))
 	}
 
 	groups := make([]*group, 0, len(byRoot))
@@ -107,6 +122,35 @@ func (r *Ranker) groupByLineage(req Request) ([]*group, error) {
 		}
 	}
 	return groups, nil
+}
+
+func candidateNamesStableIdentifier(c recall.Candidate, identifiers []string) bool {
+	identities := []string{c.CandidateID, c.SourceRecordID, c.Locator.Local, c.Title}
+	// These keys are identity-bearing across structured and document adapters.
+	// Do not scan arbitrary metadata: an excerpt, note, or description naming a
+	// td id is content, not evidence that this exact candidate IS that id.
+	for _, key := range []string{"name", "path", "relative_path"} {
+		if identity, ok := c.Metadata[key].(string); ok {
+			identities = append(identities, identity)
+		}
+	}
+	for _, identity := range identities {
+		identity = strings.ToLower(strings.TrimSpace(identity))
+		if identity == "" {
+			continue
+		}
+		identity = strings.SplitN(identity, "#", 2)[0]
+		base := identity
+		if at := strings.LastIndexAny(base, `/\`); at >= 0 {
+			base = base[at+1:]
+		}
+		for _, identifier := range identifiers {
+			if identifier == identity || identifier == base {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // scoreGroup computes lineage_score and builds the part of the explanation that

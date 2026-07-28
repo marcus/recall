@@ -109,6 +109,8 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 		Resolver:          resolver,
 		SourceDerivations: a.derivations(plan),
 		Limit:             req.Limit,
+		QueryClass:        ranking.ClassifyQuery(req.Query),
+		StableIdentifiers: ranking.StableIdentifiers(req.Query),
 		Mode:              req.Mode,
 		SuppressLineages:  req.SuppressLineages,
 	})

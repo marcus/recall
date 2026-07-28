@@ -56,11 +56,13 @@ type cluster struct {
 	// host has already been shown it.
 	viewClasses [][]*group
 
-	primary  recall.Candidate
-	explain  recall.Explanation
-	score    float64
-	exact    bool
-	maxGroup float64
+	primary       recall.Candidate
+	explain       recall.Explanation
+	score         float64
+	exact         bool
+	exactAlias    bool
+	exactIdentity bool
+	maxGroup      float64
 }
 
 // unit is one piece of evidence: the lineage groups that are the same record
@@ -136,6 +138,8 @@ func (r *Ranker) clusterGroups(groups []*group) []*cluster {
 		}
 		c.groups = append(c.groups, g)
 		c.exact = c.exact || g.exact
+		c.exactAlias = c.exactAlias || g.exactAlias
+		c.exactIdentity = c.exactIdentity || g.exactIdentity
 	}
 
 	for _, c := range clusters {
@@ -282,7 +286,6 @@ func (r *Ranker) scoreCluster(c *cluster) {
 		CapApplied:       capApplied,
 	}
 	c.explain.Score = c.score
-	c.explain.ExactPromoted = c.exact
 }
 
 // corroborationOrder is the order units are offered to the corroboration

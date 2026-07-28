@@ -328,6 +328,116 @@ func reportFor(t *testing.T, resp recall.QueryResponse, id string) recall.Source
 	return recall.SourceReport{}
 }
 
+// Query classification belongs in the application core, before fusion. This
+// test is deliberately above ranking: CLI, API, MCP, and eval all call this
+// path and must not grow separate opinions about when exact means lookup.
+func TestQueryClassControlsExactPromotionThroughApplicationCore(t *testing.T) {
+	low, high := 0.1, 0.9
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].candidates = []recall.Candidate{
+			cand("docs", "answer.md#1", 1, func(c *recall.Candidate) {
+				c.Relevance = &high
+			}),
+		}
+		f["faketasks"].candidates = []recall.Candidate{
+			cand("tasks", "project-health", 20, func(c *recall.Candidate) {
+				c.Relevance = &low
+				c.MatchSignals = []recall.MatchSignal{recall.MatchExactIdentifier}
+			}),
+		}
+	})
+
+	tests := []struct {
+		name      string
+		query     string
+		wantFirst string
+		promoted  bool
+	}{
+		{"project subject clara", "how does clara decide what to remember", "docs:answer.md#1", false},
+		{"project subject braid", "what is braid's daily podcast pipeline", "docs:answer.md#1", false},
+		{"unlisted prose verb", "summarize braid's daily podcast pipeline", "docs:answer.md#1", false},
+		{"weak version token", "how does clara v2 remember things?", "docs:answer.md#1", false},
+		{"one word clara", "clara", "tasks:project-health", true},
+		{"one word sidecar", "sidecar", "tasks:project-health", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := h.app.Query(context.Background(), query(tc.query))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(resp.Results) != 2 {
+				t.Fatalf("results = %d, want 2", len(resp.Results))
+			}
+			if got := resp.Results[0].Primary.Locator.String(); got != tc.wantFirst {
+				t.Fatalf("first = %s, want %s", got, tc.wantFirst)
+			}
+			var health recall.Result
+			for _, result := range resp.Results {
+				if result.Primary.Locator.String() == "tasks:project-health" {
+					health = result
+				}
+			}
+			if !health.Primary.HasSignal(recall.MatchExactIdentifier) {
+				t.Fatal("project-health lost its exact_identifier signal")
+			}
+			if health.Explanation.ExactPromoted != tc.promoted {
+				t.Errorf("exact_promoted = %v, want %v", health.Explanation.ExactPromoted, tc.promoted)
+			}
+		})
+	}
+}
+
+func TestApplicationCorrelatesStableIdentifierToExactCandidate(t *testing.T) {
+	tests := []struct {
+		name   string
+		query  string
+		target string
+	}{
+		{"td id beside project name", "how does clara address td-6c98c1?", "td-6c98c1"},
+		{"tasks compact id", "What is the state of aaaa0001?", "aaaa0001"},
+		{"ongoing underscore id", "What is the state of project_recall?", "project_recall"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			low, high := 0.1, 0.9
+			h := newHarness(t, func(f map[string]*fake) {
+				f["fakedocs"].candidates = []recall.Candidate{
+					cand("docs", "answer.md#1", 1, func(c *recall.Candidate) {
+						c.Relevance = &high
+					}),
+				}
+				f["faketasks"].candidates = []recall.Candidate{
+					cand("tasks", "clara", 1, func(c *recall.Candidate) {
+						c.Relevance = &low
+						c.MatchSignals = []recall.MatchSignal{recall.MatchExactIdentifier}
+					}),
+					cand("tasks", tc.target, 2, func(c *recall.Candidate) {
+						c.Relevance = &low
+						c.MatchSignals = []recall.MatchSignal{recall.MatchExactIdentifier}
+					}),
+				}
+			})
+
+			resp, err := h.app.Query(context.Background(), query(tc.query))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := resp.Results[0].Primary.Locator.Local; got != tc.target {
+				t.Fatalf("first = %s, want named identifier %s", got, tc.target)
+			}
+			if !resp.Results[0].Explanation.ExactPromoted {
+				t.Fatal("named exact candidate did not partition")
+			}
+			for _, result := range resp.Results {
+				if result.Primary.Locator.Local == "clara" && result.Explanation.ExactPromoted {
+					t.Fatal("unrelated exact Clara candidate partitioned")
+				}
+			}
+		})
+	}
+}
+
 func checkpointManifest() recall.Manifest {
 	m := manifest(recall.RecordDocument)
 	m.Capabilities = append(m.Capabilities, recall.CapCheckpoint)

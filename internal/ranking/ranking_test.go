@@ -291,6 +291,170 @@ func TestExactPromotionBeatsHigherScoringCluster(t *testing.T) {
 	}
 }
 
+// Exact is evidence an adapter recognized a stable name. It is not by itself
+// evidence that a sentence is an identifier lookup: a project can be the
+// subject of a question. Natural-language intent keeps the signal but disables
+// only the partition, so ordinary relevance can put the answer first.
+func TestNaturalLanguageExactMatchKeepsSignalWithoutPartitioning(t *testing.T) {
+	r := newRanker(t, nil)
+	req := request(
+		cand("mail", "project-health", 1, exact(), relevance(0.1)),
+		cand("docs", "answer.md#1", 2, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassNaturalLanguage
+
+	got := fuse(t, r, req)
+	if want := []string{"docs:answer.md#1", "mail:project-health"}; !reflect.DeepEqual(order(got), want) {
+		t.Fatalf("order = %v, want %v", order(got), want)
+	}
+	health := got.Results[1]
+	if !health.Primary.HasSignal(recall.MatchExactIdentifier) {
+		t.Fatal("natural-language result lost its exact_identifier signal")
+	}
+	if health.Explanation.ExactPromoted {
+		t.Fatal("natural-language exact match reported a partition that did not apply")
+	}
+}
+
+func TestNaturalLanguageDeclaredAliasStillPartitionsItsCandidate(t *testing.T) {
+	r := newRanker(t, nil)
+	req := request(
+		cand("mail", "declared-alias", 20, exact(), func(c *recall.Candidate) {
+			c.MatchSignals = append(c.MatchSignals, recall.MatchAlias)
+		}, relevance(0.1)),
+		cand("docs", "answer.md#1", 1, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassNaturalLanguage
+
+	got := fuse(t, r, req)
+	if got.Results[0].Primary.Locator.String() != "mail:declared-alias" {
+		t.Fatalf("order = %v, want the candidate-specific declared alias first", order(got))
+	}
+	if !got.Results[0].Explanation.ExactPromoted {
+		t.Fatal("declared alias did not report exact promotion")
+	}
+}
+
+func TestNaturalLanguageClusterCannotAssembleExactAliasAcrossCandidates(t *testing.T) {
+	r := newRanker(t, nil)
+	subject := []opt{meta(ranking.MetaEntityID, "subject-1")}
+	req := request(
+		cand("mail", "exact-view", 20,
+			append(subject, exact(), relevance(0.1))...),
+		cand("tasks", "alias-view", 19,
+			append(subject, func(c *recall.Candidate) {
+				c.MatchSignals = append(c.MatchSignals, recall.MatchAlias)
+			}, relevance(0.1))...),
+		cand("docs", "answer.md#1", 1, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassNaturalLanguage
+
+	got := fuse(t, r, req)
+	if got.Results[0].Primary.Locator.String() != "docs:answer.md#1" {
+		t.Fatalf("order = %v, want split signals to remain ordinary scored evidence", order(got))
+	}
+	for _, result := range got.Results {
+		if result.Explanation.ExactPromoted {
+			t.Fatalf("%s assembled exact+alias across candidates", result.Primary.Locator)
+		}
+	}
+}
+
+func TestIdentifierQueryStillPartitionsExactMatch(t *testing.T) {
+	r := newRanker(t, nil)
+	req := request(
+		cand("mail", "project-health", 20, exact(), relevance(0.1)),
+		cand("docs", "answer.md#1", 1, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassIdentifier
+
+	got := fuse(t, r, req)
+	if got.Results[0].Primary.Locator.String() != "mail:project-health" {
+		t.Fatalf("order = %v, want the named record first", order(got))
+	}
+	if !got.Results[0].Explanation.ExactPromoted {
+		t.Fatal("identifier query did not report exact promotion")
+	}
+}
+
+func TestStableIdentifierPromotesOnlyTheExactCandidateItNames(t *testing.T) {
+	r := newRanker(t, nil)
+	req := request(
+		cand("mail", "clara", 1, exact(), relevance(0.1)),
+		cand("tasks", "td-6c98c1", 2, exact(), relevance(0.1)),
+		cand("docs", "answer.md#1", 1, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassIdentifier
+	req.StableIdentifiers = []string{"td-6c98c1"}
+
+	got := fuse(t, r, req)
+	if want := []string{"tasks:td-6c98c1", "docs:answer.md#1", "mail:clara"}; !reflect.DeepEqual(order(got), want) {
+		t.Fatalf("order = %v, want %v", order(got), want)
+	}
+	if !got.Results[0].Explanation.ExactPromoted {
+		t.Fatal("named td candidate did not partition")
+	}
+	if got.Results[2].Explanation.ExactPromoted {
+		t.Fatal("unrelated exact project-name candidate partitioned")
+	}
+}
+
+func TestStableIdentifierCorrelationCoversInTreeIdentityFields(t *testing.T) {
+	r := newRanker(t, nil)
+	tests := []struct {
+		name       string
+		identifier string
+		target     recall.Candidate
+	}{
+		{"tasks id", "aaaa0001", cand("tasks", "aaaa0001", 20, exact(), relevance(0.1))},
+		{"ongoing underscore id", "project_recall", cand("tasks", "project_recall", 20, exact(), relevance(0.1))},
+		{"ongoing project name", "epub_to_audiobook", cand("tasks", "project-generated-id", 20,
+			title("epub_to_audiobook"), exact(), relevance(0.1))},
+		{"ongoing relative path", "tools/epub_to_audiobook", cand("tasks", "project-generated-id", 20,
+			meta("relative_path", "tools/epub_to_audiobook"), exact(), relevance(0.1))},
+		{"document path", "projects/recall/architecture.md", cand("docs", "chunk-1", 20,
+			recordID("projects/recall/architecture.md"), exact(), relevance(0.1))},
+		{"document basename", "backup-restore.md", cand("docs", "chunk-1", 20,
+			recordID("runbooks/backup-restore.md"), exact(), relevance(0.1))},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := request(
+				cand("mail", "clara", 1, exact(), relevance(0.1)),
+				tc.target,
+				cand("docs", "answer.md#1", 1, relevance(0.9)),
+			)
+			req.QueryClass = ranking.QueryClassIdentifier
+			req.StableIdentifiers = []string{tc.identifier}
+			got := fuse(t, r, req)
+			if got.Results[0].Primary.Locator != tc.target.Locator {
+				t.Fatalf("order = %v, want %s first", order(got), tc.target.Locator)
+			}
+			if !got.Results[0].Explanation.ExactPromoted {
+				t.Fatal("named candidate did not report promotion")
+			}
+		})
+	}
+}
+
+func TestStableIdentifierCorrelationDoesNotScanArbitraryMetadata(t *testing.T) {
+	r := newRanker(t, nil)
+	req := request(
+		cand("mail", "clara", 1, exact(), meta("description", "address td-6c98c1"), relevance(0.1)),
+		cand("docs", "answer.md#1", 1, relevance(0.9)),
+	)
+	req.QueryClass = ranking.QueryClassIdentifier
+	req.StableIdentifiers = []string{"td-6c98c1"}
+
+	got := fuse(t, r, req)
+	if got.Results[0].Primary.Locator.String() != "docs:answer.md#1" {
+		t.Fatalf("order = %v, arbitrary prose metadata correlated as identity", order(got))
+	}
+	if got.Results[1].Explanation.ExactPromoted {
+		t.Fatal("candidate promoted from identifier text in arbitrary metadata")
+	}
+}
+
 // A source that returns the same record twice contributes its best view of it.
 // Scoring the later hit instead would let a source lower its own record by
 // finding it again.
