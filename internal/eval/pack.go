@@ -2,6 +2,7 @@ package eval
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/marcus/recall/internal/recall"
@@ -126,6 +127,10 @@ type Case struct {
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 
+	// ExpectedFail names the assertions on this case that are known to fail
+	// today, and says what has to land before they can hold.
+	ExpectedFail *ExpectedFail `json:"expected_fail,omitempty"`
+
 	// Mode is the invocation mode. It defaults to explicit; a case testing
 	// suppression must say pre_reply, because suppression applies to a host's
 	// passive budget and never hides evidence somebody asked for.
@@ -139,6 +144,106 @@ type Case struct {
 	Scope *CaseScope `json:"scope,omitempty"`
 
 	Assertions *Assertions `json:"assertions,omitempty"`
+}
+
+// ExpectedFail declares which of a case's assertions are known to fail, and
+// what has to land before they can hold.
+//
+// It names assertions rather than excusing the case, because a case-wide
+// exemption is a defect with a blast radius: once the dentist ranking is
+// excused, a required source that stopped being returned or a result count
+// that tripled on the same case is excused with it, and the run stays valid.
+// Naming them also keeps two tickets separable — a case waiting on a count fix
+// and a duplication fix shows movement when either one lands, instead of
+// staying uniformly "expected" until both do.
+//
+// Reason is required for the other half of the same problem: an
+// expected-failure list with nothing to wait on is a mute button, and a
+// marking with no defect behind it has no way to ever come off.
+// [EvaluateGates] fails a run in which a named assertion stopped failing, so
+// the marking cannot outlive the defect.
+type ExpectedFail struct {
+	Reason string `json:"reason"`
+
+	// Assertions names the excused assertion fields, spelled exactly as the
+	// violation reports them. Every assertion the case declares and does not
+	// name here is enforced as on any other case.
+	Assertions []string `json:"assertions"`
+}
+
+// excuses reports whether a violation is one this marking declared.
+func (e *ExpectedFail) excuses(violation string) bool {
+	if e == nil {
+		return false
+	}
+	return e.names(assertionFieldOf(violation))
+}
+
+func (e *ExpectedFail) names(field string) bool {
+	if e == nil {
+		return false
+	}
+	for _, named := range e.Assertions {
+		if named == field {
+			return true
+		}
+	}
+	return false
+}
+
+// assertionFieldOf recovers the assertion a violation came from. Every
+// violation is reported as "<field>: what happened", which is what makes an
+// expected-failure marking able to name one and not another.
+func assertionFieldOf(violation string) string {
+	field, _, _ := strings.Cut(violation, ":")
+	return field
+}
+
+// AssertionFields is the closed vocabulary of assertions that can be violated,
+// and so the closed vocabulary an expected-failure marking may name. A name
+// outside it excuses nothing, which is the failure mode a typo in a pack would
+// otherwise produce silently.
+var AssertionFields = []string{
+	"required_sources",
+	"forbidden_sources",
+	"max_latency_ms",
+	"max_expansion_bytes",
+	"expected_revisions",
+	"suppressed_lineages",
+	"visible_lineages",
+	"expected_top_lineage",
+	"min_results",
+	"max_results",
+	"max_results_per_record",
+	"excerpt_contains",
+}
+
+// Declared reports which assertion fields this block actually states. An
+// expected-failure marking naming a field the case never declared could never
+// be satisfied by anything the run does.
+func (a *Assertions) Declared() map[string]bool {
+	out := map[string]bool{}
+	if a == nil {
+		return out
+	}
+	set := func(name string, yes bool) {
+		if yes {
+			out[name] = true
+		}
+	}
+	set("required_sources", len(a.RequiredSources) > 0)
+	set("forbidden_sources", len(a.ForbiddenSources) > 0)
+	set("max_latency_ms", a.MaxLatencyMS > 0)
+	set("max_expansion_bytes", a.MaxExpansionBytes > 0)
+	set("expected_revisions", len(a.ExpectedRevisions) > 0)
+	set("suppressed_lineages", len(a.SuppressedLineages) > 0)
+	set("visible_lineages", len(a.VisibleLineages) > 0)
+	set("expected_top_lineage", a.ExpectedTopLineage != "")
+	set("min_results", a.MinResults != nil)
+	set("max_results", a.MaxResults != nil)
+	set("max_results_per_record", a.MaxResultsPerRecord != nil)
+	set("excerpt_contains", len(a.ExcerptContains) > 0)
+	return out
 }
 
 // CaseScope is the request scope a case sets.
@@ -171,6 +276,35 @@ type Assertions struct {
 
 	SuppressedLineages []recall.LineageRoot `json:"suppressed_lineages,omitempty"`
 	VisibleLineages    []recall.LineageRoot `json:"visible_lineages,omitempty"`
+
+	// ExpectedTopLineage demands that one lineage root rank first. Graded
+	// metrics score the shape of a whole list, so none of them can say "this
+	// record and not that one is the answer" — which is the entire claim some
+	// queries make, and the one a caller reading only the first result sees.
+	ExpectedTopLineage recall.LineageRoot `json:"expected_top_lineage,omitempty"`
+
+	// MinResults and MaxResults bound how many results came back. They are
+	// pointers because zero is a real bound: a case that must abstain says
+	// max_results 0, and an omitted bound is not the same statement.
+	//
+	// The count is part of the contract rather than a detail of ranking,
+	// because a caller pays for every result it is handed.
+	MinResults *int `json:"min_results,omitempty"`
+	MaxResults *int `json:"max_results,omitempty"`
+
+	// MaxResultsPerRecord bounds how many result slots one record may occupy.
+	// Identity is the source record id together with the content fingerprint,
+	// across sources: one record reached through two source instances is one
+	// thing a caller has to read, not two. A result missing either half is its
+	// own record, because identity claimed without evidence would collapse
+	// results that merely lack a fingerprint.
+	MaxResultsPerRecord *int `json:"max_results_per_record,omitempty"`
+
+	// ExcerptContains demands substrings in the excerpt shown for a lineage
+	// root. It is the only assertion about what a result says rather than
+	// where it ranked: a hit whose displayed text does not contain the term
+	// that matched cannot be judged without a second call.
+	ExcerptContains map[recall.LineageRoot][]string `json:"excerpt_contains,omitempty"`
 
 	SensitivityCeiling *recall.Sensitivity `json:"sensitivity_ceiling,omitempty"`
 }

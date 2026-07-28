@@ -27,6 +27,13 @@ type Engine interface {
 type SourceLocation struct {
 	SourceID string
 	Location string
+
+	// Replayed says the source answers from a recording its adapter ships
+	// with. Such a source reaches no network however its location reads: an
+	// adapter over an HTTP API still has to name an endpoint it will never
+	// call, and refusing it would put every network-backed adapter permanently
+	// out of reach of a deterministic pack.
+	Replayed bool
 }
 
 // RunOptions configure one evaluation run.
@@ -100,6 +107,9 @@ func (r *Runner) checkNetworkPolicy() error {
 		return nil
 	}
 	for _, loc := range r.opt.Locations {
+		if loc.Replayed {
+			continue // answers from a recording, so the endpoint is never called
+		}
 		u, err := url.Parse(loc.Location)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			continue // a path, not an endpoint
@@ -167,6 +177,7 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		result.Ranked = append(result.Ranked, positions(res)...)
 		result.Provenance = append(result.Provenance, provenanceOf(res)...)
 	}
+	result.Results = resultRefs(c, resp)
 	if len(resp.SourceOutcomes) > 0 {
 		result.SourceOutcomes = make(map[recall.SourceUID]recall.SearchOutcome, len(resp.SourceOutcomes))
 		for _, so := range resp.SourceOutcomes {
@@ -198,6 +209,32 @@ func positions(res recall.Result) []recall.LineageRoot {
 		out = append(out, m.LineageRoot)
 	}
 	return out
+}
+
+// resultRefs records what a case may assert about the results themselves: how
+// many came back, which record each one is, and what it displayed.
+//
+// Record identity is the primary candidate's, because the primary is what a
+// caller reads. An excerpt is captured only for a root the case asked about,
+// so the artifact carries the text an assertion needs and no more.
+func resultRefs(c Case, resp recall.QueryResponse) []ResultRef {
+	var asked map[recall.LineageRoot][]string
+	if c.Assertions != nil {
+		asked = c.Assertions.ExcerptContains
+	}
+	refs := make([]ResultRef, 0, len(resp.Results))
+	for _, res := range resp.Results {
+		ref := ResultRef{
+			Root:        res.Explanation.LineageRoot,
+			RecordID:    res.Primary.SourceRecordID,
+			Fingerprint: res.Primary.ContentFingerprint,
+		}
+		if _, want := asked[ref.Root]; want {
+			ref.Excerpt = res.Primary.Excerpt
+		}
+		refs = append(refs, ref)
+	}
+	return refs
 }
 
 // provenanceOf checks that each candidate named where it really came from.

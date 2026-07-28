@@ -241,7 +241,7 @@ func TestCompareJSONReachesTheSameVerdict(t *testing.T) {
 // every later comparison meaningless, and the loud failure belongs here rather
 // than in CI, where it would read as a ranking regression.
 func TestCommittedBaselinesMatchTheCommittedPacks(t *testing.T) {
-	for _, name := range []string{"smoke"} {
+	for _, name := range []string{"smoke", "firstuse"} {
 		t.Run(name, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join("..", "..", "eval", "baselines", name+".json"))
 			if err != nil {

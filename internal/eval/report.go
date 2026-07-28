@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/marcus/recall/internal/recall"
@@ -71,6 +72,12 @@ type CaseResult struct {
 	// independent records contributes several positions, in display order.
 	Ranked []recall.LineageRoot `json:"ranked"`
 
+	// Results is one entry per returned result, in display order. It counts
+	// something different from Ranked: a cluster fusing two records is one
+	// result and two ranked positions, and a case asserting what a caller was
+	// handed means results.
+	Results []ResultRef `json:"results,omitempty"`
+
 	// SourceFamilies names the source families that contributed to this
 	// result. A case belongs to every family it touched, so a family's metrics
 	// cover every case it had a hand in.
@@ -117,6 +124,19 @@ type CaseResult struct {
 	Cold bool `json:"cold"`
 }
 
+// ResultRef is what a case can assert about one returned result: which record
+// it is, and what its excerpt said.
+//
+// Excerpt is filled only for the lineage roots a case named in
+// excerpt_contains. A run artifact holding every excerpt would hold the corpus,
+// and the assertion is the only thing that reads one.
+type ResultRef struct {
+	Root        recall.LineageRoot `json:"lineage_root"`
+	RecordID    string             `json:"source_record_id,omitempty"`
+	Fingerprint string             `json:"content_fingerprint,omitempty"`
+	Excerpt     string             `json:"excerpt,omitempty"`
+}
+
 // CaseScore is every metric that is defined for one case, plus the groups the
 // case belongs to.
 type CaseScore struct {
@@ -141,6 +161,12 @@ type CaseScore struct {
 	// expansion assertion the observed result violated. They feed a hard gate:
 	// a case-level contract is never diluted into an aggregate.
 	AssertionViolations []string `json:"assertion_violations,omitempty"`
+
+	// ExpectedFail carries the case's expected-failure marking. It is on the
+	// score because gates read scores: the assertion gate has to know which
+	// violations were declared in advance and which were not, and a report has
+	// to name what each one waits on.
+	ExpectedFail *ExpectedFail `json:"expected_fail,omitempty"`
 
 	// SensitivityViolations is carried onto the score because it is a gate
 	// input, and a gate must not have to re-read raw results to decide.
@@ -321,6 +347,7 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 	s.ProvenanceAccuracy = provenanceAccuracy(r)
 	s.SourceOutcomeAccuracy = sourceOutcomeAccuracy(c, r)
 	s.AssertionViolations = caseAssertionViolations(c, r)
+	s.ExpectedFail = c.ExpectedFail
 
 	return s
 }
@@ -488,9 +515,80 @@ func caseAssertionViolations(c Case, r CaseResult) []string {
 				"visible_lineages: missing %s", root))
 		}
 	}
+	failures = append(failures, resultAssertionViolations(a, r.Results)...)
 
 	sort.Strings(failures)
 	return failures
+}
+
+// resultAssertionViolations evaluates the assertions about the result list a
+// caller was handed: its head, its length, its duplication, and its text.
+func resultAssertionViolations(a *Assertions, results []ResultRef) []string {
+	var failures []string
+
+	if a.ExpectedTopLineage != "" {
+		switch {
+		case len(results) == 0:
+			failures = append(failures, fmt.Sprintf(
+				"expected_top_lineage: %s did not rank; nothing was returned", a.ExpectedTopLineage))
+		case results[0].Root != a.ExpectedTopLineage:
+			failures = append(failures, fmt.Sprintf(
+				"expected_top_lineage: %s ranked first, want %s",
+				results[0].Root, a.ExpectedTopLineage))
+		}
+	}
+	if a.MinResults != nil && len(results) < *a.MinResults {
+		failures = append(failures, fmt.Sprintf(
+			"min_results: returned %d, want at least %d", len(results), *a.MinResults))
+	}
+	if a.MaxResults != nil && len(results) > *a.MaxResults {
+		failures = append(failures, fmt.Sprintf(
+			"max_results: returned %d, want at most %d", len(results), *a.MaxResults))
+	}
+	if a.MaxResultsPerRecord != nil {
+		// A record is identified across sources only when it presents both
+		// halves of the evidence. Missing either one, a result stands alone
+		// rather than being merged on a guess.
+		occupied := map[string]int{}
+		for _, ref := range results {
+			if ref.RecordID == "" || ref.Fingerprint == "" {
+				continue
+			}
+			occupied[ref.RecordID+"\x00"+ref.Fingerprint]++
+		}
+		for key, n := range occupied {
+			if n > *a.MaxResultsPerRecord {
+				id, _, _ := strings.Cut(key, "\x00")
+				failures = append(failures, fmt.Sprintf(
+					"max_results_per_record: record %s occupied %d results, want at most %d",
+					id, n, *a.MaxResultsPerRecord))
+			}
+		}
+	}
+	for root, wants := range a.ExcerptContains {
+		ref, ok := excerptOf(results, root)
+		if !ok {
+			failures = append(failures, fmt.Sprintf(
+				"excerpt_contains: %s returned no result to read", root))
+			continue
+		}
+		for _, want := range wants {
+			if !strings.Contains(strings.ToLower(ref), strings.ToLower(want)) {
+				failures = append(failures, fmt.Sprintf(
+					"excerpt_contains: %s displayed an excerpt without %q", root, want))
+			}
+		}
+	}
+	return failures
+}
+
+func excerptOf(results []ResultRef, root recall.LineageRoot) (string, bool) {
+	for _, ref := range results {
+		if ref.Root == root {
+			return ref.Excerpt, true
+		}
+	}
+	return "", false
 }
 
 // Scores computes one CaseScore per result.

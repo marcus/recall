@@ -15,27 +15,27 @@ jobs:
           go-version: '1.26'
       - run: make build test
 
-      # The smoke pack is deterministic, so every quality metric it produces is
-      # a fixed number and any movement is a real change. Running it was never
-      # the hard part; comparing it was. Metrics quoted in a commit message sat
-      # unchecked for ten commits because nothing on this machine knew what they
-      # were supposed to be, and the first person to look compared them against
-      # a different population and reported a regression that had not happened.
+      # Both committed packs are deterministic, so every quality metric they
+      # produce is a fixed number and any movement is a real change. Running
+      # them was never the hard part; comparing them was. Metrics quoted in a
+      # commit message sat unchecked for ten commits because nothing on this
+      # machine knew what they were supposed to be, and the first person to look
+      # compared them against a different population and reported a regression
+      # that had not happened.
       #
       # This is the step that ends that. `recall eval run` exits non-zero on a
       # failed gate and `recall eval compare` exits non-zero when a measurement
-      # moved down against eval/baselines/smoke.json, so the next drift fails a
-      # build instead of waiting to be noticed.
+      # moved down against the committed baseline, so the next drift fails a
+      # build instead of waiting to be noticed. smoke covers the failure
+      # vocabulary a healthy corpus cannot produce; firstuse covers six real
+      # queries over a pinned snapshot of the configured home profile, and is
+      # the gate every ranking and admission change has to pass.
       #
-      # build-all rather than build: the core spawns external adapters by
-      # command name, and the pack configures one, so a partial build measures a
-      # source that is not there. --output is explicit because the default lands
-      # under a temporary state directory this step cannot name afterwards.
+      # The pack list, the binaries, and the artifact directory live in the
+      # `eval` target rather than here, so a local run and a CI run cannot
+      # disagree about what was measured.
       - name: eval
-        run: |
-          make build-all
-          PATH="$PWD/bin:$PATH" bin/recall eval run --pack eval/packs/smoke --output "$RUNNER_TEMP/smoke"
-          bin/recall eval compare eval/baselines/smoke.json "$RUNNER_TEMP/smoke"
+        run: make eval
 
       - uses: golangci/golangci-lint-action@v7
         with:

@@ -118,6 +118,8 @@ func Summarize(run Run, scores []CaseScore) string {
 		b.WriteString("\n")
 	}
 
+	writeExpectedFailures(&b, run.ExpectedFailures)
+
 	b.WriteString("\n## Metrics\n\n")
 	writeRates(&b, "overall", run.Metrics.Overall.Rates)
 
@@ -130,6 +132,34 @@ func Summarize(run Run, scores []CaseScore) string {
 		writeRates(&b, "macro", run.Metrics.ByTag.Macro.Rates)
 	}
 	return b.String()
+}
+
+// writeExpectedFailures names the assertions a pack declared broken in
+// advance, and what each one observed.
+//
+// They are rendered even though they pass the gate, because an expected
+// failure nobody reads is indistinguishable from a passing case, and the
+// reason a pack states is the only record of why a claim is not being enforced
+// yet. It renders from the run rather than from the scores so that the human
+// summary and the machine-readable run cannot disagree about what happened.
+func writeExpectedFailures(b *strings.Builder, expected []ExpectedFailure) {
+	if len(expected) == 0 {
+		return
+	}
+	b.WriteString("\n## Expected failures\n\n")
+	for _, e := range expected {
+		fmt.Fprintf(b, "- **%s** — %s\n", e.CaseID, e.Reason)
+		for _, named := range e.Assertions {
+			if len(named.Violations) == 0 {
+				fmt.Fprintf(b, "  - `%s` stopped failing; remove it from expected_fail.assertions\n",
+					named.Assertion)
+				continue
+			}
+			for _, violation := range named.Violations {
+				fmt.Fprintf(b, "  - %s\n", violation)
+			}
+		}
+	}
 }
 
 func writeRates(b *strings.Builder, label string, r Rates) {

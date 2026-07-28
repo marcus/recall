@@ -49,6 +49,22 @@ var (
 	// ErrUnsupportedThreshold means a manifest declared a gate threshold that
 	// this evaluator never consults.
 	ErrUnsupportedThreshold = errors.New("unsupported threshold")
+
+	// ErrVacuousExpectedFail means an expected-failure marking names an
+	// assertion the case does not declare. Nothing can violate an assertion
+	// that was never stated, so the marking would be permanent decoration
+	// naming a defect nothing measures.
+	ErrVacuousExpectedFail = errors.New("expected_fail names an assertion the case does not declare")
+
+	// ErrUnknownAssertionName means an expected-failure marking names
+	// something outside the assertion vocabulary. It would excuse nothing and
+	// go stale immediately, which is a typo reported as a defect fix.
+	ErrUnknownAssertionName = errors.New("unknown assertion name")
+
+	// ErrImpossibleResultBounds means min_results exceeds max_results. No run
+	// can satisfy both, so the case would fail forever for a reason that is in
+	// the pack rather than in the system.
+	ErrImpossibleResultBounds = errors.New("min_results exceeds max_results")
 )
 
 var supportedThresholds = map[string]bool{
@@ -133,10 +149,10 @@ func Validate(pack *Pack, cases []Case, judgments []Judgment) error {
 // on an unparseable root can never match a candidate, so it would pass
 // vacuously forever.
 func checkAssertions(c Case) []error {
+	problems := checkExpectedFail(c)
 	if c.Assertions == nil {
-		return nil
+		return problems
 	}
-	var problems []error
 	report := func(field string, root recall.LineageRoot) {
 		if err := checkRoot(root); err != nil {
 			problems = append(problems, fmt.Errorf("case %q: assertions.%s: %w", c.CaseID, field, err))
@@ -150,6 +166,48 @@ func checkAssertions(c Case) []error {
 	}
 	for _, root := range c.Assertions.VisibleLineages {
 		report("visible_lineages", root)
+	}
+	if root := c.Assertions.ExpectedTopLineage; root != "" {
+		report("expected_top_lineage", root)
+	}
+	for root := range c.Assertions.ExcerptContains {
+		report("excerpt_contains", root)
+	}
+	if min, max := c.Assertions.MinResults, c.Assertions.MaxResults; min != nil && max != nil && *min > *max {
+		problems = append(problems, fmt.Errorf("case %q: %w: %d > %d",
+			c.CaseID, ErrImpossibleResultBounds, *min, *max))
+	}
+	return problems
+}
+
+// checkExpectedFail confirms every excused assertion is one that exists and
+// one this case states.
+//
+// Both halves matter for the same reason. A name outside the vocabulary
+// excuses nothing and reports itself as fixed on the first run; a real name
+// the case never declared can never be violated, so it reports itself as fixed
+// forever. Either way the marking says a defect is being watched when nothing
+// is watching it.
+func checkExpectedFail(c Case) []error {
+	if c.ExpectedFail == nil {
+		return nil
+	}
+	known := make(map[string]bool, len(AssertionFields))
+	for _, name := range AssertionFields {
+		known[name] = true
+	}
+	declared := c.Assertions.Declared()
+
+	var problems []error
+	for _, name := range c.ExpectedFail.Assertions {
+		switch {
+		case !known[name]:
+			problems = append(problems, fmt.Errorf("case %q: expected_fail: %w %q",
+				c.CaseID, ErrUnknownAssertionName, name))
+		case !declared[name]:
+			problems = append(problems, fmt.Errorf("case %q: %w: %q",
+				c.CaseID, ErrVacuousExpectedFail, name))
+		}
 	}
 	return problems
 }

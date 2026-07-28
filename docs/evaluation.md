@@ -45,6 +45,32 @@ answer/abstain/fail, unavailable/denied/partial/timed-out sources, expansion
 and locator revision checks, `as_of` against a source declaring `none`, the
 config trust boundary, and suppression.
 
+**First-use pack.** Committed, network-free, and not synthetic. Six queries an
+agent put to Recall on 2026-07-27 on its first use of the tool, against the
+configured home profile, plus the four things that session found wrong. Two
+cases assert what worked and must keep working — a single-term query reaching a
+person's profile, and a clean abstention with complete coverage. Four are marked
+`expected_fail` against the tickets that fix them: a document that uses a word
+in an example outranking the task that is one, an excerpt that does not contain
+the term that matched, one record rendered as two results by two source
+instances over one catalog, and a natural-language phrasing returning several
+times the results its keyword form does.
+
+Its corpus is **pinned and committed**, which the development pack's is not, and
+the reason is what it gates. Every change to ranking or admission has to pass
+it, so it has to run in CI, and CI has no clara-home checkout, no Tasks store,
+and no project-catalog instance. The pin is a git commit rather than a working
+tree: documents are `git show 3c9b4c6:<path>` from clara-home, chosen because
+that is the revision of `profile/TOOLS.md` holding the line the excerpt case is
+about, which is gone from the file today. Tasks and project records are real
+CLI and API output captured the same day and replayed. The corpus is trimmed to
+what the six cases need and scrubbed of anything they do not; `eval/packs/
+firstuse/sources/config.toml` records exactly what was kept, what was replaced,
+and why. It is real prose nobody wrote to be retrieved, which is the one
+structural defence against fixtures tuned to rank well, and it is small enough
+that its ranking numbers are a regression baseline rather than a claim about
+retrieval quality.
+
 **Development pack.** Real questions from the configured system, over the two
 sources of the first vertical slice: indexed project documents and live
 structured tasks. It is what catches a change that improves fixture retrieval
@@ -90,16 +116,21 @@ optimization score.
 
 ```text
 eval/
-  schema/       pack, case, judgment, run schemas, plus embed.go
-  packs/smoke/  pack.json, cases.jsonl, judgments.jsonl, sources/, transcripts/
-  baselines/    smoke.json
+  schema/          pack, case, judgment, run schemas, plus embed.go
+  packs/smoke/     pack.json, cases.jsonl, judgments.jsonl, sources/, transcripts/
+  packs/firstuse/  pack.json, cases.jsonl, judgments.jsonl, sources/
+  baselines/       smoke.json, firstuse.json
 ```
 
-The repository holds schemas, a synthetic smoke pack, and the smoke baseline.
-It never holds authored development questions, development judgments, copied
-source bodies, personal absolute paths, or development run artifacts. Tests
-enforce the committed-pack allowlist and scan committed evaluation artifacts
-for personal absolute paths.
+The repository holds schemas, two packs, and their baselines. It never holds
+authored development questions, development judgments, personal absolute paths,
+or run artifacts. Tests enforce the committed-pack allowlist and scan committed
+evaluation artifacts for personal absolute paths.
+
+The first-use pack is the one exception to "no copied source bodies", made
+deliberately and bounded: it carries a trimmed, scrubbed snapshot of the home
+corpus because the ranking work it gates runs in CI. Adding a third committed
+pack means editing the allowlist test, which is the point of having one.
 
 Run artifacts contain excerpts even when packs do not. They inherit the pack's
 sensitivity, default to `$XDG_STATE_HOME/recall/<profile>/eval/`, and are never
@@ -211,7 +242,66 @@ maximum expansion size
 locator must resolve to the judged lineage and revision
 candidate must be suppressed or visible
 no candidate may cross the profile sensitivity ceiling
+one named lineage must rank first
+fewest and most results the response may carry
+most result slots one record may occupy
+substrings a named result's excerpt must contain
 ```
+
+The last four came with the first-use pack, because they are what its six
+queries are about and no ranking metric can state any of them. Graded metrics
+score the shape of a whole list, so none of them says which single record is
+the answer. A count is not a rank: the caller pays for every result, and a
+phrasing that returns three times as many for no more information is a defect
+that leaves nDCG untouched. Duplication across source instances is invisible to
+judgments, which key on `source_uid` and so read two views of one catalog as
+two pieces of evidence. And nothing else in the pack format reads what a result
+*said*, which is the difference between a hit and evidence.
+
+### Expected Failures
+
+A case may declare `expected_fail`, which names assertions and says what has to
+land before they can hold:
+
+```json
+{
+  "expected_fail": {
+    "reason": "td-92c7b7 for max_results, td-87eecf for max_results_per_record.",
+    "assertions": ["max_results", "max_results_per_record"]
+  }
+}
+```
+
+Violations of a named assertion are recorded and do not fail the
+`declared_assertions` gate. Everything else is enforced exactly as on any other
+case — every assertion the case declares and does not name, plus its behavior,
+coverage, provenance and locators.
+
+It names assertions rather than excusing the case because a case-wide
+exemption has a blast radius. Once a ranking failure is excused, a required
+source that stopped being returned on the same case is excused with it, and a
+real regression rides into a green build behind a defect somebody already knew
+about. Naming them also keeps two tickets separable: the case above shows
+movement when either fix lands, instead of reporting both as outstanding until
+both are done and crediting neither.
+
+The reason is required for the other half of the problem. An expected-failure
+list with nothing to wait on is a mute button, and a marking with no defect
+behind it has no way to ever come off. The `expected_failures_current` gate
+closes that end: a **named assertion** that stopped failing fails the run, per
+assertion and not per case, so the fix also forces the pack to record that the
+movement happened. That is the whole reason for writing these cases before the
+fixes rather than after.
+
+A run records what each marking observed, in `expected_failures` on `run.json`.
+It is there rather than only in the rendered summary because an excused
+violation leaves `declared_assertions` reporting zero: a baseline without it
+would freeze four known defects as nothing having happened, and `--json` would
+disagree with what a person reads.
+
+`recall eval validate` rejects a marking that names something outside the
+assertion vocabulary, or an assertion the case does not declare. Both would
+excuse nothing and then report themselves as fixed.
 
 ### Known Gaps
 
@@ -290,27 +380,33 @@ recall eval report   <run>
 recall eval export-trec <run>          (stage 2)
 ```
 
-A run produces `run.json` (environment, metrics, gates, status),
-`cases.jsonl` (one detailed result per case), `summary.md`, and
-`results.trec` when applicable.
+A run produces `run.json` (environment, metrics, gates, status, and what each
+declared expected failure observed), `cases.jsonl` (one detailed result per
+case), `summary.md`, and `results.trec` when applicable.
 
 `run` exits non-zero when a hard gate fails. `compare` exits non-zero when the
 two runs are not comparable **or** when any rate moved down, overall or in any
 case-tag group. Both are the same verdict to a script: do not promote this.
 Latency is not compared — it is a property of the machine, and a baseline frozen
-on one host would fail every build on another. CI runs only the synthetic smoke
-pack against its committed baseline:
+on one host would fail every build on another. CI runs both committed packs
+against their committed baselines, which is what `make eval` does:
 
 ```sh
-recall eval run     --pack eval/packs/smoke --output "$d"
-recall eval compare eval/baselines/smoke.json "$d"
+for p in smoke firstuse; do
+  recall eval run     --pack "eval/packs/$p" --output "$d/$p"
+  recall eval compare "eval/baselines/$p.json" "$d/$p"
+done
 ```
 
+A change to ranking or admission has to pass that target. The smoke pack covers
+the failure vocabulary a healthy corpus cannot produce; the first-use pack
+covers six real queries whose answers a person checked, which is the only thing
+that catches a change improving synthetic retrieval while making a real
+question worse.
+
 The private development pack remains a required local development and release
-gate. It covers real questions over prose nobody wrote to be retrieved, which
-synthetic fixtures cannot produce, while the smoke pack covers the failure
-vocabulary a healthy corpus cannot produce. CI cannot access the private pack
-and must never substitute a committed copy.
+gate on top of both. It is larger, its questions are authored rather than
+observed, and CI cannot access it and must never substitute a committed copy.
 
 A rate is called a regression when it moves down by more than 1e-9. That is not
 slack for real movement: the smallest change one case can make to a forty-case
@@ -391,8 +487,9 @@ overall pools the cases where a metric is defined, the case-tag macro weights
 each tag group equally, and the source-family macro weights each family equally.
 Quoting one and later reading another off the bottom of `summary.md` can invent
 a regression that never happened. A metric written down without its population
-is a trap laid for the next reader. Smoke and private-development numbers are
-also different populations and must never be compared to one another.
+is a trap laid for the next reader. Smoke, first-use, and private-development
+numbers are three different populations over three different corpora and must
+never be compared to one another.
 
 Latency has no macro average. A percentile of percentiles is not a percentile;
 latency is pooled within each population and reported per group and overall.
@@ -415,6 +512,9 @@ A candidate run is invalid when any hard gate fails:
 - Exact-identifier Success@1 meets the pack threshold.
 - Abstention accuracy meets the pack threshold.
 - p95 latency and query cost stay within the pack budget.
+- Every declared case assertion holds, except the ones an `expected_fail`
+  marking names.
+- Every assertion an `expected_fail` marking names is still failing.
 - The run completes with no fixture mutation, crash, or undeclared network use.
 - No project-configuration fixture caused a subprocess spawn.
 
@@ -423,8 +523,8 @@ are floors on behavior a release must clear at all, and they are checked by
 `run` on a single run with nothing to compare against.
 
 Regression protection is the separate job of `compare` against the pack's
-baseline. The smoke baseline is committed; the development baseline is private.
-On both packs comparison is exact rather than statistical.
+baseline. The smoke and first-use baselines are committed; the development
+baseline is private. On every pack comparison is exact rather than statistical.
 Every rate is deterministic — the same pack over the same commit produces the
 same number to the last bit, on repeated runs and across ten commits — so run
 variance is zero and any downward movement is a real change to explain. A pack

@@ -36,6 +36,59 @@ type Run struct {
 	Environment Environment `json:"environment"`
 	Metrics     Report      `json:"metrics"`
 	Gates       []Gate      `json:"gates,omitempty"`
+
+	// ExpectedFailures records what each declared expected failure actually
+	// did. It belongs to the run, and therefore to a committed baseline,
+	// because the gates alone cannot show movement: an excused violation
+	// leaves declared_assertions reporting zero, so a baseline without this
+	// would record four known defects as nothing having happened and a later
+	// run that fixed one would be indistinguishable from one that did not.
+	ExpectedFailures []ExpectedFailure `json:"expected_failures,omitempty"`
+}
+
+// ExpectedFailure is one case's expected-failure marking and its outcome.
+type ExpectedFailure struct {
+	CaseID string `json:"case_id"`
+	Reason string `json:"reason"`
+
+	// Assertions is one entry per named assertion, in the order the case named
+	// them, so a marking waiting on two tickets reads as two lines and either
+	// one can move on its own.
+	Assertions []ExpectedFailureAssertion `json:"assertions"`
+}
+
+// ExpectedFailureAssertion is one named assertion and what it observed.
+//
+// No violations means the assertion stopped failing: the defect is fixed and
+// the marking is stale. That is represented by the absence rather than by a
+// flag beside it, because the violations are the evidence and a flag would be
+// a second thing to keep true.
+type ExpectedFailureAssertion struct {
+	Assertion  string   `json:"assertion"`
+	Violations []string `json:"violations,omitempty"`
+}
+
+// ExpectedFailuresOf collects the declared expected failures from a run's
+// scores, in case order.
+func ExpectedFailuresOf(scores []CaseScore) []ExpectedFailure {
+	var out []ExpectedFailure
+	for _, score := range scores {
+		if score.ExpectedFail == nil {
+			continue
+		}
+		expected := ExpectedFailure{CaseID: score.CaseID, Reason: score.ExpectedFail.Reason}
+		for _, named := range score.ExpectedFail.Assertions {
+			entry := ExpectedFailureAssertion{Assertion: named}
+			for _, violation := range score.AssertionViolations {
+				if assertionFieldOf(violation) == named {
+					entry.Violations = append(entry.Violations, violation)
+				}
+			}
+			expected.Assertions = append(expected.Assertions, entry)
+		}
+		out = append(out, expected)
+	}
+	return out
 }
 
 // PackRef identifies the pack a run measured, by content and not by path. Two

@@ -87,6 +87,69 @@ func TestValidateRejects(t *testing.T) {
 			want: eval.ErrMalformedLineageRoot,
 		},
 		{
+			name: "expected_fail naming an assertion the case does not declare",
+			why:  "nothing can violate an assertion nobody stated, so the marking reports itself fixed forever",
+			cases: []eval.Case{func() eval.Case {
+				c := goodCase("a")
+				c.ExpectedFail = &eval.ExpectedFail{
+					Reason:     "td-b94f6e: excerpts are cut at index time",
+					Assertions: []string{"excerpt_contains"},
+				}
+				c.Assertions = &eval.Assertions{RequiredSources: []recall.SourceUID{"uid"}}
+				return c
+			}()},
+			want: eval.ErrVacuousExpectedFail,
+		},
+		{
+			name: "expected_fail naming something outside the assertion vocabulary",
+			why:  "a typo excuses nothing and reports itself as a defect fix on the first run",
+			cases: []eval.Case{func() eval.Case {
+				c := goodCase("a")
+				c.ExpectedFail = &eval.ExpectedFail{
+					Reason:     "td-b94f6e: excerpts are cut at index time",
+					Assertions: []string{"excerpt_contain"},
+				}
+				c.Assertions = &eval.Assertions{ExcerptContains: map[recall.LineageRoot][]string{
+					"uid:doc": {"blog"},
+				}}
+				return c
+			}()},
+			want: eval.ErrUnknownAssertionName,
+		},
+		{
+			name: "result bounds no run can satisfy",
+			why:  "the case would fail forever for a reason that is in the pack rather than in the system",
+			cases: []eval.Case{func() eval.Case {
+				c := goodCase("a")
+				two, one := 2, 1
+				c.Assertions = &eval.Assertions{MinResults: &two, MaxResults: &one}
+				return c
+			}()},
+			want: eval.ErrImpossibleResultBounds,
+		},
+		{
+			name: "expected top lineage that is not a persisted locator",
+			why:  "a root that cannot be parsed never matches a result, so the assertion passes vacuously",
+			cases: []eval.Case{func() eval.Case {
+				c := goodCase("a")
+				c.Assertions = &eval.Assertions{ExpectedTopLineage: "d7c7a8a8"}
+				return c
+			}()},
+			want: eval.ErrMalformedLineageRoot,
+		},
+		{
+			name: "excerpt assertion keyed on a malformed root",
+			why:  "the same vacuous pass, on the one assertion that reads what a result said",
+			cases: []eval.Case{func() eval.Case {
+				c := goodCase("a")
+				c.Assertions = &eval.Assertions{ExcerptContains: map[recall.LineageRoot][]string{
+					"profile/TOOLS.md": {"blog"},
+				}}
+				return c
+			}()},
+			want: eval.ErrMalformedLineageRoot,
+		},
+		{
 			name: "schema version this build does not implement",
 			why:  "a reader that ignores fields it does not know would report metrics over content it only partly understood",
 			pack: func(p *eval.Pack) { p.SchemaVersion = eval.SchemaVersion + 1 },

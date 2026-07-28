@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -124,6 +126,22 @@ func packConfig(env Env, pack *eval.Pack) (*config.Config, error) {
 		},
 		Builtins: builtins,
 	})
+}
+
+// declaresReplay reports whether a source answers from a recording its adapter
+// ships with.
+//
+// Settings are adapter-owned and this is the one key read from outside the
+// adapter, because the alternative is worse: a pack's network policy judges a
+// source by its location, and an adapter over an HTTP API has to name an
+// endpoint even when it will never call one. Refusing those outright would put
+// every network-backed adapter permanently out of reach of a deterministic
+// pack. `replay` is the settled spelling across the adapters that support one,
+// and an adapter that spelled it differently would be refused here rather than
+// reaching the network unnoticed.
+func declaresReplay(settings map[string]any) bool {
+	dir, ok := settings["replay"].(string)
+	return ok && dir != ""
 }
 
 // loadPack reads a pack and its two files. Cases and judgments load separately
@@ -247,7 +265,11 @@ func evalRun(ctx context.Context, env Env, args []string) int {
 
 	locations := make([]eval.SourceLocation, 0, len(cfg.Sources))
 	for _, s := range cfg.Sources {
-		locations = append(locations, eval.SourceLocation{SourceID: s.ID, Location: s.Location})
+		locations = append(locations, eval.SourceLocation{
+			SourceID: s.ID,
+			Location: s.Location,
+			Replayed: declaresReplay(s.Settings),
+		})
 	}
 
 	started := env.now()()
@@ -283,6 +305,9 @@ func evalRun(ctx context.Context, env Env, args []string) int {
 		Environment:   environmentFor(*cold),
 		Metrics:       report,
 		Gates:         gates,
+		// Part of the run, so --json, the rendered summary, and a committed
+		// baseline all say the same thing about what is known to be broken.
+		ExpectedFailures: eval.ExpectedFailuresOf(scores),
 	}
 
 	dir := *output
@@ -441,10 +466,28 @@ func readRun(path string) (eval.Run, []eval.CaseScore, error) {
 func environmentFor(cold bool) eval.Environment {
 	env := eval.DescribeHost()
 	env.RecallCommit = buildinfo.Commit
+	env.Dirty = treeIsDirty()
 	env.Warm = !cold
 	env.CachePolicy = "cold"
 	if !cold {
 		env.CachePolicy = "warm"
 	}
 	return env
+}
+
+// treeIsDirty reports whether the working tree had uncommitted changes.
+//
+// A run's numbers are reproducible from its commit or they are not, and this
+// is the field that says which. It was never populated, so every artifact
+// claimed a clean tree — including baselines recorded mid-change, which is the
+// one moment the flag exists for.
+//
+// Best effort by construction: outside a checkout, or with no git on PATH,
+// there is no tree to be dirty and the honest answer is false. It is not
+// derived from buildinfo.Version, because a binary built once and run after an
+// edit would keep reporting the state of the tree at build time.
+func treeIsDirty() bool {
+	cmd := exec.Command("git", "status", "--porcelain")
+	out, err := cmd.Output()
+	return err == nil && len(bytes.TrimSpace(out)) > 0
 }

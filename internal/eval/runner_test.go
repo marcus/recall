@@ -288,6 +288,21 @@ func TestRunRefusesUndeclaredNetworkAccess(t *testing.T) {
 	}
 }
 
+// A source answering from a recording reaches no network however its location
+// reads. Refusing it would put every adapter over an HTTP API permanently out
+// of reach of a deterministic pack, which is the opposite of what the policy is
+// for.
+func TestReplayedSourceMayNameAnEndpointItNeverCalls(t *testing.T) {
+	r := eval.NewRunner(newEngine(), packFor(t, minimalPack), eval.RunOptions{
+		Locations: []eval.SourceLocation{
+			{SourceID: "projects", Location: "http://ongoing.invalid", Replayed: true},
+		},
+	})
+	if _, err := r.Run(context.Background(), nil); err != nil {
+		t.Fatalf("a recorded source was refused for the endpoint it does not call: %v", err)
+	}
+}
+
 func TestLivePackMayDeclareNetworkAccess(t *testing.T) {
 	pack := packFor(t, `{
   "schema_version": 1, "pack_id": "live", "version": "1",
@@ -329,6 +344,11 @@ func TestEveryBehaviorIsReachable(t *testing.T) {
 		}
 	}
 }
+
+// ptr is for the bounds a case states as pointers. Zero is a real bound there
+// — "this query must return nothing" — so an omitted bound and a bound of zero
+// cannot be the same value.
+func ptr[T any](v T) *T { return &v }
 
 func score(id string, tags []string, opts ...func(*eval.CaseScore)) eval.CaseScore {
 	s := eval.CaseScore{CaseID: id, Tags: tags}
@@ -480,6 +500,59 @@ func TestEveryDeclaredCaseAssertionCanFailTheRun(t *testing.T) {
 			assertions: eval.Assertions{VisibleLineages: []recall.LineageRoot{"uid:visible"}},
 			result:     eval.CaseResult{},
 			wantField:  "visible_lineages",
+		},
+		{
+			name:       "wrong record ranked first",
+			assertions: eval.Assertions{ExpectedTopLineage: "uid:answer"},
+			result: eval.CaseResult{Results: []eval.ResultRef{
+				{Root: "uid:other"}, {Root: "uid:answer"},
+			}},
+			wantField: "expected_top_lineage",
+		},
+		{
+			name:       "expected top record ranked nowhere",
+			assertions: eval.Assertions{ExpectedTopLineage: "uid:answer"},
+			result:     eval.CaseResult{},
+			wantField:  "expected_top_lineage",
+		},
+		{
+			name:       "too few results",
+			assertions: eval.Assertions{MinResults: ptr(2)},
+			result:     eval.CaseResult{Results: []eval.ResultRef{{Root: "uid:one"}}},
+			wantField:  "min_results",
+		},
+		{
+			name:       "an abstention that answered",
+			assertions: eval.Assertions{MaxResults: ptr(0)},
+			result:     eval.CaseResult{Results: []eval.ResultRef{{Root: "uid:one"}}},
+			wantField:  "max_results",
+		},
+		{
+			name:       "one record in two result slots",
+			assertions: eval.Assertions{MaxResultsPerRecord: ptr(1)},
+			result: eval.CaseResult{Results: []eval.ResultRef{
+				{Root: "uid-a:rec", RecordID: "rec", Fingerprint: "fp"},
+				{Root: "uid-b:rec", RecordID: "rec", Fingerprint: "fp"},
+			}},
+			wantField: "max_results_per_record",
+		},
+		{
+			name: "excerpt without the term that matched",
+			assertions: eval.Assertions{ExcerptContains: map[recall.LineageRoot][]string{
+				"uid:doc#L1-L40": {"blog"},
+			}},
+			result: eval.CaseResult{Results: []eval.ResultRef{
+				{Root: "uid:doc#L1-L40", Excerpt: "the head of the chunk"},
+			}},
+			wantField: "excerpt_contains",
+		},
+		{
+			name: "excerpt asserted on a record that did not rank",
+			assertions: eval.Assertions{ExcerptContains: map[recall.LineageRoot][]string{
+				"uid:doc#L1-L40": {"blog"},
+			}},
+			result:    eval.CaseResult{},
+			wantField: "excerpt_contains",
 		},
 	}
 
@@ -694,5 +767,163 @@ func TestABaselineWithoutPerCaseDetailInventsNoCaseChanges(t *testing.T) {
 	}
 	if !got.Acceptable() {
 		t.Errorf("a baseline without per-case detail was treated as a loss: %v", got.Regressions)
+	}
+}
+
+// An expected failure is a claim the pack is making about a defect it knows
+// about, not a way to stop measuring. The violations are still recorded, and
+// only the gate that decides admissibility looks away.
+func TestExpectedFailureIsReportedWithoutInvalidatingTheRun(t *testing.T) {
+	c := goodCase("known-broken")
+	c.ExpectedFail = &eval.ExpectedFail{
+		Reason:     "td-b94f6e: excerpts are cut at index time",
+		Assertions: []string{"excerpt_contains"},
+	}
+	c.Assertions = &eval.Assertions{ExcerptContains: map[recall.LineageRoot][]string{
+		"uid:doc#L1-L40": {"blog"},
+	}}
+	got := eval.Score(c, nil, eval.CaseResult{Results: []eval.ResultRef{
+		{Root: "uid:doc#L1-L40", Excerpt: "the head of the chunk"},
+	}})
+
+	if len(got.AssertionViolations) != 1 {
+		t.Fatalf("violations = %v, want the failure recorded rather than hidden",
+			got.AssertionViolations)
+	}
+	if got.ExpectedFail == nil || got.ExpectedFail.Reason != c.ExpectedFail.Reason {
+		t.Errorf("marking = %+v, want it carried onto the score", got.ExpectedFail)
+	}
+
+	scores := []eval.CaseScore{got}
+	gates := eval.EvaluateGates(goodPack(), scores, eval.ReportOf(scores), nil)
+	if !eval.Valid(gates) {
+		t.Fatal("a declared expected failure invalidated the run it was declared for")
+	}
+
+	// The run record is what --json emits and what a baseline freezes, so the
+	// evidence has to be there and not only in the rendered summary.
+	run := eval.Run{Gates: gates, ExpectedFailures: eval.ExpectedFailuresOf(scores)}
+	if len(run.ExpectedFailures) != 1 ||
+		len(run.ExpectedFailures[0].Assertions) != 1 ||
+		len(run.ExpectedFailures[0].Assertions[0].Violations) != 1 {
+		t.Fatalf("run record = %+v, want the observed violation recorded", run.ExpectedFailures)
+	}
+	if !strings.Contains(eval.Summarize(run, scores), c.ExpectedFail.Reason) {
+		t.Error("the summary does not say what the expected failure is waiting on")
+	}
+}
+
+// A marking excuses the assertions it names and nothing else. Excusing the
+// case would let the next regression on it ride into a green build behind a
+// defect somebody already knew about.
+func TestExpectedFailureExcusesOnlyTheAssertionsItNames(t *testing.T) {
+	c := goodCase("known-broken")
+	c.ExpectedFail = &eval.ExpectedFail{
+		Reason:     "td-b94f6e: excerpts are cut at index time",
+		Assertions: []string{"excerpt_contains"},
+	}
+	c.Assertions = &eval.Assertions{
+		ExcerptContains: map[recall.LineageRoot][]string{"uid:doc#L1-L40": {"blog"}},
+		RequiredSources: []recall.SourceUID{"uid-required"},
+	}
+	got := eval.Score(c, nil, eval.CaseResult{Results: []eval.ResultRef{
+		{Root: "uid:doc#L1-L40", Excerpt: "the head of the chunk"},
+	}})
+	if len(got.AssertionViolations) != 2 {
+		t.Fatalf("violations = %v, want both the known one and the new one",
+			got.AssertionViolations)
+	}
+
+	scores := []eval.CaseScore{got}
+	gates := eval.EvaluateGates(goodPack(), scores, eval.ReportOf(scores), nil)
+	if eval.Valid(gates) {
+		t.Fatal("an unrelated regression passed behind an expected failure")
+	}
+}
+
+// Without this, an expected-failure marking is permanent: the fix lands, the
+// case starts passing, and the pack goes on describing it as broken.
+func TestAnExpectedFailureThatStoppedFailingInvalidatesTheRun(t *testing.T) {
+	c := goodCase("fixed")
+	c.ExpectedFail = &eval.ExpectedFail{
+		Reason:     "td-87eecf: one record renders as two results",
+		Assertions: []string{"max_results_per_record"},
+	}
+	c.Assertions = &eval.Assertions{MaxResultsPerRecord: ptr(1)}
+	got := eval.Score(c, nil, eval.CaseResult{Results: []eval.ResultRef{
+		{Root: "uid-a:rec", RecordID: "rec", Fingerprint: "fp"},
+	}})
+	if len(got.AssertionViolations) != 0 {
+		t.Fatalf("violations = %v, want none: the defect is fixed in this result",
+			got.AssertionViolations)
+	}
+
+	scores := []eval.CaseScore{got}
+	gates := eval.EvaluateGates(goodPack(), scores, eval.ReportOf(scores), nil)
+	if eval.Valid(gates) {
+		t.Fatal("a marking that outlived its defect was accepted, so it would never come off")
+	}
+	for _, gate := range gates {
+		if gate.Name == eval.GateExpectedFails && gate.Status == eval.GateFail {
+			return
+		}
+	}
+	t.Errorf("no %s gate failed; another gate refused the run for the wrong reason",
+		eval.GateExpectedFails)
+}
+
+// A case waiting on two tickets has to show movement when either one lands,
+// or the pack reports both as outstanding until both are done and neither fix
+// is ever credited.
+func TestOneTicketLandingMakesItsAssertionStaleOnItsOwn(t *testing.T) {
+	c := goodCase("two-tickets")
+	c.ExpectedFail = &eval.ExpectedFail{
+		Reason:     "td-92c7b7 for the count, td-87eecf for the duplicate",
+		Assertions: []string{"max_results", "max_results_per_record"},
+	}
+	c.Assertions = &eval.Assertions{MaxResults: ptr(1), MaxResultsPerRecord: ptr(1)}
+
+	// The duplicate is fixed; the count is not.
+	got := eval.Score(c, nil, eval.CaseResult{Results: []eval.ResultRef{
+		{Root: "uid-a:one", RecordID: "one", Fingerprint: "fp-one"},
+		{Root: "uid-a:two", RecordID: "two", Fingerprint: "fp-two"},
+	}})
+
+	scores := []eval.CaseScore{got}
+	expected := eval.ExpectedFailuresOf(scores)
+	if len(expected) != 1 || len(expected[0].Assertions) != 2 {
+		t.Fatalf("run record = %+v, want both named assertions reported", expected)
+	}
+	byName := map[string]int{}
+	for _, named := range expected[0].Assertions {
+		byName[named.Assertion] = len(named.Violations)
+	}
+	if byName["max_results"] == 0 {
+		t.Error("the count assertion is reported as fixed; it still fails")
+	}
+	if byName["max_results_per_record"] != 0 {
+		t.Error("the duplicate assertion is reported as failing; it was fixed")
+	}
+
+	gates := eval.EvaluateGates(goodPack(), scores, eval.ReportOf(scores), nil)
+	if eval.Valid(gates) {
+		t.Fatal("one ticket landed and the run stayed valid, so the marking would never come off")
+	}
+}
+
+// A result missing either half of its identity stands alone. Collapsing
+// results that merely lack a fingerprint would claim two things are one record
+// on no evidence, which is the mistake the assertion exists to catch in the
+// other direction.
+func TestRecordIdentityNeedsBothHalves(t *testing.T) {
+	c := goodCase("no-fingerprints")
+	c.Assertions = &eval.Assertions{MaxResultsPerRecord: ptr(1)}
+	got := eval.Score(c, nil, eval.CaseResult{Results: []eval.ResultRef{
+		{Root: "uid-a:rec", RecordID: "rec"},
+		{Root: "uid-b:rec", RecordID: "rec"},
+	}})
+	if len(got.AssertionViolations) != 0 {
+		t.Fatalf("violations = %v, want none: neither result claimed a fingerprint",
+			got.AssertionViolations)
 	}
 }

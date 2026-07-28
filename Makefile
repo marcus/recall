@@ -68,10 +68,28 @@ uninstall:
 clean:
 	rm -rf $(BIN) coverage.out
 
-# eval runs the committed smoke pack through the same application layer the CLI
-# uses. It is a separate target from `check` because it builds two binaries and
-# spawns one; CI runs both.
+# eval runs the committed packs through the same application layer the CLI
+# uses, and compares each against its committed baseline. It is a separate
+# target from `check` because it builds several binaries and spawns them; CI
+# runs both.
+#
+# Both packs run, and a failure in either fails the target. smoke covers the
+# failure vocabulary a healthy corpus cannot produce; firstuse covers six real
+# queries over a pinned snapshot of the configured home profile, and is the
+# gate every ranking and admission change has to pass. Run artifacts carry
+# excerpts, so they go to a temporary directory and never into the tree.
+#
+# build-all rather than build: the core spawns external adapters by command
+# name, and these packs configure two of them, so a partial build measures a
+# source that is not there.
+EVAL_PACKS := smoke firstuse
+
 .PHONY: eval
-eval: build
-	$(GO) build -ldflags '$(LDFLAGS)' -o $(BIN)/recall-stream ./cmd/recall-stream
-	PATH="$(PWD)/$(BIN):$$PATH" $(BIN)/recall eval run --pack eval/packs/smoke
+eval: build-all
+	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT && \
+	for p in $(EVAL_PACKS); do \
+		echo "== $$p"; \
+		PATH="$(PWD)/$(BIN):$$PATH" $(BIN)/recall eval run \
+			--pack eval/packs/$$p --output "$$d/$$p" || exit 1; \
+		$(BIN)/recall eval compare eval/baselines/$$p.json "$$d/$$p" || exit 1; \
+	done

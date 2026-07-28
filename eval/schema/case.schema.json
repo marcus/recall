@@ -53,6 +53,41 @@
     "notes": {
       "type": "string"
     },
+    "expected_fail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "assertions"],
+      "description": "Which of this case's assertions are known to fail today, and what has to land before they can hold. It names assertions rather than excusing the case, because a case-wide exemption also excuses regressions nobody predicted, and because a case waiting on two tickets must be able to show movement when either one lands. Every assertion the case declares and does not name here is enforced as on any other case. A run in which a named assertion stopped failing fails the expected_failures_current gate, so a marking cannot outlive its defect.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 40,
+          "description": "What has to land, in enough words to be actionable. An expected-failure list with nothing to wait on is a mute button."
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "The excused assertion fields, spelled as the assertions block spells them. A name outside this vocabulary excuses nothing; a name the case does not declare can never be violated. Both are rejected by recall eval validate.",
+          "items": {
+            "enum": [
+              "required_sources",
+              "forbidden_sources",
+              "max_latency_ms",
+              "max_expansion_bytes",
+              "expected_revisions",
+              "suppressed_lineages",
+              "visible_lineages",
+              "expected_top_lineage",
+              "min_results",
+              "max_results",
+              "max_results_per_record",
+              "excerpt_contains"
+            ]
+          }
+        }
+      }
+    },
     "assertions": {
       "$ref": "#/$defs/assertions"
     },
@@ -218,6 +253,40 @@
         },
         "sensitivity_ceiling": {
           "$ref": "#/$defs/sensitivity"
+        },
+        "expected_top_lineage": {
+          "$ref": "#/$defs/lineage_root",
+          "description": "The lineage root that must rank first. Graded metrics score the shape of a whole list, so none of them can say which single record is the answer — which is the entire claim some queries make, and the one a caller reading only the first result sees."
+        },
+        "min_results": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Fewest results the response may carry. A caller pays for every result it is handed, so the count is part of the contract."
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Most results the response may carry. Zero is a real bound: a case that must abstain says 0."
+        },
+        "max_results_per_record": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many result slots one record may occupy. Identity is the source record id together with the content fingerprint, across sources: one record reached through two source instances is one thing a caller has to read, not two. A result missing either half is its own record, because identity claimed without evidence would collapse results that merely lack a fingerprint."
+        },
+        "excerpt_contains": {
+          "type": "object",
+          "description": "Substrings that must appear, case-insensitively, in the excerpt shown for a lineage root. The only assertion about what a result says rather than where it ranked: a hit whose displayed text does not contain the term that matched cannot be judged without a second call.",
+          "propertyNames": {
+            "$ref": "#/$defs/lineage_root"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     }

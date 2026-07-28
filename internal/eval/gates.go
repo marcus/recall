@@ -17,6 +17,7 @@ const (
 	GateAbstention      = "abstention_accuracy"
 	GateLatency         = "p95_latency"
 	GateAssertions      = "declared_assertions"
+	GateExpectedFails   = "expected_failures_current"
 	GateRunIntegrity    = "run_integrity"
 )
 
@@ -56,15 +57,46 @@ func EvaluateGates(pack *Pack, scores []CaseScore, report Report, integrity []st
 	gates = append(gates, latencyGate(pack, report))
 	gates = append(gates, countGate(GateAssertions, countAssertionViolations(scores),
 		"declared case assertion violation(s)"))
+	gates = append(gates, countGate(GateExpectedFails, countStaleExpectedFails(scores),
+		"expected failure(s) that stopped failing; remove them from expected_fail.assertions"))
 	gates = append(gates, integrityGate(integrity))
 
 	return gates
 }
 
+// countAssertionViolations counts the violations nobody declared in advance.
+//
+// Only the assertions a marking names are excused, never the case. A case
+// waiting on a ranking fix still has to return its required sources and stay
+// inside its result bounds, or a real regression would ride into a green build
+// behind a known defect.
 func countAssertionViolations(scores []CaseScore) int {
 	n := 0
 	for _, score := range scores {
-		n += len(score.AssertionViolations)
+		for _, violation := range score.AssertionViolations {
+			if !score.ExpectedFail.excuses(violation) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// countStaleExpectedFails counts named assertions that have outlived their
+// defect, one per assertion rather than one per case.
+//
+// Without this an expected-failure marking is permanent: the fix lands, the
+// case starts passing, and the pack goes on describing it as broken. Counting
+// per assertion is what makes a case waiting on two tickets show movement when
+// either one lands.
+func countStaleExpectedFails(scores []CaseScore) int {
+	n := 0
+	for _, expected := range ExpectedFailuresOf(scores) {
+		for _, named := range expected.Assertions {
+			if len(named.Violations) == 0 {
+				n++
+			}
+		}
 	}
 	return n
 }
