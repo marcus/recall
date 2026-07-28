@@ -313,14 +313,19 @@ func (c *recordingCore) Query(ctx context.Context, req recall.QueryRequest) (rec
 func TestUnsetBudgetTakesTheDefaultCeiling(t *testing.T) {
 	h := budgetHarness(t, 400)
 
-	unset := queryTokens(t, h, "anything")
+	// --limit is raised on both queries because the two budgets are independent
+	// and this test is about the token one. Left at the profile's result budget,
+	// an unbounded token budget renders twenty results and never approaches the
+	// ceiling — which would leave BOTH assertions here passing for a reason
+	// that has nothing to do with the ceiling they name.
+	unset := queryTokens(t, h, "--limit", "400", "anything")
 	if unset > recall.DefaultResponseTokens {
 		t.Errorf("an unset budget rendered %d tokens, above the default ceiling of %d",
 			unset, recall.DefaultResponseTokens)
 	}
 
 	// The escape hatch is what makes the ceiling a default rather than a limit.
-	unbounded := queryTokens(t, h, "--budget-tokens", "-1", "anything")
+	unbounded := queryTokens(t, h, "--budget-tokens", "-1", "--limit", "400", "anything")
 	if unbounded <= recall.DefaultResponseTokens {
 		t.Fatalf("the fixture is too small to show an unbounded response: %d tokens", unbounded)
 	}

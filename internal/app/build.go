@@ -18,7 +18,9 @@ type BuildOptions struct {
 	Builtins map[string]source.Factory
 	StateDir string
 
-	// Limit is the default result cap. A request may override it.
+	// Limit overrides the profile's configured result budget. Zero means the
+	// configured one applies, which is what every transport passes unless a
+	// caller named a limit on the command line.
 	Limit int
 
 	// Costs prices a response per surface, for the transports that render one.
@@ -62,6 +64,12 @@ func Build(opt BuildOptions) (*App, *source.Registry, error) {
 //
 // Exported because evaluation builds a core the same way and must get the same
 // mapping; it is the one translation that decides how every source is weighed.
+//
+// limit is an override rather than the value: zero means the profile's
+// configured budget stands. A transport that passed its own default here would
+// be the second writer of a policy that has one home, and the first thing to
+// diverge would be what `recall query` returns against what `recall serve`
+// does for the same request.
 func RankingConfig(cfg *config.Config, limit int) ranking.Config {
 	sources := make(map[recall.SourceUID]ranking.SourceConfig, len(cfg.Sources))
 	for _, s := range cfg.Sources {
@@ -76,7 +84,14 @@ func RankingConfig(cfg *config.Config, limit int) ranking.Config {
 		}
 		sources[s.UID] = sc
 	}
-	return ranking.Config{Sources: sources, Limit: limit}
+	if limit == 0 {
+		limit = cfg.Defaults.MaxResults
+	}
+	return ranking.Config{
+		Sources:        sources,
+		Limit:          limit,
+		RelevanceFloor: cfg.Defaults.RelevanceFloor,
+	}
 }
 
 // Locations reports where every configured source reads from, for an

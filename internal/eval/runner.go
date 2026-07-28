@@ -131,8 +131,16 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		Profile: c.Profile,
 		AsOf:    c.AsOf,
 		Mode:    recall.ModeExplicit,
-		Limit:   defaultCaseLimit,
-		Budget:  recall.Budget{LatencyMS: c.TimeoutMS},
+		// No limit on the request, so the profile's own max_results applies.
+		//
+		// The runner used to send a fixed 20 here, and a request limit
+		// overrides a configured budget — so no pack could observe the result
+		// budget at all. A pack whose configuration set max_results = 1 scored
+		// identically to one that set 20, which is a gate that cannot fail
+		// looking exactly like a gate that passes. A pack that wants a
+		// particular budget states it in its own sources/config.toml, beside
+		// the priors and the ceiling it already states there.
+		Budget: recall.Budget{LatencyMS: c.TimeoutMS},
 	}
 	if c.Mode == recall.ModePreReply {
 		req.Mode = recall.ModePreReply
@@ -191,8 +199,6 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 	result.Expansions = r.checkExpansions(ctx, c, resp)
 	return result, nil
 }
-
-const defaultCaseLimit = 20
 
 // positions projects a cluster onto ranked positions.
 //

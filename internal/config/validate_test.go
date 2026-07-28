@@ -159,6 +159,48 @@ keychain = "b/c"
 			wantIn:  []string{"exactly one"},
 		},
 		{
+			// The two volume rules are user-layer policy, so they are stated in
+			// a whole user config rather than as a project overlay — a project
+			// declaring [defaults] is refused before validation ever sees it.
+			name: "negative result budget",
+			user: true,
+			project: `
+[defaults]
+profile = "work"
+max_results = -1
+`,
+			wantKey: "defaults.max_results",
+			wantIn:  []string{"negative", "0 is unbounded"},
+		},
+		{
+			// Refused rather than clamped, for the reason every ranking value
+			// is: a machine must not rank differently from the configuration
+			// somebody reviewed. One is out of range as well, because relevance
+			// is exactly 1 for a browse with no query terms and for a record
+			// whose source could not report a length — so a floor of 1 keeps
+			// precisely the candidates that told fusion nothing.
+			name: "relevance floor at the excluded bound",
+			user: true,
+			project: `
+[defaults]
+profile = "work"
+relevance_floor = 1.0
+`,
+			wantKey: "defaults.relevance_floor",
+			wantIn:  []string{"[0, 1)", "0 admits every candidate"},
+		},
+		{
+			name: "negative relevance floor",
+			user: true,
+			project: `
+[defaults]
+profile = "work"
+relevance_floor = -0.2
+`,
+			wantKey: "defaults.relevance_floor",
+			wantIn:  []string{"[0, 1)"},
+		},
+		{
 			name: "secret declaring neither kind of reference",
 			project: `
 [[sources]]

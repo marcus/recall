@@ -131,7 +131,7 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 		// Carried on every response and kept only by shaping, which is the one
 		// thing that knows whether the ledger it stands in for was affordable.
 		SourceSummary:  summarize(outcomes),
-		Plan:           plan.AsPlan(a.ranker.Config().RankConstant, a.ranker.Config().CorroborationCap),
+		Plan:           plan.AsPlan(a.rules(fusion)),
 		Suppressed:     append(suppressed, fusion.Suppressed...),
 		Coverage:       coverage(outcomes),
 		Truncated:      fusion.Truncated,
@@ -172,6 +172,19 @@ func summarize(reports []recall.SourceReport) *recall.SourceSummary {
 		out.Outcomes[r.Outcome]++
 	}
 	return &out
+}
+
+// rules is the fusion configuration this response reports back. The limit comes
+// from the fusion that ran rather than from the configuration, because a request
+// may override it and the plan should state what applied to this caller.
+func (a *App) rules(fusion ranking.Fusion) recall.FusionRules {
+	cfg := a.ranker.Config()
+	return recall.FusionRules{
+		RankConstant:     cfg.RankConstant,
+		CorroborationCap: cfg.CorroborationCap,
+		RelevanceFloor:   cfg.RelevanceFloor,
+		Limit:            fusion.Limit,
+	}
 }
 
 // cost prices a response for the surface that asked for it.

@@ -2,6 +2,7 @@ package config
 
 import (
 	"maps"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -96,6 +97,21 @@ func (c *Config) validateDefaults() error {
 	if c.Defaults.FusionReserve < 0 {
 		probs.add(invalidErrorf(c.defaultOrigins["fusion_reserve_ms"].File,
 			"defaults.fusion_reserve_ms", "must not be negative"))
+	}
+	if c.Defaults.MaxResults < 0 {
+		probs.add(invalidErrorf(c.defaultOrigins["max_results"].File,
+			"defaults.max_results", "must not be negative; 0 is unbounded"))
+	}
+	// The same bound internal/ranking enforces, stated here so a machine is told
+	// about it by `recall doctor` rather than by a query that would not fuse.
+	// A floor of 1 is refused rather than accepted as "keep nothing": on the
+	// shared definition, relevance is exactly 1 for a browse with no query terms
+	// and for a record whose source could not report a length, so that floor
+	// keeps precisely the candidates that told fusion nothing.
+	floor := c.Defaults.RelevanceFloor
+	if math.IsNaN(floor) || floor < 0 || floor >= 1 {
+		probs.add(invalidErrorf(c.defaultOrigins["relevance_floor"].File,
+			"defaults.relevance_floor", "must be in [0, 1); 0 admits every candidate"))
 	}
 	if err := validateName("profile", c.Defaults.Profile); err != nil {
 		probs.add(invalidErrorf(c.defaultOrigins["profile"].File, "defaults.profile", "%s", err))

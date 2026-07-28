@@ -1067,3 +1067,296 @@ func TestRelevancePairsWithTheRankItBelongsTo(t *testing.T) {
 			"0.9 belonging to the rank-4 one", got.Score, want.Score)
 	}
 }
+
+// The volume rules of td-57b319. Thirteen sources at a per-source cap of twenty
+// meant a natural-language query's length was the profile's arithmetic and not
+// a fact about the corpus: admission decided WHICH candidates filled each cap,
+// and nothing decided how many came back. These are the two rules that replaced
+// it, and the four things neither of them is allowed to do.
+
+// The floor is expressed in relevance because relevance is the only
+// cross-source-comparable signal fusion is permitted to read.
+func TestRelevanceFloorWithholdsResultsAndCountsThem(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.05 })
+
+	got := fuse(t, r, request(
+		cand("docs", "about.md#1", 1, relevance(0.6)),
+		cand("docs", "mention.md#1", 2, relevance(0.04)),
+		cand("tasks", "td-1", 1, relevance(0)),
+	))
+
+	if want := []string{"docs:about.md#1"}; !reflect.DeepEqual(order(got), want) {
+		t.Errorf("results = %v, want %v", order(got), want)
+	}
+	// Named as well as counted, like every other withheld cluster: an answer
+	// that silently dropped what a source returned reads as a corpus that never
+	// held it.
+	want := []recall.Suppression{
+		{Reason: recall.SuppressRelevanceFloor, Count: 1, LineageRoot: "uid-docs:mention.md#1"},
+		{Reason: recall.SuppressRelevanceFloor, Count: 1, LineageRoot: "uid-tasks:td-1"},
+	}
+	if !reflect.DeepEqual(got.Suppressed, want) {
+		t.Errorf("suppressed = %+v, want %+v", got.Suppressed, want)
+	}
+}
+
+// A cluster survives if ANY record in it clears the floor. The unit is what the
+// caller is shown, and a cluster is one thing shown: judging it by a single
+// member would withhold a record on the strength of the weakest view of it.
+func TestRelevanceFloorKeepsAClusterAnyRecordOfWhichIsRelevant(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.5 })
+
+	got := fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.9), recordID("a.md")),
+		cand("docs", "a.md#9", 2, relevance(0.01), recordID("a.md")),
+	))
+
+	if len(got.Results) != 1 || len(got.Suppressed) != 0 {
+		t.Errorf("results = %v, suppressed = %+v; want the one record kept whole",
+			order(got), got.Suppressed)
+	}
+}
+
+// A record the host says it has already shown stays suppressed even when the
+// view carrying that lineage root is the one below the floor.
+//
+// This is why the floor withholds clusters and not candidates. Dropping the
+// weak view before grouping took it out of the cluster's view classes, and
+// allSuppressed — which requires EVERY class to hold a suppressed root — then
+// re-displayed the record under the very view the host had suppressed, which
+// is the failure its own doc comment describes.
+func TestRelevanceFloorDoesNotDefeatHostLineageSuppression(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.05 })
+
+	view := func(sourceID string, rel float64) recall.Candidate {
+		return cand(sourceID, "rec-1", 1, relevance(rel),
+			recordID("rec-1"), fingerprint("fp-1"), revision("rev-1"))
+	}
+	req := request(view("docs", 0.9), view("mail", 0.01))
+	req.Mode = recall.ModePreReply
+	req.SuppressLineages = []recall.LineageRoot{"uid-mail:rec-1"}
+
+	if got := fuse(t, r, req); len(got.Results) != 0 {
+		t.Errorf("results = %v, want none: the host has already shown this record", order(got))
+	}
+}
+
+// Which chunk of a document is DISPLAYED must not change because of the floor.
+//
+// Relevance is coverage times concentration, so a short heading scores higher
+// than the long body chunk that answers the question. Withholding the body
+// chunk as a candidate left the heading representing the document and the
+// caller reading its title back — td-7b28b9's defect, arriving through a rule
+// that has nothing to do with representation.
+func TestRelevanceFloorDoesNotChangeTheDisplayedChunk(t *testing.T) {
+	displayed := func(floor float64) string {
+		t.Helper()
+		r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = floor })
+		got := single(t, fuse(t, r, request(
+			cand("docs", "doc.md#L1-L1", 1, relevance(0.9),
+				recordID("doc.md"), excerptKind(recall.ExcerptPreview)),
+			cand("docs", "doc.md#L5-L8", 2, relevance(0.02),
+				recordID("doc.md"), excerptKind(recall.ExcerptMatched)),
+		)))
+		return got.Primary.Locator.String()
+	}
+
+	if got, want := displayed(0.05), displayed(0); got != want {
+		t.Errorf("displayed %q with the floor and %q without it", got, want)
+	}
+}
+
+// A malformed relevance costs a source its position, never its presence.
+//
+// relevanceOf clamps a number that is not a number to 0, which is the right
+// price when the value only orders things. Under a floor that price becomes
+// disappearance from every answer, which an adapter computing matched/total
+// with total = 0 would earn silently.
+func TestMalformedRelevanceIsNotAFloorVerdict(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.5 })
+
+	nan := math.NaN()
+	inf := math.Inf(1)
+	got := fuse(t, r, request(
+		cand("docs", "nan.md#1", 1, func(c *recall.Candidate) { c.Relevance = &nan }),
+		cand("docs", "inf.md#1", 2, func(c *recall.Candidate) { c.Relevance = &inf }),
+		cand("docs", "honest.md#1", 3, relevance(0.1)),
+	))
+
+	want := []string{"docs:inf.md#1", "docs:nan.md#1"}
+	if got := slices.Sorted(slices.Values(order(got))); !slices.Equal(got, want) {
+		t.Errorf("results = %v, want the two unusable numbers kept and the honest 0.1 withheld", got)
+	}
+}
+
+// The two exemptions, both structural. A record named outright need not
+// describe itself, and a source that reports no relevance may not be punished
+// by a rule written in the number it did not report.
+func TestRelevanceFloorExemptsExactMatchesAndSilentSources(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.5 })
+
+	got := fuse(t, r, request(
+		cand("tasks", "aaaa0001", 1, exact(), relevance(0)),
+		cand("docs", "silent.md#1", 1),
+		cand("docs", "weak.md#1", 2, relevance(0.4)),
+	))
+
+	want := []string{"docs:silent.md#1", "tasks:aaaa0001"}
+	if got := slices.Sorted(slices.Values(order(got))); !slices.Equal(got, want) {
+		t.Errorf("results = %v, want the exact hit and the silent source kept", got)
+	}
+}
+
+// A floor may withhold; it may not abstain. An empty answer is read everywhere
+// as a claim about the corpus — the CLI exits 2, the MCP text tells a model
+// that reporting nothing was found is supported, and the live profile's
+// must_abstain check rests on nothing being able to turn "something" back into
+// "nothing". A threshold somebody picked may not make that claim, so when
+// nothing clears the floor the floor withholds nothing.
+func TestRelevanceFloorNeverEmptiesTheAnswer(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.5 })
+
+	got := fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.1)),
+		cand("docs", "b.md#1", 2, relevance(0.01)),
+	))
+
+	if len(got.Results) != 2 || len(got.Suppressed) != 0 {
+		t.Errorf("results = %v, suppressed = %+v; want the weakest evidence there is",
+			order(got), got.Suppressed)
+	}
+
+	// One survivor is enough for the floor to apply again: the exception is
+	// about not manufacturing an absence, not about a grace slot.
+	got = fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.9)),
+		cand("docs", "b.md#1", 2, relevance(0.01)),
+	))
+	if want := []string{"docs:a.md#1"}; !reflect.DeepEqual(order(got), want) {
+		t.Errorf("results = %v, want %v", order(got), want)
+	}
+}
+
+// The rules compose, so "never empties the answer" has to be tested against
+// what SURVIVED the others and not against the whole cluster list.
+//
+// Found by a review probe: a floor that kept its one weak result while lineage
+// suppression removed the strong one still produced the empty answer, one rule
+// each, and neither rule alone had emptied anything.
+func TestRelevanceFloorNeverEmptiesTheAnswerAlongsideOtherRules(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.10 })
+
+	req := request(
+		cand("docs", "seen.md#1", 1, relevance(0.9)),
+		cand("tasks", "weak-1", 1, relevance(0.02)),
+	)
+	req.Mode = recall.ModePreReply
+	req.SuppressLineages = []recall.LineageRoot{"uid-docs:seen.md#1"}
+
+	got := fuse(t, r, req)
+	if want := []string{"tasks:weak-1"}; !reflect.DeepEqual(order(got), want) {
+		t.Errorf("results = %v, want %v: the host has seen the strong record, and a "+
+			"floor may not turn what is left into an abstention", order(got), want)
+	}
+	for _, s := range got.Suppressed {
+		if s.Reason == recall.SuppressRelevanceFloor {
+			t.Errorf("suppressed = %+v, want no floor withholding: it stood down", got.Suppressed)
+		}
+	}
+}
+
+// The local pool size is the list the RANK came from — the source's own answer.
+// A core-side floor narrows what is shown, not what a source said, so an
+// explanation reading "rank 1 of 3" must keep saying so after two of the three
+// are withheld.
+func TestRelevanceFloorDoesNotRewriteTheLocalPoolSize(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.5 })
+
+	got := single(t, fuse(t, r, request(
+		cand("docs", "a.md#1", 1, relevance(0.9)),
+		cand("docs", "b.md#1", 2, relevance(0.1)),
+		cand("docs", "c.md#1", 3, relevance(0.1)),
+	)))
+
+	if got.Explanation.LocalPoolSize != 3 {
+		t.Errorf("local pool size = %d, want 3: the floor did not shorten what docs answered",
+			got.Explanation.LocalPoolSize)
+	}
+}
+
+// Lineage is a fact about the corpus, not about what this answer chose to show.
+// A derivation chain whose middle link the floor dropped must still reach the
+// original record, or one display rule would silently change how a record
+// deduplicates.
+func TestRelevanceFloorDoesNotShortenADerivationChain(t *testing.T) {
+	chain := func(floor float64) recall.LineageRoot {
+		t.Helper()
+		r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = floor })
+		got := fuse(t, r, request(
+			cand("signals", "sig-1", 1, relevance(0.9), from("docs:note.md#1")),
+			cand("docs", "note.md#1", 1, relevance(0.01), from("tasks:td-1")),
+		))
+		if len(got.Results) != 1 {
+			t.Fatalf("results = %v, want the one admitted candidate", order(got))
+		}
+		return got.Results[0].Explanation.LineageRoot
+	}
+
+	if got, want := chain(0.5), chain(0); got != want {
+		t.Errorf("lineage root = %q with the floor and %q without it", got, want)
+	}
+}
+
+// The result budget is what stops the answer's length from being the profile's
+// arithmetic. It is filled in fused order across every source at once, and it
+// reports itself: a caller who cannot tell a short answer from a truncated one
+// cannot tell a corpus with two answers from a budget with room for two.
+func TestResultBudgetBoundsTheAnswerAndSaysSo(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.Limit = 2 })
+
+	got := fuse(t, r, request(
+		cand("docs", "a.md#1", 1),
+		cand("docs", "b.md#1", 2),
+		cand("docs", "c.md#1", 3),
+		cand("tasks", "td-1", 1),
+	))
+
+	if len(got.Results) != 2 || !got.Truncated || got.Dropped != 2 || got.Limit != 2 {
+		t.Errorf("results = %v, truncated = %v, dropped = %d, limit = %d; want two results, "+
+			"two dropped, and the budget reported",
+			order(got), got.Truncated, got.Dropped, got.Limit)
+	}
+}
+
+// A request's limit is what this caller asked for and overrides the profile's;
+// the reported budget is the one that applied to them, not the configured one.
+func TestReportedBudgetIsTheOneThatApplied(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) { c.Limit = 2 })
+
+	req := request(cand("docs", "a.md#1", 1), cand("docs", "b.md#1", 2), cand("docs", "c.md#1", 3))
+	req.Limit = 3
+	got := fuse(t, r, req)
+
+	if len(got.Results) != 3 || got.Truncated || got.Limit != 3 {
+		t.Errorf("results = %v, truncated = %v, limit = %d; want the request's three",
+			order(got), got.Truncated, got.Limit)
+	}
+}
+
+// A floor outside [0,1) is refused rather than clamped, for the reason every
+// other ranking value is: a machine must not rank differently from the
+// configuration that was reviewed. One is refused too — on the shared
+// definition relevance is exactly 1 for a browse with no query terms and for a
+// record whose source could not report a length, so that floor keeps precisely
+// the candidates that told fusion nothing.
+func TestRelevanceFloorOutsideItsRangeIsRefused(t *testing.T) {
+	for _, floor := range []float64{-0.1, 1, 1.5, math.NaN()} {
+		cfg := ranking.Config{
+			Sources:        map[recall.SourceUID]ranking.SourceConfig{"uid-docs": {SourceID: "docs", BasePrior: 1}},
+			RelevanceFloor: floor,
+		}
+		if _, err := ranking.New(cfg); !errors.Is(err, ranking.ErrConfig) {
+			t.Errorf("relevance_floor %v: err = %v, want ErrConfig", floor, err)
+		}
+	}
+}

@@ -9,7 +9,9 @@ files
 
 defaults
   fusion_reserve_ms  25                           [user <root>/config/recall/config.toml]
+  max_results        20                           [user <root>/config/recall/config.toml]
   profile            work                         [user <root>/config/recall/config.toml]
+  relevance_floor    0.1                          [user <root>/config/recall/config.toml]
   timeout_ms         2000                         [user <root>/config/recall/config.toml]
 
 adapters

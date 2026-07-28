@@ -105,7 +105,8 @@
     "fusion_reserve_ns": 0,
     "limit": 20,
     "rank_constant": 60,
-    "corroboration_cap": 2
+    "corroboration_cap": 2,
+    "relevance_floor": 0.05
   },
   "suppressed": [
     {

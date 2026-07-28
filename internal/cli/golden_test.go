@@ -178,6 +178,8 @@ const goldenTOML = `
 profile = "work"
 timeout_ms = 2000
 fusion_reserve_ms = 25
+max_results = 20
+relevance_floor = 0.10
 
 [[sources]]
 source_uid = "01UIDDOCS"

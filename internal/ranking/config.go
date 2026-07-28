@@ -25,6 +25,13 @@ const (
 	// configuration must not become an unbounded scoring language.
 	MinPrior = 0.5
 	MaxPrior = 2.0
+
+	// MaxRelevanceFloor bounds [Config.RelevanceFloor]. A floor of 1 admits only
+	// a record whose relevance is exactly 1, which on the shared definition is a
+	// browse with no query terms or a source that could not report a length —
+	// so it is not a strict filter, it is a filter that keeps precisely the
+	// records that told fusion nothing. The bound is exclusive for that reason.
+	MaxRelevanceFloor = 1.0
 )
 
 // ErrConfig reports a configuration defect. A prior outside its range is not
@@ -54,7 +61,38 @@ type Config struct {
 	Sources map[recall.SourceUID]SourceConfig
 
 	// Limit is the maximum number of results emitted. Zero means unlimited.
+	//
+	// It is the profile's result budget, and it is what stops the answer's
+	// length from being an arithmetic accident. Without one, a natural-language
+	// query returns as many results as the eligible sources have slots — thirteen
+	// sources at a per-source cap of twenty — so admission rules decide WHICH
+	// records fill each cap and nothing decides how many come back. The budget
+	// is filled in fused order across every source at once, so adding a source
+	// changes which records reach the caller and never how many.
 	Limit int
+
+	// RelevanceFloor is the least [recall.Candidate.Relevance] a shown result
+	// must reach. Zero shows everything the sources returned, which is the
+	// behavior before this field existed. [Ranker.belowFloor] holds the rule and
+	// the three things it is not allowed to do.
+	//
+	// Unlike the constants above, zero is NOT a request for a default here: a
+	// floor is a rule about what the caller is shown, and one that cannot be
+	// turned off is one that cannot be measured against. The profile default
+	// lives in configuration, next to the other values a machine may set.
+	//
+	// Relevance is the number the rule is written in for two reasons, and the
+	// weaker one is the contract: [recall.Candidate.LocalRank] states that
+	// fusion consumes local rank and relevance and nothing else. The stronger
+	// one is measurement. A per-source cutoff on a share of the source's own top
+	// hit — the shape this was first expected to take — was measured on the live
+	// profile and moved a 108-result natural-language answer to 88 at a share of
+	// 0.30, which is also the share at which dentist-001 loses the weak hit the
+	// pack requires. It cannot be the volume rule at any setting that keeps the
+	// packs green. A floor on the FUSED score is not available at all: those
+	// scores are ordinal and uncalibrated, and internal/app forbids a threshold
+	// on one by name, as a number pretending to be a confidence.
+	RelevanceFloor float64
 
 	// MaxPerSource is how many results one source may contribute before its
 	// remaining clusters are demoted below other sources' clusters. Zero
@@ -134,6 +172,11 @@ func (c Config) Validate() error {
 	}
 	if c.MaxPerSource < 0 {
 		return fmt.Errorf("%w: max_per_source = %d, want >= 0", ErrConfig, c.MaxPerSource)
+	}
+	if !finite(c.RelevanceFloor) ||
+		c.RelevanceFloor < 0 || c.RelevanceFloor >= MaxRelevanceFloor {
+		return fmt.Errorf("%w: relevance_floor = %v, want [0, %v)",
+			ErrConfig, c.RelevanceFloor, MaxRelevanceFloor)
 	}
 
 	for _, uid := range sortedKeys(c.Sources) {

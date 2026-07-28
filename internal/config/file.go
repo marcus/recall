@@ -27,9 +27,11 @@ type rawFile struct {
 }
 
 type rawDefaults struct {
-	Profile         *string `toml:"profile"`
-	TimeoutMS       *int    `toml:"timeout_ms"`
-	FusionReserveMS *int    `toml:"fusion_reserve_ms"`
+	Profile         *string  `toml:"profile"`
+	TimeoutMS       *int     `toml:"timeout_ms"`
+	FusionReserveMS *int     `toml:"fusion_reserve_ms"`
+	MaxResults      *int     `toml:"max_results"`
+	RelevanceFloor  *float64 `toml:"relevance_floor"`
 }
 
 type rawEvaluation struct {

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,6 +187,14 @@ func cand(sourceID, local string, rank int, opts ...func(*recall.Candidate)) rec
 	return c
 }
 
+// relevance is the source's estimate of how much a record is about the query,
+// on the one definition every source computes the same way. It is the only
+// relevance signal fusion may compare across sources, and therefore the only
+// one the profile's floor can be written in.
+func relevance(v float64) func(*recall.Candidate) {
+	return func(c *recall.Candidate) { c.Relevance = &v }
+}
+
 // harness builds a real config, a real registry, and a real ranker over fake
 // adapters, so eligibility, identity stamping, and the ceiling are all the
 // production code paths.
@@ -290,13 +299,11 @@ func newHarness(t *testing.T, tune func(map[string]*fake)) *harness {
 	})
 	t.Cleanup(func() { _ = reg.Close() })
 
-	ranker, err := ranking.New(ranking.Config{
-		Sources: map[recall.SourceUID]ranking.SourceConfig{
-			"01UIDDOCS":  {SourceID: "docs", BasePrior: 1},
-			"01UIDTASKS": {SourceID: "tasks", BasePrior: 1},
-			"01UIDVAULT": {SourceID: "vault", BasePrior: 1},
-		},
-	})
+	// Through the production mapping rather than a hand-written ranking.Config:
+	// app.RankingConfig is the one translation from configuration to fusion, and
+	// a harness that reimplemented it would test priors and volume rules nobody
+	// runs. The configured priors are all 1.0, so nothing about ordering changes.
+	ranker, err := ranking.New(app.RankingConfig(cfg, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1092,6 +1099,67 @@ func TestPerRequestLimitIsHonored(t *testing.T) {
 	}
 	if len(resp.Results) != 3 {
 		t.Errorf("results = %d, want the requested 3", len(resp.Results))
+	}
+}
+
+// td-57b319, end to end. The two rules that decide how long an answer is are
+// profile configuration, and they reach fusion through the one mapping every
+// transport shares — an application test rather than a ranking one because the
+// defect was never in the arithmetic. It was that nothing configured either
+// rule, so a natural-language query's length was the profile's own arithmetic:
+// thirteen eligible sources times twenty candidates each.
+//
+// The plan states both, for the reason it states the rank constant: a value
+// that shortens an answer without appearing in the plan is one nobody can check.
+func TestProfileVolumeRulesReachFusionAndAreReported(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		var many []recall.Candidate
+		for i := range 25 {
+			many = append(many, cand("docs", fmt.Sprintf("doc-%02d.md", i), i+1,
+				relevance(0.9)))
+		}
+		// One record the source itself reports as not about the query. No
+		// budget, ordering, or response ceiling removes it: it is not surplus,
+		// it is an answer to a different question.
+		many = append(many, cand("docs", "unrelated.md", 26, relevance(0)))
+		f["fakedocs"].candidates = many
+	})
+
+	// No per-request limit: the point is what a caller who named none receives.
+	req := query("anything")
+	req.Limit = 0
+
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(resp.Results); got != config.DefaultMaxResults {
+		t.Errorf("results = %d, want the profile's budget of %d", got, config.DefaultMaxResults)
+	}
+	if !resp.Truncated || resp.DroppedResults == 0 {
+		t.Errorf("truncated = %v, dropped = %d; a bounded answer says it was bounded",
+			resp.Truncated, resp.DroppedResults)
+	}
+	var floored int
+	for _, s := range resp.Suppressed {
+		if s.Reason == recall.SuppressRelevanceFloor {
+			floored += s.Count
+		}
+	}
+	if floored != 1 {
+		t.Errorf("relevance-floor suppressions = %d, want the one unrelated record", floored)
+	}
+	for _, r := range resp.Results {
+		if r.Primary.SourceRecordID == "unrelated.md" {
+			t.Error("a record below the floor reached the answer")
+		}
+	}
+	if resp.Plan.Limit != config.DefaultMaxResults ||
+		resp.Plan.RelevanceFloor != config.DefaultRelevanceFloor {
+		t.Errorf("plan reports limit %d and floor %v, want %d and %v",
+			resp.Plan.Limit, resp.Plan.RelevanceFloor,
+			config.DefaultMaxResults, config.DefaultRelevanceFloor)
 	}
 }
 

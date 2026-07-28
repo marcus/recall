@@ -148,6 +148,38 @@ func TestUserLayerLoads(t *testing.T) {
 	}
 }
 
+// The two rules that decide how long an answer is are configuration, not
+// constants, and a machine that writes neither still gets both. They are the
+// only defaults whose absence would be invisible: a profile with no result
+// budget returns as many results as its sources have slots, which reads as a
+// thorough answer rather than as a missing rule.
+func TestVolumeRulesAreConfiguredAndDefaulted(t *testing.T) {
+	bare := mustLoad(t, t.TempDir(), "")
+	if bare.Defaults.MaxResults != config.DefaultMaxResults ||
+		bare.Defaults.RelevanceFloor != config.DefaultRelevanceFloor {
+		t.Errorf("defaults = %+v, want max_results %d and relevance_floor %v",
+			bare.Defaults, config.DefaultMaxResults, config.DefaultRelevanceFloor)
+	}
+
+	home := writeHome(t, `
+[defaults]
+profile = "work"
+max_results = 5
+relevance_floor = 0.25
+`)
+	cfg := mustLoad(t, home, "")
+	if cfg.Defaults.MaxResults != 5 || cfg.Defaults.RelevanceFloor != 0.25 {
+		t.Errorf("defaults = %+v, want the configured 5 and 0.25", cfg.Defaults)
+	}
+
+	// Zero is a value somebody may mean by both keys — no budget, no floor — so
+	// it has to survive the merge rather than reading as "unset".
+	unbounded := mustLoad(t, writeHome(t, "[defaults]\nprofile = \"work\"\nmax_results = 0\nrelevance_floor = 0.0\n"), "")
+	if unbounded.Defaults.MaxResults != 0 || unbounded.Defaults.RelevanceFloor != 0 {
+		t.Errorf("defaults = %+v, want an explicit zero kept", unbounded.Defaults)
+	}
+}
+
 func TestDevelopmentEvaluationPathsAreUserOwnedAndHaveNoDefault(t *testing.T) {
 	bare := mustLoad(t, t.TempDir(), "")
 	if bare.Evaluation.DevelopmentPack != "" || bare.Evaluation.DevelopmentBaseline != "" {

@@ -156,6 +156,8 @@ func (c *Config) explainDefaults() map[string]Field {
 		"profile":           field("profile", c.Defaults.Profile),
 		"timeout_ms":        field("timeout_ms", c.Defaults.Timeout.Milliseconds()),
 		"fusion_reserve_ms": field("fusion_reserve_ms", c.Defaults.FusionReserve.Milliseconds()),
+		"max_results":       field("max_results", c.Defaults.MaxResults),
+		"relevance_floor":   field("relevance_floor", c.Defaults.RelevanceFloor),
 	}
 }
 

@@ -58,9 +58,27 @@ func (c StructuredCost) Frame(resp recall.QueryResponse) int {
 // per four lines, which is exactly the kind of quiet underestimate this whole
 // pricing exists to remove.
 //
+// The same reasoning covers the last six characters of an array element, which
+// [json.MarshalIndent] does not produce for the value on its own: the indent
+// that opens it and the separator that joins it to the next one. Six characters
+// is nothing per result and adds up to more than a line over a long tail, and
+// it was enough to put a serialized response six tokens over a 3,000-token
+// budget. What is charged here has to be a ceiling on what gets written, or the
+// budget is a suggestion.
+//
 // The rank is not charged: a serialized result carries its position in the
 // array, not as a field.
-func (c StructuredCost) Result(_ int, r recall.Result) int { return c.charge(r, "    ") }
+func (c StructuredCost) Result(_ int, r recall.Result) int {
+	body, err := json.MarshalIndent(r, resultIndent, "  ")
+	if err != nil {
+		return 0
+	}
+	return c.estimate(resultIndent + string(body) + ",\n")
+}
+
+// resultIndent is how deep a result sits in a serialized response: inside the
+// response object, inside its results array.
+const resultIndent = "    "
 
 // charge serializes with the indentation the surfaces emit, so the charge is
 // the size of the bytes that get written and not of a denser form nobody sends.
@@ -72,9 +90,12 @@ func (c StructuredCost) charge(v any, prefix string) int {
 	if err != nil {
 		return 0
 	}
-	estimate := c.Estimate
-	if estimate == nil {
-		estimate = EstimateTokens
+	return c.estimate(string(body))
+}
+
+func (c StructuredCost) estimate(s string) int {
+	if c.Estimate == nil {
+		return EstimateTokens(s)
 	}
-	return estimate(string(body))
+	return c.Estimate(s)
 }

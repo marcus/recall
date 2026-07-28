@@ -412,11 +412,12 @@ func rank(
 		// Terminal work is demoted, not removed, and after the zero check so a
 		// finished record that matched nothing is still dropped for not
 		// matching rather than for being finished.
-		if isExact {
+		switch {
+		case isExact:
 			signals = append([]recall.MatchSignal{recall.MatchExactIdentifier}, signals...)
-		} else if score == 0 && len(terms) > 0 {
+		case score == 0 && len(terms) > 0:
 			continue
-		} else if terminal(rec.State) {
+		case terminal(rec.State):
 			score *= set.completedWeight()
 		}
 		out = append(out, scored{

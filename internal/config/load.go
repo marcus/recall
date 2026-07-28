@@ -194,6 +194,14 @@ func (c *Config) mergeDefaults(f sourceFile) error {
 		c.Defaults.FusionReserve = time.Duration(*d.FusionReserveMS) * time.Millisecond
 		c.defaultOrigins["fusion_reserve_ms"] = f.Origin
 	}
+	if d.MaxResults != nil {
+		c.Defaults.MaxResults = *d.MaxResults
+		c.defaultOrigins["max_results"] = f.Origin
+	}
+	if d.RelevanceFloor != nil {
+		c.Defaults.RelevanceFloor = *d.RelevanceFloor
+		c.defaultOrigins["relevance_floor"] = f.Origin
+	}
 	return nil
 }
 

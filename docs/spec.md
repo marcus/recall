@@ -171,7 +171,8 @@ suppress_lineages    lineage roots the host has already shown
 mode                 explicit | pre_reply
 budget               latency_ms, response_tokens, and the surface
                      the token budget is denominated in
-limit                maximum fused results
+limit                maximum fused results. Unset AND 0 both take the
+                     profile's max_results; a negative limit is refused
 ```
 
 The host owns conversational state. Recall does not read transcripts or
@@ -599,6 +600,27 @@ stay blunt. `recall doctor` fails loudly on every rule above.
 
 Recall never discovers and runs programs found in a source directory.
 
+### Machine Defaults
+
+`[defaults]` is user-layer only, for the reason above: every key in it applies
+to sources a project did not declare.
+
+```text
+profile             profile resolved when a request names none
+timeout_ms          per-source query budget for sources declaring none
+fusion_reserve_ms   held back so fusion runs inside the request deadline
+max_results         result budget for a request that named no limit; 0 is
+                    unbounded
+relevance_floor     least relevance a shown result must reach, in [0, 1);
+                    0 shows everything the sources returned
+```
+
+`max_results` and `relevance_floor` are the two rules of Ranking §7, and they
+are configuration rather than constants because they are policy about how much
+of an answer a caller wants, not arithmetic about which record is better. A
+value out of range is refused, never clamped, so a machine cannot rank
+differently from the configuration that was reviewed.
+
 ### Adapter Registration
 
 A user-level adapter record declares what the core needs before any adapter
@@ -817,6 +839,11 @@ per-source limit that prevents one large corpus from flooding the pool. Local
 rank is the only MANDATORY relevance signal. `local_score` is diagnostic and is
 never compared across sources, because scales differ between engines.
 
+The per-source limit bounds the pool and decides nothing about the answer. It
+is a cap on what one source may contribute, so on a profile with many sources
+it is an upper bound on candidates and not a statement about how many results a
+question deserves. What decides that is §7.
+
 `relevance` is optional and IS compared across sources, because what is fixed
 is its definition rather than its scale: every source reports coverage times
 concentration, in [0,1], over the same measurement rules (see
@@ -933,6 +960,42 @@ Final selection suppresses near-duplicates and preserves source diversity.
 Diversity is a selection policy applied after relevance, not a substitute for
 it. Output distinguishes high-confidence direct matches, related evidence,
 source failures or missing coverage, and no supported recall.
+
+How long the answer is, is two named rules and never an arithmetic accident.
+Both are configuration, both appear in the plan, and both count what they
+withheld.
+
+`relevance_floor` withholds a result nothing in which is about the query. It is
+expressed in `relevance` because that is the only cross-source-comparable
+relevance signal fusion may read (§2); a floor on a fused score is forbidden
+for the reason abstention is, since those scores are ordinal and uncalibrated.
+
+It is a selection policy over clusters and not an admission rule over
+candidates, and the distinction is load-bearing: a record the caller will not
+see still carries information about the records they will — its view of a
+record is what tells host suppression the record was already shown, and its
+sibling chunk is what representative selection compares against. So the unit is
+the result, and the test is that nothing in it clears the floor.
+
+Three rules bound what it may do. An `exact_identifier` match is exempt,
+because a record named outright need not describe itself. A candidate reporting
+no relevance, or an unusable number, reads as 1.0 and is never withheld by a
+rule written in something it did not assert. And **a floor may withhold but
+never abstain**: when nothing clears it, it withholds nothing, because an empty
+answer is read everywhere as a claim about the corpus and a configured
+threshold may not make that claim with the corpus unchanged.
+
+`max_results` is the profile's result budget, filled in fused order across
+every source at once. Without one, an answer's length is the profile's
+arithmetic — eligible sources times the per-source cap — so admission decides
+WHICH candidates fill each cap and nothing decides how many come back. With
+one, adding a source changes which records reach the caller and never how many.
+
+Neither rule is a coverage claim. Every eligible source is still asked and
+still reported; what these decide is how much of the answer is shown. The floor
+counts what it withheld in `suppressed`, naming each result's lineage root; the
+budget counts what it dropped in `truncated` / `dropped`. Neither touches
+`coverage`.
 
 ## Explainability
 

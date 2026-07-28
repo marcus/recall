@@ -66,6 +66,14 @@ type Fusion struct {
 	// coverage: every source that answered still contributed to the ordering.
 	Truncated bool
 	Dropped   int
+
+	// Limit is the result budget that was in force: the request's when it named
+	// one, the configured default otherwise, zero when unbounded. It is reported
+	// so a response can state the rule that decided its length instead of
+	// leaving a caller to infer it from the count — and a caller who cannot tell
+	// a short answer from a truncated one cannot tell a corpus with two answers
+	// from a budget with room for two.
+	Limit int
 }
 
 // Ranker fuses candidate pools under one validated configuration. It holds no
@@ -94,8 +102,9 @@ func (r *Ranker) Config() Config { return r.cfg }
 // Explanations are built as the scores are computed, not recomputed afterwards,
 // so a result's explanation is the arithmetic that produced it.
 func (r *Ranker) Fuse(req Request) (Fusion, error) {
+	limit := r.limit(req)
 	if len(req.Candidates) == 0 {
-		return Fusion{}, nil
+		return Fusion{Limit: limit}, nil
 	}
 	if req.Resolver == nil {
 		return Fusion{}, fmt.Errorf("%w: no resolver; lineage edges name sources", ErrRequest)
@@ -108,6 +117,18 @@ func (r *Ranker) Fuse(req Request) (Fusion, error) {
 	clusters := r.clusterGroups(groups)
 	promote(clusters, req)
 	return r.selectResults(clusters, req), nil
+}
+
+// limit resolves the result budget in force for one request.
+//
+// A per-request limit overrides the configured one. The configured value is a
+// policy default; the request's is what this caller asked for, and a long-lived
+// service serving many callers from one Ranker cannot vary it otherwise.
+func (r *Ranker) limit(req Request) int {
+	if req.Limit > 0 {
+		return req.Limit
+	}
+	return r.cfg.Limit
 }
 
 // promote performs step 5. A cluster containing an exact identifier match sorts

@@ -245,13 +245,39 @@ type SourceReport struct {
 // Plan is the resolved retrieval plan that produced a response. It is returned
 // so a caller can see what was actually searched rather than inferring it.
 type Plan struct {
-	Profile   string        `json:"profile"`
-	Sources   []PlanSource  `json:"sources"`
-	Deadline  time.Time     `json:"deadline"`
-	Reserve   time.Duration `json:"fusion_reserve_ns"`
-	Limit     int           `json:"limit"`
-	RankConst float64       `json:"rank_constant"`
-	Corrobor  float64       `json:"corroboration_cap"`
+	Profile  string        `json:"profile"`
+	Sources  []PlanSource  `json:"sources"`
+	Deadline time.Time     `json:"deadline"`
+	Reserve  time.Duration `json:"fusion_reserve_ns"`
+
+	// Limit is the result budget that was in force, from the request when it
+	// named one and from configuration otherwise. Zero means unbounded.
+	Limit     int     `json:"limit"`
+	RankConst float64 `json:"rank_constant"`
+	Corrobor  float64 `json:"corroboration_cap"`
+
+	// RelevanceFloor is the least relevance that reached the fused pool. It is
+	// here for the same reason the two above are: these are the values that
+	// decide what a caller was shown, and a rule that shortens an answer without
+	// appearing in the plan is a rule nobody can check.
+	RelevanceFloor float64 `json:"relevance_floor"`
+}
+
+// FusionRules is the fusion configuration a response reports back: what decided
+// the ordering, and what decided the length.
+//
+// It exists so the plan is rendered from one value rather than from a growing
+// list of positional floats, and so adding a rule that shapes an answer means
+// adding a field here — which is the same as saying it will be reported.
+type FusionRules struct {
+	RankConstant     float64
+	CorroborationCap float64
+	RelevanceFloor   float64
+
+	// Limit is the budget in force for the request being answered, not the
+	// configured default, because a caller who overrode it should read back what
+	// applied to them.
+	Limit int
 }
 
 // PlanSource records one eligibility decision and the budget it received.
@@ -288,6 +314,22 @@ const (
 	SuppressSensitivity = "sensitivity"
 	SuppressDuplicate   = "near_duplicate"
 	SuppressDiversity   = "diversity"
+
+	// SuppressRelevanceFloor names a result nothing in which the sources
+	// reported as being about the query, withheld by the profile's configured
+	// relevance floor. Like the two above it, it is a display decision taken
+	// after fusion over a whole cluster, and it names that cluster's lineage
+	// root.
+	//
+	// It is reported for the same reason as every other withheld thing: an
+	// answer that silently dropped what a source returned would be
+	// indistinguishable from a corpus that never held it, and this rule is the
+	// one most likely to be blamed when a record someone expected is missing.
+	//
+	// It never accounts for an empty answer. A floor may withhold but not
+	// abstain, so when nothing would otherwise be shown it stands down and this
+	// reason does not appear.
+	SuppressRelevanceFloor = "below_relevance_floor"
 
 	// SuppressDuplicateView names a second view of a record that is already in
 	// the answer: the same record identifier, content fingerprint, and source

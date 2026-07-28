@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,9 @@ flags:
   --explain            add the diagnostic tier: per-result provenance and
                        cluster lineage, score explanations, per-source
                        outcomes, and the resolved retrieval plan
-  --limit N            maximum fused results
+  --limit N            maximum fused results. Unset AND 0 both mean the
+                       profile's max_results; for an unbounded answer set
+                       max_results = 0 in [defaults], or name a larger number
   --budget-ms N        latency budget for the whole request
   --budget-tokens N    size budget for the whole rendered response, footers
                        included; trailing results compress, then drop. Default
@@ -55,6 +58,14 @@ the ceiling. A budget too small for the footers summarizes them rather than
 ignoring them, and says so. What it never drops is the outcome, the coverage,
 a degraded source, or a suppression: those are what the answer claims.
 
+How long the list is, is two rules and both are configuration. The profile's
+relevance_floor withholds a record its own source reports as barely about the
+query; max_results is the budget the rest compete for, across every source at
+once, so adding a source changes which records reach you and not how many.
+Neither is a coverage claim — every eligible source was still asked — and what
+each held back is counted in "suppressed" and in "dropped". --explain prints
+both values in the plan.
+
 Human output states coverage inline: a source that was eligible and could not
 answer is named, never silently absent. An excerpt is marked by what it is:
 "> " is the span that matched the query, "~ " is the record's opening shown
@@ -84,6 +95,19 @@ func runQuery(ctx context.Context, env Env, args []string) int {
 	text := strings.TrimSpace(strings.Join(fs.Args(), " "))
 	if text == "" {
 		return usageErr(env, queryHelp, fmt.Errorf("no query text"))
+	}
+
+	// Refused here rather than reaching fusion, which would surface a
+	// configuration error for something the caller typed. There is deliberately
+	// no negative-means-unbounded spelling to match --budget-tokens: a result
+	// budget is profile policy and the HTTP surface refuses a negative limit
+	// outright, so accepting one here would be a capability the CLI had and no
+	// other transport did. The escape is named instead of guessed at.
+	if *limit < 0 {
+		return usageErr(env, queryHelp, fmt.Errorf(
+			"--limit %d: a limit is not negative; for an unbounded answer set "+
+				"max_results = 0 in [defaults], or name a number larger than the "+
+				"profile's", *limit))
 	}
 
 	scope, err := parseScope(scopes)
@@ -440,9 +464,15 @@ func renderPlan(o *out, resp recall.QueryResponse) {
 	o.blank()
 	var head fields
 	head.text("profile", plan.Profile)
-	head.count("limit", plan.Limit)
+	// The two volume rules print even at zero, where every other count and
+	// number here is omitted. Zero is what an operator writes to turn one of
+	// them off — unbounded results, no floor — and omitting it would render a
+	// rule somebody deliberately disabled identically to one this tier never
+	// reports, which is the difference `--explain` exists to show.
+	head.raw("limit " + strconv.Itoa(plan.Limit))
 	head.number("rank constant", plan.RankConst)
 	head.number("corroboration cap", plan.Corrobor)
+	head.raw("relevance floor " + num(plan.RelevanceFloor))
 	head.dur("fusion reserve", plan.Reserve)
 	if !plan.Deadline.IsZero() {
 		head.text("deadline", stamp(plan.Deadline))

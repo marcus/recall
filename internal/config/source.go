@@ -50,8 +50,9 @@ const (
 	MaxPrior = 2.0
 )
 
-// Defaults are the request-shaping values a source instance inherits when it
-// declares none of its own.
+// Defaults are the machine-wide request-shaping values: what a source instance
+// inherits when it declares none of its own, and what bounds a request that
+// asked for nothing in particular.
 type Defaults struct {
 	// Profile is the profile used when a request names none.
 	Profile string `json:"profile"`
@@ -60,15 +61,77 @@ type Defaults struct {
 	// FusionReserve is held back from the request deadline so fusion has time
 	// to run after the last source answers.
 	FusionReserve time.Duration `json:"fusion_reserve_ns"`
+
+	// MaxResults is the profile's result budget: how many fused results a
+	// request that named no limit receives. Zero is unbounded.
+	MaxResults int `json:"max_results"`
+
+	// RelevanceFloor is the least candidate relevance that reaches fusion, on
+	// the one definition every source computes the same way. Zero admits
+	// everything a source returned.
+	RelevanceFloor float64 `json:"relevance_floor"`
 }
 
 // DefaultProfileName is the profile resolved when nothing names one.
 const DefaultProfileName = "default"
 
+// The two volume rules, defaulted here because they are profile policy rather
+// than fusion arithmetic — internal/ranking states what they mean and refuses
+// an invalid one, and this is what a machine gets for writing neither.
+const (
+	// DefaultMaxResults is the result budget a request that named no limit
+	// receives.
+	//
+	// It is the same number as the per-source candidate cap, and that is the
+	// whole of the reasoning: an answer is at most what ONE source was allowed
+	// to contribute, so adding a source changes which records reach the caller
+	// and never how many. Without a budget the length was the arithmetic of the
+	// profile — thirteen eligible sources times twenty candidates each — and a
+	// natural-language query returned upwards of a hundred results whose tail
+	// nobody would read.
+	//
+	// The same identity has a cost, and it is td-a58ce8: because the budget
+	// equals the per-source cap and ranking.Config.MaxPerSource is still
+	// unconfigured, one source may now fill the entire answer, where before it
+	// could hold at most a fifth of one. Measured live, "what are all the
+	// podcast episode plans" comes back 15 of 20 from a single source. Turning
+	// the diversity policy on reorders every multi-source answer, so it belongs
+	// to a change that can measure that; what belongs here is the note that it
+	// is owed.
+	DefaultMaxResults = 20
+
+	// DefaultRelevanceFloor is the least relevance that reaches the result list.
+	//
+	// The ceiling on it is measured rather than felt, and there is exactly one
+	// binding constraint: blog-005 requires clara-home:profile/TOOLS.md#L46-L84
+	// at relevance 0.1333, and firstuse fails its declared assertions at a floor
+	// of 0.14. (smoke is looser — every gate holds to 0.14 and it only degrades
+	// at 0.25 — so it bounds nothing here.) A floor is bounded above by the
+	// weakest hit a committed pack demands, or it stops filtering noise and
+	// starts having an opinion about what a question deserves.
+	//
+	// The live profile bounds it from the same side and closer to the ground:
+	// `kubernetes` has exactly one hit there, at relevance 0.1299. So 0.10 is
+	// the value with margin on both, and the packs are what would have to move
+	// to raise it.
+	//
+	// What it buys, on the live home profile with the result budget disabled:
+	// "what is the sidecar project for" 108 results to 92, "how do i run the
+	// eval packs" 59 to 29, and a question the corpus knows nothing about — "how
+	// do submarines maintain buoyancy at depth" — 21 to 13. The part that is not
+	// a matter of degree is the bottom of those lists: records a source itself
+	// reports as matching none of the query's terms, which the home profile
+	// returns today and which no budget, ordering, or response ceiling removes,
+	// because they are not surplus — they are answers to a different question.
+	DefaultRelevanceFloor = 0.10
+)
+
 var builtinDefaults = Defaults{
-	Profile:       DefaultProfileName,
-	Timeout:       2 * time.Second,
-	FusionReserve: 25 * time.Millisecond,
+	Profile:        DefaultProfileName,
+	Timeout:        2 * time.Second,
+	FusionReserve:  25 * time.Millisecond,
+	MaxResults:     DefaultMaxResults,
+	RelevanceFloor: DefaultRelevanceFloor,
 }
 
 // SecretRef is a reference to a credential. It is never the credential.

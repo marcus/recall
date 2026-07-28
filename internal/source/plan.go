@@ -178,7 +178,6 @@ type Plan struct {
 	Excluded []recall.SourceReport
 	Deadline time.Time
 	Reserve  time.Duration
-	Limit    int
 }
 
 // PlanOptions tune plan construction.
@@ -224,7 +223,6 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	plan := Plan{
 		Profile:  profile.Name,
 		Reserve:  reserve,
-		Limit:    req.Limit,
 		Deadline: start.Add(time.Duration(req.Budget.LatencyMS) * time.Millisecond),
 	}
 	if req.Budget.LatencyMS <= 0 {
@@ -484,14 +482,18 @@ func exclude(inst *config.SourceInstance, reason string, diagnostics map[string]
 
 // AsPlan renders the plan into the response envelope, so a caller can see what
 // was searched rather than inferring it from what came back.
-func (p Plan) AsPlan(rankConst, corroborationCap float64) recall.Plan {
+func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 	out := recall.Plan{
-		Profile:   p.Profile,
-		Deadline:  p.Deadline,
-		Reserve:   p.Reserve,
-		Limit:     p.Limit,
-		RankConst: rankConst,
-		Corrobor:  corroborationCap,
+		Profile:  p.Profile,
+		Deadline: p.Deadline,
+		Reserve:  p.Reserve,
+		// The budget fusion applied, not the one the request carried: they
+		// differ whenever a request named none, which is the case that made
+		// this reportable in the first place.
+		Limit:          fusion.Limit,
+		RankConst:      fusion.RankConstant,
+		Corrobor:       fusion.CorroborationCap,
+		RelevanceFloor: fusion.RelevanceFloor,
 	}
 	for _, t := range p.Targets {
 		out.Sources = append(out.Sources, recall.PlanSource{

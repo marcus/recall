@@ -158,13 +158,18 @@
     "fusion_reserve_ns": 25000000,
     "limit": 10,
     "rank_constant": 60,
-    "corroboration_cap": 2
+    "corroboration_cap": 2,
+    "relevance_floor": 0.05
   },
   "suppressed": [
     {
       "reason": "lineage_suppressed",
       "count": 1,
       "lineage_root": "01J8ZKQ4M7:sig-8000"
+    },
+    {
+      "reason": "below_relevance_floor",
+      "count": 4
     }
   ],
   "outcome": "answered",
