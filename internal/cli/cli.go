@@ -169,6 +169,8 @@ func Run(ctx context.Context, env Env) int {
 
 	cmd, args := env.Args[0], env.Args[1:]
 	switch cmd {
+	case "init":
+		return runInit(env, args)
 	case "query":
 		return runQuery(ctx, env, args)
 	case "expand":
@@ -217,6 +219,7 @@ const usage = `recall — portable retrieval over user-controlled sources
 usage: recall <command> [flags] [arguments]
 
 commands:
+  init --docs DIR   create a first user configuration
   query <text>      search and fuse configured sources
   expand <locator>  retrieve evidence from a locator
   refresh           update one or every eligible checkpoint-capable source
