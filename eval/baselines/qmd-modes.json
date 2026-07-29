@@ -1,0 +1,1135 @@
+{
+  "schema_version": 1,
+  "run_id": "qmd-modes-1785369065898947000",
+  "status": "pass",
+  "started_at": "2026-07-29T16:51:05.898947-07:00",
+  "finished_at": "2026-07-29T16:51:05.96319-07:00",
+  "pack": {
+    "pack_id": "qmd-modes",
+    "version": "0.1.0",
+    "content_hash": "sha256:dce0d172b19d87ada419dfa66f3895c410eb9a06ddf0294883f48d8b49d4c2e4"
+  },
+  "environment": {
+    "recall_commit": "73a5e9e",
+    "dirty": true,
+    "profile_hash": "",
+    "os": "darwin",
+    "arch": "arm64",
+    "cache_policy": "warm",
+    "warm": true
+  },
+  "metrics": {
+    "cases": 8,
+    "overall": {
+      "ndcg_at_10": {
+        "value": 0.6655544010973397,
+        "n": 5
+      },
+      "recall_at_5": {
+        "value": 1,
+        "n": 5
+      },
+      "recall_at_20": {
+        "value": 1,
+        "n": 5
+      },
+      "mrr_at_10": {
+        "value": 0.5466666666666666,
+        "n": 5
+      },
+      "success_at_5": {
+        "value": 1,
+        "n": 5
+      },
+      "forbidden_at_5": {
+        "value": 0,
+        "n": 0
+      },
+      "abstention_accuracy": {
+        "value": 1,
+        "n": 8
+      },
+      "coverage_accuracy": {
+        "value": 1,
+        "n": 8
+      },
+      "locator_success": {
+        "value": 1,
+        "n": 5
+      },
+      "provenance_accuracy": {
+        "value": 1,
+        "n": 5
+      },
+      "source_outcome_accuracy": {
+        "value": 1,
+        "n": 8
+      },
+      "cases": 8,
+      "latency": {
+        "cold": {
+          "n": 0,
+          "p50_ns": 0,
+          "p95_ns": 0
+        },
+        "warm": {
+          "n": 8,
+          "p50_ns": 8346333,
+          "p95_ns": 20335500
+        }
+      }
+    },
+    "by_tag": {
+      "groups": {
+        "abstention": {
+          "ndcg_at_10": {
+            "value": 0,
+            "n": 0
+          },
+          "recall_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "recall_at_20": {
+            "value": 0,
+            "n": 0
+          },
+          "mrr_at_10": {
+            "value": 0,
+            "n": 0
+          },
+          "success_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 0,
+            "n": 0
+          },
+          "provenance_accuracy": {
+            "value": 0,
+            "n": 0
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 218125,
+              "p95_ns": 218125
+            }
+          }
+        },
+        "baseline": {
+          "ndcg_at_10": {
+            "value": 0.554066391017615,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.3333333333333333,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 689542,
+              "p95_ns": 20335500
+            }
+          }
+        },
+        "lexical": {
+          "ndcg_at_10": {
+            "value": 0.7770331955088075,
+            "n": 2
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 2
+          },
+          "mrr_at_10": {
+            "value": 0.6666666666666666,
+            "n": 2
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 2
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 2
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 2
+          },
+          "cases": 2,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 2,
+              "p50_ns": 591250,
+              "p95_ns": 689542
+            }
+          }
+        },
+        "mode-bm25": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "cases": 3,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 3,
+              "p50_ns": 591250,
+              "p95_ns": 8673750
+            }
+          }
+        },
+        "mode-full": {
+          "ndcg_at_10": {
+            "value": 0.38685280723454163,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.2,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 8790333,
+              "p95_ns": 8790333
+            }
+          }
+        },
+        "mode-hybrid": {
+          "ndcg_at_10": {
+            "value": 0.38685280723454163,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.2,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 12284500,
+              "p95_ns": 12284500
+            }
+          }
+        },
+        "mode-vector": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 8346333,
+              "p95_ns": 8346333
+            }
+          }
+        },
+        "paraphrase": {
+          "ndcg_at_10": {
+            "value": 0.5912352048230277,
+            "n": 3
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 3
+          },
+          "mrr_at_10": {
+            "value": 0.4666666666666666,
+            "n": 3
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 3
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 3
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 3
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "cases": 5,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 5,
+              "p50_ns": 8790333,
+              "p95_ns": 20335500
+            }
+          }
+        },
+        "qmd": {
+          "ndcg_at_10": {
+            "value": 0.6934264036172708,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.6,
+            "n": 4
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 6
+          },
+          "cases": 6,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 6,
+              "p50_ns": 8346333,
+              "p95_ns": 12284500
+            }
+          }
+        },
+        "synthetic": {
+          "ndcg_at_10": {
+            "value": 0.6655544010973397,
+            "n": 5
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 5
+          },
+          "mrr_at_10": {
+            "value": 0.5466666666666666,
+            "n": 5
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 5
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 5
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 8
+          },
+          "cases": 8,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 8,
+              "p50_ns": 8346333,
+              "p95_ns": 20335500
+            }
+          }
+        }
+      },
+      "macro": {
+        "ndcg_at_10": {
+          "value": 0.6727801345036827,
+          "n": 9
+        },
+        "recall_at_5": {
+          "value": 1,
+          "n": 9
+        },
+        "recall_at_20": {
+          "value": 1,
+          "n": 9
+        },
+        "mrr_at_10": {
+          "value": 0.5570370370370371,
+          "n": 9
+        },
+        "success_at_5": {
+          "value": 1,
+          "n": 9
+        },
+        "forbidden_at_5": {
+          "value": 0,
+          "n": 0
+        },
+        "abstention_accuracy": {
+          "value": 1,
+          "n": 10
+        },
+        "coverage_accuracy": {
+          "value": 1,
+          "n": 10
+        },
+        "locator_success": {
+          "value": 1,
+          "n": 9
+        },
+        "provenance_accuracy": {
+          "value": 1,
+          "n": 9
+        },
+        "source_outcome_accuracy": {
+          "value": 1,
+          "n": 10
+        },
+        "groups": 10
+      }
+    },
+    "by_source_family": {
+      "groups": {
+        "docs-lexical": {
+          "ndcg_at_10": {
+            "value": 0.554066391017615,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.3333333333333333,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 689542,
+              "p95_ns": 689542
+            }
+          }
+        },
+        "qmd-bm25": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 591250,
+              "p95_ns": 591250
+            }
+          }
+        },
+        "qmd-full": {
+          "ndcg_at_10": {
+            "value": 0.38685280723454163,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.2,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 8790333,
+              "p95_ns": 8790333
+            }
+          }
+        },
+        "qmd-hybrid": {
+          "ndcg_at_10": {
+            "value": 0.38685280723454163,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 0.2,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 12284500,
+              "p95_ns": 12284500
+            }
+          }
+        },
+        "qmd-vector": {
+          "ndcg_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "recall_at_20": {
+            "value": 1,
+            "n": 1
+          },
+          "mrr_at_10": {
+            "value": 1,
+            "n": 1
+          },
+          "success_at_5": {
+            "value": 1,
+            "n": 1
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 1
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 1
+          },
+          "cases": 1,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 1,
+              "p50_ns": 8346333,
+              "p95_ns": 8346333
+            }
+          }
+        }
+      },
+      "macro": {
+        "ndcg_at_10": {
+          "value": 0.6655544010973397,
+          "n": 5
+        },
+        "recall_at_5": {
+          "value": 1,
+          "n": 5
+        },
+        "recall_at_20": {
+          "value": 1,
+          "n": 5
+        },
+        "mrr_at_10": {
+          "value": 0.5466666666666666,
+          "n": 5
+        },
+        "success_at_5": {
+          "value": 1,
+          "n": 5
+        },
+        "forbidden_at_5": {
+          "value": 0,
+          "n": 0
+        },
+        "abstention_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "coverage_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "locator_success": {
+          "value": 1,
+          "n": 5
+        },
+        "provenance_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "source_outcome_accuracy": {
+          "value": 1,
+          "n": 5
+        },
+        "groups": 5
+      }
+    }
+  },
+  "gates": [
+    {
+      "name": "no_sensitivity_leaks",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "no_forbidden_evidence",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "locators_resolve",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "source_outcomes_honest",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "coverage_honest",
+      "status": "pass",
+      "threshold": 1,
+      "observed": 1
+    },
+    {
+      "name": "exact_identifier_success",
+      "status": "skipped",
+      "detail": "no case measured it"
+    },
+    {
+      "name": "abstention_accuracy",
+      "status": "skipped",
+      "observed": 1,
+      "detail": "pack states no threshold; this run is the evidence for one"
+    },
+    {
+      "name": "p95_latency",
+      "status": "pass",
+      "threshold": 1500,
+      "observed": 20.3355
+    },
+    {
+      "name": "declared_assertions",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "expected_failures_current",
+      "status": "pass",
+      "threshold": 0,
+      "observed": 0
+    },
+    {
+      "name": "run_integrity",
+      "status": "pass"
+    }
+  ]
+}

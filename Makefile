@@ -77,15 +77,18 @@ clean:
 # target from `check` because it builds several binaries and spawns them; CI
 # runs both.
 #
-# Both packs run, and a failure in either fails the target. smoke covers the
-# failure vocabulary a healthy corpus cannot produce; shapes is a compact
-# synthetic guard for retrieval and admission regressions. Run artifacts carry
-# excerpts, so they go to a temporary directory and never into the tree.
+# Every pack runs, and a failure in any of them fails the target. smoke covers
+# the failure vocabulary a healthy corpus cannot produce; shapes is a compact
+# synthetic guard for retrieval and admission regressions; qmd-modes asks one
+# corpus the same questions through the built-in lexical adapter and through the
+# qmd adapter with one retrieval layer added at a time, so a metric that moves is
+# attributable to the layer that moved it. Run artifacts carry excerpts, so they
+# go to a temporary directory and never into the tree.
 #
-# build-all rather than build: the core spawns external adapters by command
-# name. The packs currently use built-ins only, but build-all keeps this target
-# honest if a future synthetic fixture adds an external adapter.
-EVAL_PACKS := smoke shapes
+# build-all rather than build: the core spawns external adapters by command name,
+# and qmd-modes spawns recall-qmd. Its sources replay recorded qmd output, so the
+# pack needs neither a network nor qmd installed.
+EVAL_PACKS := smoke shapes qmd-modes
 
 .PHONY: eval
 eval: build-all

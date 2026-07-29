@@ -1,0 +1,194 @@
+[
+  {
+    "docid": "#43f92c",
+    "score": 1,
+    "file": "qmd://modes/notes/tooth-care.md",
+    "line": 6,
+    "title": "Tooth care appointment",
+    "snippet": "@@ -5,4 @@ (4 before, 15 after)\nFind a dental hygienist in the Riverside district who takes the Sample Dental\nplan and is accepting new patients.\n\n## Recommendation",
+    "explain": {
+      "ftsScores": [
+        0.8693982500995473
+      ],
+      "vectorScores": [
+        0.5569578111171722
+      ],
+      "rrf": {
+        "rank": 1,
+        "positionScore": 1,
+        "weight": 1,
+        "baseScore": 0.06557377049180328,
+        "topRankBonus": 0.05,
+        "totalScore": 0.11557377049180328,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "fts",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 1,
+            "weight": 2,
+            "backendScore": 0.8693982500995473,
+            "rrfContribution": 0.03278688524590164
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 1,
+            "weight": 2,
+            "backendScore": 0.5569578111171722,
+            "rrfContribution": 0.03278688524590164
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 1
+    }
+  },
+  {
+    "docid": "#37a34e",
+    "score": 0.5,
+    "file": "qmd://modes/notes/hydration.md",
+    "line": 1,
+    "title": "Hydration log",
+    "snippet": "@@ -1,3 @@ (0 before, 3 after)\n# Hydration log\n\n## Water intake",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.09901732206344604
+      ],
+      "rrf": {
+        "rank": 2,
+        "positionScore": 0.5,
+        "weight": 1,
+        "baseScore": 0.03225806451612903,
+        "topRankBonus": 0.02,
+        "totalScore": 0.052258064516129035,
+        "contributions": [
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 2,
+            "weight": 2,
+            "backendScore": 0.09901732206344604,
+            "rrfContribution": 0.03225806451612903
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.5
+    }
+  },
+  {
+    "docid": "#0593a8",
+    "score": 0.33,
+    "file": "qmd://modes/guides/sourdough.md",
+    "line": 1,
+    "title": "Sourdough starter",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Sourdough starter\n\n## Hydration",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.09374052286148071
+      ],
+      "rrf": {
+        "rank": 3,
+        "positionScore": 0.3333333333333333,
+        "weight": 1,
+        "baseScore": 0.031746031746031744,
+        "topRankBonus": 0.02,
+        "totalScore": 0.05174603174603175,
+        "contributions": [
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 3,
+            "weight": 2,
+            "backendScore": 0.09374052286148071,
+            "rrfContribution": 0.031746031746031744
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.3333333333333333
+    }
+  },
+  {
+    "docid": "#3c0636",
+    "score": 0.25,
+    "file": "qmd://modes/README.md",
+    "line": 1,
+    "title": "Fixture corpus",
+    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.009834051132202148
+      ],
+      "rrf": {
+        "rank": 4,
+        "positionScore": 0.25,
+        "weight": 1,
+        "baseScore": 0.03125,
+        "topRankBonus": 0,
+        "totalScore": 0.03125,
+        "contributions": [
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 4,
+            "weight": 2,
+            "backendScore": 0.009834051132202148,
+            "rrfContribution": 0.03125
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.25
+    }
+  },
+  {
+    "docid": "#09f1bc",
+    "score": 0.2,
+    "file": "qmd://modes/guides/bicycle-repair.md",
+    "line": 1,
+    "title": "Bicycle repair",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Bicycle repair\n\n## Fixing a puncture",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.005317807197570801
+      ],
+      "rrf": {
+        "rank": 5,
+        "positionScore": 0.2,
+        "weight": 1,
+        "baseScore": 0.03076923076923077,
+        "topRankBonus": 0,
+        "totalScore": 0.03076923076923077,
+        "contributions": [
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "original",
+            "query": "dental hygienist accepting new patients",
+            "rank": 5,
+            "weight": 2,
+            "backendScore": 0.005317807197570801,
+            "rrfContribution": 0.03076923076923077
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.2
+    }
+  }
+]

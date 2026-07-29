@@ -8,10 +8,19 @@ import (
 	"testing"
 )
 
-// The repository carries two synthetic packs, and no more without a deliberate
+// The repository carries three synthetic packs, and no more without a deliberate
 // change here. Authored development questions and source fixtures inherit the
 // source corpus's sensitivity and belong behind a user-configured path outside
 // the clone. The allowlist makes any new committed corpus an explicit review.
+//
+// qmd-modes was added deliberately (td-f63dca). Its corpus is five invented
+// Markdown files and its qmd output is recorded from the real CLI over exactly
+// those files, so nothing in it derives from anyone's documents; and it cannot
+// be kept outside the clone the way a development pack can, because what it
+// measures is a comparison between committed configurations — one corpus asked
+// the same questions through the lexical adapter and through qmd with one
+// retrieval layer added at a time. A comparison nobody else can run is not
+// evidence.
 func TestRepositoryCarriesOnlyTheAllowedPacks(t *testing.T) {
 	root := filepath.Join("..", "..", "eval", "packs")
 	entries, err := os.ReadDir(root)
@@ -25,9 +34,9 @@ func TestRepositoryCarriesOnlyTheAllowedPacks(t *testing.T) {
 		}
 	}
 	slices.Sort(packs)
-	if !slices.Equal(packs, []string{"shapes", "smoke"}) {
-		t.Fatalf("committed packs = %v, want shapes and smoke; real development "+
-			"packs must stay outside the repository", packs)
+	if !slices.Equal(packs, []string{"qmd-modes", "shapes", "smoke"}) {
+		t.Fatalf("committed packs = %v, want qmd-modes, shapes and smoke; real "+
+			"development packs must stay outside the repository", packs)
 	}
 }
 

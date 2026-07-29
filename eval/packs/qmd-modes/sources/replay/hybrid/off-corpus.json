@@ -1,0 +1,347 @@
+[
+  {
+    "docid": "#3c0636",
+    "score": 1,
+    "file": "qmd://modes/README.md",
+    "line": 1,
+    "title": "Fixture corpus",
+    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.12833696603775024,
+        0.08708089590072632,
+        0.05444788932800293,
+        0.09783834218978882
+      ],
+      "rrf": {
+        "rank": 1,
+        "positionScore": 1,
+        "weight": 1,
+        "baseScore": 0.0819672131147541,
+        "topRankBonus": 0.05,
+        "totalScore": 0.13196721311475412,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "quantum chromodynamics lattice gauge",
+            "rank": 1,
+            "weight": 2,
+            "backendScore": 0.12833696603775024,
+            "rrfContribution": 0.03278688524590164
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "definition of quantum chromodynamics and its significance",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.08708089590072632,
+            "rrfContribution": 0.01639344262295082
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.05444788932800293,
+            "rrfContribution": 0.01639344262295082
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.09783834218978882,
+            "rrfContribution": 0.01639344262295082
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 1
+    }
+  },
+  {
+    "docid": "#0593a8",
+    "score": 0.5,
+    "file": "qmd://modes/guides/sourdough.md",
+    "line": 1,
+    "title": "Sourdough starter",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Sourdough starter\n\n## Hydration",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.02395707368850708,
+        -0.037476420402526855,
+        -0.03561580181121826,
+        0.036147236824035645
+      ],
+      "rrf": {
+        "rank": 2,
+        "positionScore": 0.5,
+        "weight": 1,
+        "baseScore": 0.08013312852022529,
+        "topRankBonus": 0.02,
+        "totalScore": 0.1001331285202253,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "quantum chromodynamics lattice gauge",
+            "rank": 2,
+            "weight": 2,
+            "backendScore": 0.02395707368850708,
+            "rrfContribution": 0.03225806451612903
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "definition of quantum chromodynamics and its significance",
+            "rank": 3,
+            "weight": 1,
+            "backendScore": -0.037476420402526855,
+            "rrfContribution": 0.015873015873015872
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "rank": 2,
+            "weight": 1,
+            "backendScore": -0.03561580181121826,
+            "rrfContribution": 0.016129032258064516
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "rank": 3,
+            "weight": 1,
+            "backendScore": 0.036147236824035645,
+            "rrfContribution": 0.015873015873015872
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.5
+    }
+  },
+  {
+    "docid": "#43f92c",
+    "score": 0.33,
+    "file": "qmd://modes/notes/tooth-care.md",
+    "line": 1,
+    "title": "Tooth care appointment",
+    "snippet": "@@ -1,3 @@ (0 before, 20 after)\n# Tooth care appointment\n\n## Question",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        -0.0099867582321167,
+        -0.03071463108062744,
+        -0.0653764009475708,
+        0.04540085792541504
+      ],
+      "rrf": {
+        "rank": 3,
+        "positionScore": 0.3333333333333333,
+        "weight": 1,
+        "baseScore": 0.07913306451612903,
+        "topRankBonus": 0.02,
+        "totalScore": 0.09913306451612904,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "quantum chromodynamics lattice gauge",
+            "rank": 4,
+            "weight": 2,
+            "backendScore": -0.0099867582321167,
+            "rrfContribution": 0.03125
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "definition of quantum chromodynamics and its significance",
+            "rank": 2,
+            "weight": 1,
+            "backendScore": -0.03071463108062744,
+            "rrfContribution": 0.016129032258064516
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "rank": 4,
+            "weight": 1,
+            "backendScore": -0.0653764009475708,
+            "rrfContribution": 0.015625
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "rank": 2,
+            "weight": 1,
+            "backendScore": 0.04540085792541504,
+            "rrfContribution": 0.016129032258064516
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.3333333333333333
+    }
+  },
+  {
+    "docid": "#37a34e",
+    "score": 0.25,
+    "file": "qmd://modes/notes/hydration.md",
+    "line": 1,
+    "title": "Hydration log",
+    "snippet": "@@ -1,3 @@ (0 before, 3 after)\n# Hydration log\n\n## Water intake",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.01294487714767456,
+        -0.07311654090881348,
+        -0.08348000049591064,
+        -0.011789798736572266
+      ],
+      "rrf": {
+        "rank": 4,
+        "positionScore": 0.25,
+        "weight": 1,
+        "baseScore": 0.0778998778998779,
+        "topRankBonus": 0.02,
+        "totalScore": 0.0978998778998779,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "quantum chromodynamics lattice gauge",
+            "rank": 3,
+            "weight": 2,
+            "backendScore": 0.01294487714767456,
+            "rrfContribution": 0.031746031746031744
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "definition of quantum chromodynamics and its significance",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": -0.07311654090881348,
+            "rrfContribution": 0.015384615384615385
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": -0.08348000049591064,
+            "rrfContribution": 0.015384615384615385
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": -0.011789798736572266,
+            "rrfContribution": 0.015384615384615385
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.25
+    }
+  },
+  {
+    "docid": "#09f1bc",
+    "score": 0.2,
+    "file": "qmd://modes/guides/bicycle-repair.md",
+    "line": 1,
+    "title": "Bicycle repair",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Bicycle repair\n\n## Fixing a puncture",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        -0.013130664825439453,
+        -0.07044720649719238,
+        -0.04822587966918945,
+        0.01561117172241211
+      ],
+      "rrf": {
+        "rank": 5,
+        "positionScore": 0.2,
+        "weight": 1,
+        "baseScore": 0.07789224664224664,
+        "topRankBonus": 0.02,
+        "totalScore": 0.09789224664224665,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "quantum chromodynamics lattice gauge",
+            "rank": 5,
+            "weight": 2,
+            "backendScore": -0.013130664825439453,
+            "rrfContribution": 0.03076923076923077
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "definition of quantum chromodynamics and its significance",
+            "rank": 4,
+            "weight": 1,
+            "backendScore": -0.07044720649719238,
+            "rrfContribution": 0.015625
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "rank": 3,
+            "weight": 1,
+            "backendScore": -0.04822587966918945,
+            "rrfContribution": 0.015873015873015872
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "rank": 4,
+            "weight": 1,
+            "backendScore": 0.01561117172241211,
+            "rrfContribution": 0.015625
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.2
+    }
+  }
+]

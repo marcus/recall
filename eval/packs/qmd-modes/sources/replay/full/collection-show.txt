@@ -1,0 +1,4 @@
+Collection: modes
+  Path:     ${REPLAY_DIR}/corpus
+  Pattern:  **/*.md
+  Include:  yes (default)

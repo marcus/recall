@@ -1,0 +1,36 @@
+QMD Status
+
+Index: ${REPLAY_DIR}/corpus/.qmd/index.sqlite
+Size:  3.1 MB
+
+Documents
+  Total:    5 files indexed
+  Vectors:  5 embedded
+  Updated:  1s ago
+
+AST Chunking
+  Status:   active
+  Languages: typescript, tsx, javascript, python, go, rust
+
+Collections
+  modes (qmd://modes/)
+    Pattern:  **/*.md
+    Files:    5 (updated 2s ago)
+
+Examples
+  # List files in a collection
+  qmd ls modes
+  # Get a document
+  qmd get qmd://modes/path/to/file.md
+  # Search within a collection
+  qmd search "query" -c modes
+
+Models
+  Embedding:   https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF
+  Reranking:   https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF
+  Generation:  https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf
+
+Tips
+  Add context to collections for better search results: modes
+    qmd context add qmd://<name>/ "What this collection contains"
+    qmd context add qmd://<name>/meeting-notes "Weekly team meeting notes"

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "pack_id": "qmd-modes",
+  "version": "0.1.0",
+  "description": "Synthetic, committed, and network-free. One corpus asked the same questions through the built-in lexical adapter and through the qmd adapter with one retrieval layer added at a time (bm25, vector, hybrid, full), so a metric that moves can be attributed to the layer that moved it rather than to one opaque pipeline. qmd's output is replayed from recordings of the real CLI: its query expansion is a language model, and its models are about 2GB that a CI machine has no business downloading. The prose and queries are inventions.",
+  "profile": "docs-lexical",
+  "cases": "cases.jsonl",
+  "judgments": "judgments.jsonl",
+  "sources": "sources",
+  "network_access": false,
+  "budgets": {
+    "p95_latency_ms": 1500,
+    "model_calls": 0,
+    "tokens": 0,
+    "external_requests": 0
+  },
+  "sensitivity_ceiling": "internal",
+  "baseline": {
+    "recorded": "2026-07-29",
+    "note": "Layer attribution, not a regression guard for ranking constants. Measured on 2026-07-29, qmd 2.5.3: the lexical adapter and qmd's bm25 mode both ABSTAIN on the paraphrase question, whose words appear nowhere in the document that answers it \u2014 that is the gap the plan called unmeasurable, and it is now measured. vector answers it at nDCG@10 1.0000 and MRR@10 1.0000. hybrid and full answer it at nDCG@10 0.3869 and MRR@10 0.2000, with the right document ranked LAST of five. That last number is the finding, and it is not a defect in the qmd adapter: relevance is a multiplicative factor in fusion, a pure paraphrase measures 0 under Recall's shared lexical definition, so every candidate in those two modes scores 0, the source's own ordering is discarded, and the tie-break decides. vector scores 1.0 only because qmd returned one result there. Making paraphrase aboutness comparable across sources is the work this pack exists to justify; until it lands, a rise in mode-hybrid or mode-full here is that work landing, not this pack drifting. Two things the pack deliberately does NOT assert. It does not assert the reranked modes' off-corpus behaviour \u2014 they return unrelated documents at scores a caller cannot tell apart from a real hit, which is recorded in the adapter's search-ranked conformance transcript; asserting today's false positive as expected would make an improvement read as a regression. And it judges rank rather than relevance numbers, because a paraphrase hit's relevance is 0 by that definition and rank is what can honestly be graded."
+  }
+}

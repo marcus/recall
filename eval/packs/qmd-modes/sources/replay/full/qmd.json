@@ -1,0 +1,13 @@
+{
+  "comment": "Recorded qmd 2.5.3 output for mode full. Regenerate with eval/packs/qmd-modes/record.sh; never edit by hand.",
+  "invocations": [
+    {"contains": ["--version"], "stdout": "version.txt"},
+    {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
+    {"contains": ["status"], "stdout": "status.txt"},
+    {"contains": ["who can clean my teeth"], "stdout": "paraphrase.json"},
+    {"contains": ["dental hygienist accepting new patients"], "stdout": "lexical.json"},
+    {"contains": ["quantum chromodynamics lattice gauge"], "stdout": "off-corpus.json"},
+    {"contains": ["update"], "stdout": "version.txt"}
+  ],
+  "default": {"stderr": "no recorded response for this query", "exit_code": 1}
+}

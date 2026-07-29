@@ -1,0 +1,14 @@
+{"schema_version": 1, "case_id": "lexical-anchor-baseline-006", "lineage_root": "01QMDMODESDOCS:notes/tooth-care.md#L3-L6", "relevance": 3, "required": true, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "lexical-anchor-baseline-006", "lineage_root": "01QMDMODESDOCS:notes/tooth-care.md#L8-L12", "relevance": 2, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "lexical-anchor-bm25-007", "lineage_root": "01QMDMODEBM25:notes/tooth-care.md#L5-L8", "relevance": 3, "required": true, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "paraphrase-vector-003", "lineage_root": "01QMDMODEVECTOR:notes/tooth-care.md#L4-L7", "relevance": 3, "required": true, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "paraphrase-hybrid-004", "lineage_root": "01QMDMODEHYBRID:notes/tooth-care.md#L4-L7", "relevance": 3, "required": true, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "paraphrase-hybrid-004", "lineage_root": "01QMDMODEHYBRID:README.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-hybrid-004", "lineage_root": "01QMDMODEHYBRID:guides/bicycle-repair.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-hybrid-004", "lineage_root": "01QMDMODEHYBRID:guides/sourdough.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-hybrid-004", "lineage_root": "01QMDMODEHYBRID:notes/hydration.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-full-005", "lineage_root": "01QMDMODEFULL:notes/tooth-care.md#L4-L7", "relevance": 3, "required": true, "supports": ["the practice that accepts the plan and is taking new patients"]}
+{"schema_version": 1, "case_id": "paraphrase-full-005", "lineage_root": "01QMDMODEFULL:README.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-full-005", "lineage_root": "01QMDMODEFULL:guides/bicycle-repair.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-full-005", "lineage_root": "01QMDMODEFULL:guides/sourdough.md#L1-L3", "relevance": 0}
+{"schema_version": 1, "case_id": "paraphrase-full-005", "lineage_root": "01QMDMODEFULL:notes/hydration.md#L1-L3", "relevance": 0}

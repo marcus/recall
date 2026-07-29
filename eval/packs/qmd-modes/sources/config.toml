@@ -1,0 +1,138 @@
+# Per-mode configuration for the qmd-modes pack: the user layer, which is the
+# trusted one.
+#
+# ${PACK} is substituted with this pack's absolute directory before the file is
+# read. A committed pack cannot hold machine paths, and `location` is resolved
+# against the process working directory rather than against this file, so a
+# relative path here would point at whatever directory the runner started in.
+#
+# Every source_uid below is immutable. Judgments key on these values, so a source
+# may be renamed but never re-identified.
+#
+# Five sources over one corpus. The first is the built-in lexical adapter, which
+# is the outside baseline: it is what any claim about semantic retrieval is
+# measured against, and it is the path that keeps working when qmd is not
+# installed. The other four are the same qmd collection with one retrieval layer
+# added at a time, so a metric that moves can be attributed to the layer that
+# moved it.
+#
+# The five corpus copies under sources/ are byte-identical and are written by
+# record.sh. A replay pack is self-contained by construction: the adapter checks
+# the directory its collection indexes against the configured location on every
+# operation, so each replay directory has to carry the corpus its recording names.
+
+[defaults]
+profile = "docs-lexical"
+timeout_ms = 2000
+fusion_reserve_ms = 25
+
+# Every qmd source replays recorded output. qmd's query expansion is a language
+# model, so a pack built on the live tool would measure something slightly
+# different every run, and qmd's models are about 2GB that a CI machine has no
+# business downloading. `replay` is the settled spelling the runner's network
+# policy reads.
+[adapters.qmd]
+command = "recall-qmd"
+freshness_modes = ["indexed"]
+
+[[sources]]
+source_uid = "01QMDMODESDOCS"
+source_id = "docs-lexical"
+adapter = "documents"
+location = "${PACK}/sources/corpus"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+freshness_policy = "indexed: rebuilt from the synthetic fixture tree at handshake"
+
+[sources.settings]
+extensions = [".md"]
+
+[[sources]]
+source_uid = "01QMDMODEBM25"
+source_id = "qmd-bm25"
+adapter = "qmd"
+location = "${PACK}/sources/replay/bm25/corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+
+[sources.settings]
+collection = "modes"
+mode = "bm25"
+replay = "${PACK}/sources/replay/bm25"
+
+[[sources]]
+source_uid = "01QMDMODEVECTOR"
+source_id = "qmd-vector"
+adapter = "qmd"
+location = "${PACK}/sources/replay/vector/corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+
+[sources.settings]
+collection = "modes"
+mode = "vector"
+replay = "${PACK}/sources/replay/vector"
+
+[[sources]]
+source_uid = "01QMDMODEHYBRID"
+source_id = "qmd-hybrid"
+adapter = "qmd"
+location = "${PACK}/sources/replay/hybrid/corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+
+[sources.settings]
+collection = "modes"
+mode = "hybrid"
+replay = "${PACK}/sources/replay/hybrid"
+
+[[sources]]
+source_uid = "01QMDMODEFULL"
+source_id = "qmd-full"
+adapter = "qmd"
+location = "${PACK}/sources/replay/full/corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+
+[sources.settings]
+collection = "modes"
+mode = "full"
+replay = "${PACK}/sources/replay/full"
+
+# One profile per mode, and one for the lexical baseline. Each case names the
+# profile it is asked under, so `recall eval compare` reports the same query
+# against one layer at a time.
+
+[profiles.docs-lexical]
+sources = ["docs-lexical"]
+max_sensitivity = "internal"
+
+[profiles.qmd-bm25]
+sources = ["qmd-bm25"]
+max_sensitivity = "internal"
+
+[profiles.qmd-vector]
+sources = ["qmd-vector"]
+max_sensitivity = "internal"
+
+[profiles.qmd-hybrid]
+sources = ["qmd-hybrid"]
+max_sensitivity = "internal"
+
+[profiles.qmd-full]
+sources = ["qmd-full"]
+max_sensitivity = "internal"
