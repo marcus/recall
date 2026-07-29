@@ -9,6 +9,7 @@ BIN     := bin
 
 PREFIX  ?= $(HOME)/.local
 RELEASE_VERSION ?=
+export RELEASE_VERSION
 
 .PHONY: all build build-all install uninstall test lint fmt cover clean tidy check \
 	release-snapshot release-preflight release check-release-state
@@ -103,6 +104,7 @@ release-snapshot:
 	$(GORELEASER) check
 	$(GORELEASER) release --snapshot --clean
 	./scripts/verify-release-archives.sh dist
+	./scripts/test-release-guards.sh dist
 	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT && \
 		./scripts/render-homebrew-formula.sh v0.1.0 \
 			0000000000000000000000000000000000000000000000000000000000000000 \
@@ -111,31 +113,7 @@ release-snapshot:
 # Fail closed before creating a release tag. In particular, compare HEAD with
 # the live remote rather than a possibly stale origin/main tracking ref.
 check-release-state:
-	@test -n "$(RELEASE_VERSION)" || \
-		(echo "Error: RELEASE_VERSION is required (for example v0.1.0)" && exit 1)
-	@echo "$(RELEASE_VERSION)" | \
-		grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$$' || \
-		(echo "Error: RELEASE_VERSION must be strict SemVer vX.Y.Z" && exit 1)
-	@test "$$(git branch --show-current)" = main || \
-		(echo "Error: releases must be cut from main" && exit 1)
-	@test -z "$$(git status --porcelain)" || \
-		(echo "Error: working tree is not clean" && exit 1)
-	@git remote get-url origin >/dev/null 2>&1 || \
-		(echo "Error: origin remote is not configured" && exit 1)
-	@remote_head=$$(git ls-remote origin refs/heads/main | awk '{print $$1}') || exit 1; \
-		test -n "$$remote_head" || \
-			(echo "Error: origin/main does not exist" && exit 1); \
-		test "$$(git rev-parse HEAD)" = "$$remote_head" || \
-			(echo "Error: HEAD does not match live origin/main" && exit 1)
-	@! git rev-parse --verify --quiet "refs/tags/$(RELEASE_VERSION)" >/dev/null || \
-		(echo "Error: local tag $(RELEASE_VERSION) already exists" && exit 1)
-	@remote_tag=$$(git ls-remote --tags origin \
-		"refs/tags/$(RELEASE_VERSION)" "refs/tags/$(RELEASE_VERSION)^{}") || exit 1; \
-		test -z "$$remote_tag" || \
-			(echo "Error: remote tag $(RELEASE_VERSION) already exists" && exit 1)
-	@plain_version="$(RELEASE_VERSION)"; plain_version=$${plain_version#v}; \
-		grep -Fq "## [$$plain_version] - " CHANGELOG.md || \
-			(echo "Error: CHANGELOG.md has no $$plain_version release entry" && exit 1)
+	./scripts/check-release-state.sh pre-tag
 
 .NOTPARALLEL: release-preflight release
 
@@ -151,5 +129,4 @@ release-preflight: check-release-state
 # The source-building Homebrew formula is rendered and published separately,
 # after the release exists, with explicit authorization for the tap repository.
 release: release-preflight
-	git tag -a "$(RELEASE_VERSION)" -m "Release $(RELEASE_VERSION)"
-	git push origin "refs/tags/$(RELEASE_VERSION)"
+	./scripts/publish-release-tag.sh

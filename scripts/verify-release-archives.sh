@@ -47,13 +47,17 @@ while IFS= read -r archive; do
   mkdir "$unpack"
   tar -xzf "$archive" -C "$unpack"
 
-  find "$unpack" -mindepth 1 -maxdepth 1 -type d >"$temporary/roots-$index"
-  root_count=$(wc -l <"$temporary/roots-$index" | tr -d ' ')
-  [[ $root_count -eq 1 ]] || {
-    echo "$archive must contain exactly one top-level directory" >&2
+  find "$unpack" -mindepth 1 -maxdepth 1 >"$temporary/top-level-$index"
+  top_level_count=$(wc -l <"$temporary/top-level-$index" | tr -d ' ')
+  [[ $top_level_count -eq 1 ]] || {
+    echo "$archive must contain exactly one top-level entry" >&2
     exit 1
   }
-  root=$(head -n 1 "$temporary/roots-$index")
+  root=$(head -n 1 "$temporary/top-level-$index")
+  [[ -d $root && ! -L $root ]] || {
+    echo "$archive's only top-level entry must be a directory" >&2
+    exit 1
+  }
 
   find "$root" -mindepth 1 -maxdepth 1 -type f -perm -111 \
     -exec basename {} \; | LC_ALL=C sort >"$temporary/actual-commands-$index"

@@ -3,13 +3,35 @@ name: release
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*.[0-9]*.[0-9]*"
 
 permissions:
   contents: read
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Validate tag against live main
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: ./scripts/check-release-state.sh tagged
+      - name: Run release gates
+        run: |
+          make check
+          make eval
+          go vet ./...
+          git diff --check
+          make release-snapshot
+
   release:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,6 +42,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Recheck tag against live main
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: ./scripts/check-release-state.sh tagged
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
