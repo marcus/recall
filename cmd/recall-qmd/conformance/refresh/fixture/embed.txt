@@ -1,0 +1,6 @@
+Model: embeddinggemma-300M-Q8_0.gguf
+
+
+██████████████████████████████ 100%                                    
+
+✓ Done! Embedded 1 chunks from 1 documents in 1s

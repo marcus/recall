@@ -1,0 +1,11 @@
+{
+  "case": "shutdown",
+  "description": "A clean shutdown returns an empty result and the process exits without writing anything further.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

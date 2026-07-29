@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "A local part that does not parse is locator_unknown and a path leaving the corpus is refused as one; a well-formed locator naming a file that is gone, or a line range past the end of the file, is locator_expired. No nearby record is ever substituted.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 5
+}

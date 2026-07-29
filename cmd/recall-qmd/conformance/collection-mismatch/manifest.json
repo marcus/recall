@@ -1,0 +1,11 @@
+{
+  "case": "collection-mismatch",
+  "description": "The configured collection indexes a different directory from the configured location. Search, health, and expand all refuse: every locator and every expansion would otherwise answer for a corpus this source was not configured for.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 4
+}

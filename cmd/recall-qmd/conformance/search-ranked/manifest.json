@@ -1,0 +1,11 @@
+{
+  "case": "search-ranked",
+  "description": "A paraphrase query whose words appear nowhere in the document that answers it: qmd's hybrid order becomes local_rank, its score stays diagnostic in local_score, and relevance is recomputed lexically — so the three unrelated documents qmd also returned score near zero instead of inheriting a saturated rerank score.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

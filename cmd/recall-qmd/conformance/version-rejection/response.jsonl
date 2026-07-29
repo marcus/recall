@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"requested protocol version range 99..99, this build speaks 1..1"}}

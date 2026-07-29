@@ -1,0 +1,11 @@
+{
+  "case": "handshake",
+  "description": "A supported handshake declares the qmd contract per mode, and health then proves the configured collection indexes the configured corpus and that the index holds a vector for every document.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

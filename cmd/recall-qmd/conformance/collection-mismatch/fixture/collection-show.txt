@@ -1,0 +1,4 @@
+Collection: fixture
+  Path:     ${REPLAY_DIR}/other-corpus
+  Pattern:  **/*.md
+  Include:  yes (default)

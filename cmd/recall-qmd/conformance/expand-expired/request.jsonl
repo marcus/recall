@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"qmd","location":"${FIXTURE}/corpus","settings":{"replay":"${FIXTURE}","collection":"fixture"}}}
+{"jsonrpc":"2.0","id":2,"method":"recall/expand","params":{"locator":"qmd:notes/tooth-care.md","detail":"excerpt","budget_bytes":0,"deadline":"2099-01-01T00:00:00Z"}}
+{"jsonrpc":"2.0","id":3,"method":"recall/expand","params":{"locator":"qmd:../outside.md#L1-L2","detail":"excerpt","budget_bytes":0,"deadline":"2099-01-01T00:00:00Z"}}
+{"jsonrpc":"2.0","id":4,"method":"recall/expand","params":{"locator":"qmd:notes/gone.md#L1-L4","detail":"excerpt","budget_bytes":0,"deadline":"2099-01-01T00:00:00Z"}}
+{"jsonrpc":"2.0","id":5,"method":"recall/expand","params":{"locator":"qmd:notes/tooth-care.md#L900-L910","detail":"excerpt","budget_bytes":0,"deadline":"2099-01-01T00:00:00Z"}}

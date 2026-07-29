@@ -1,0 +1,12 @@
+{
+  "comment": "The maintenance sequence: reindex, embed, then one throwaway query that forces the models to load so that a search never pays for a cold start.",
+  "invocations": [
+    {"contains": ["--version"], "stdout": "version.txt"},
+    {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
+    {"contains": ["status"], "stdout": "status.txt"},
+    {"contains": ["update"], "stdout": "update.txt"},
+    {"contains": ["embed"], "stdout": "embed.txt"},
+    {"contains": ["query"], "stdout": "warm.json"}
+  ],
+  "default": {"stderr": "no recorded response", "exit_code": 1}
+}

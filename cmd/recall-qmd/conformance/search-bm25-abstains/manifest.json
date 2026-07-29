@@ -1,0 +1,11 @@
+{
+  "case": "search-bm25-abstains",
+  "description": "mode=bm25 reaches no model and honestly returns an empty successful result for the same paraphrase query the hybrid mode answers. This is the anchor the semantic modes are measured against, and the one empty list this adapter may call success.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}

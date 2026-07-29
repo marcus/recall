@@ -1,0 +1,11 @@
+{
+  "case": "refresh",
+  "description": "recall/refresh reindexes, embeds, and warms the models, then reports the resulting health. Indexing happens here rather than in the handshake, which competes with the core's handshake timeout and would make a first run download 2GB inside it.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 3
+}

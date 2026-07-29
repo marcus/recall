@@ -1,0 +1,10 @@
+{
+  "comment": "A recorded query that takes 30 seconds. The delay is what makes cancelling a request that is still in flight recordable at all: an instant fixture would answer before the notification arrived.",
+  "invocations": [
+    {"contains": ["--version"], "stdout": "version.txt"},
+    {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
+    {"contains": ["status"], "stdout": "status.txt"},
+    {"contains": ["query"], "stdout": "search-hybrid.json", "delay_ms": 30000}
+  ],
+  "default": {"stderr": "no recorded response", "exit_code": 1}
+}

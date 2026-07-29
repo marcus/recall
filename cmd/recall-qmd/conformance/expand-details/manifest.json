@@ -1,0 +1,11 @@
+{
+  "case": "expand-details",
+  "description": "Expansion at every detail level, read from the file rather than through qmd, with a stated line range, a content-derived revision, and both truncation boundaries — the detail level's own and the caller's byte budget. A budget too small to carry evidence and its marker is refused up front.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 7
+}

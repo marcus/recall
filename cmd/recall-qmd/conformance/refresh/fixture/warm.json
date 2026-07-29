@@ -1,0 +1,71 @@
+[
+  {
+    "docid": "#3c0636",
+    "score": 1,
+    "file": "qmd://fixture/README.md",
+    "line": 3,
+    "title": "Fixture corpus",
+    "snippet": "@@ -2,4 @@ (1 before, 3 after)\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes\na real person, account, or system.\n",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.3008289337158203,
+        0.32946479320526123,
+        0.33249223232269287,
+        0.25160080194473267
+      ],
+      "rrf": {
+        "rank": 1,
+        "positionScore": 1,
+        "weight": 1,
+        "baseScore": 0.0819672131147541,
+        "topRankBonus": 0.05,
+        "totalScore": 0.13196721311475412,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "recall adapter model warm up",
+            "rank": 1,
+            "weight": 2,
+            "backendScore": 0.3008289337158203,
+            "rrfContribution": 0.03278688524590164
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "training sequence for recall adapter",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.32946479320526123,
+            "rrfContribution": 0.01639344262295082
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "warm up steps for recall model",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.33249223232269287,
+            "rrfContribution": 0.01639344262295082
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Recall adapter model warm up is an important concept that relates to training sequence for recall adapter. This supports the given hypothesis.</think>",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.25160080194473267,
+            "rrfContribution": 0.01639344262295082
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 1
+    }
+  }
+]

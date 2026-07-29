@@ -1,0 +1,10 @@
+Updating 1 collection(s)...
+
+[1/1] fixture (**/*.md)
+Collection: ${REPLAY_DIR}/corpus (**/*.md)
+
+Indexed: 0 new, 0 updated, 5 unchanged, 0 removed
+
+✓ All collections updated.
+
+Run 'qmd embed' to update embeddings (1 unique hashes need vectors)

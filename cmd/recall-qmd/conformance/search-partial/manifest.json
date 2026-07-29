@@ -1,0 +1,11 @@
+{
+  "case": "search-partial",
+  "description": "An index holding a document no vector represents answers partial with the count named, and health agrees: degraded, coverage partial, derived from the same status snapshot. Candidates from a partial boundary carry no confirmed_at.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 3
+}

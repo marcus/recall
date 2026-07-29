@@ -1,0 +1,10 @@
+{
+  "comment": "A qmd whose index cannot be opened. Exit is non-zero and the reason is on stderr; the adapter reports unavailable and never an empty successful search.",
+  "invocations": [
+    {"contains": ["--version"], "stdout": "version.txt"},
+    {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
+    {"contains": ["status"], "stdout": "status.txt"},
+    {"contains": ["query"], "stderr": "SqliteError: unable to open database file\n", "exit_code": 1}
+  ],
+  "default": {"stderr": "no recorded response", "exit_code": 1}
+}

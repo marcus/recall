@@ -1,0 +1,237 @@
+[
+  {
+    "docid": "#43f92c",
+    "score": 0.91,
+    "file": "qmd://fixture/notes/tooth-care.md",
+    "line": 5,
+    "title": "Tooth care appointment",
+    "snippet": "@@ -4,4 @@ (3 before, 16 after)\n\nFind a dental hygienist in the Riverside district who takes the Sample Dental\nplan and is accepting new patients.\n",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.4836561679840088,
+        0.47521620988845825
+      ],
+      "rrf": {
+        "rank": 1,
+        "positionScore": 1,
+        "weight": 0.75,
+        "baseScore": 0.04918032786885246,
+        "topRankBonus": 0.05,
+        "totalScore": 0.09918032786885246,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 1,
+            "weight": 2,
+            "backendScore": 0.4836561679840088,
+            "rrfContribution": 0.03278688524590164
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental hygienists and dental aides. Its functionality has been tested under various scenarios.</think>",
+            "rank": 1,
+            "weight": 1,
+            "backendScore": 0.47521620988845825,
+            "rrfContribution": 0.01639344262295082
+          }
+        ]
+      },
+      "rerankScore": 0.6290925320102526,
+      "blendedScore": 0.9072731330025632
+    }
+  },
+  {
+    "docid": "#09f1bc",
+    "score": 0.5,
+    "file": "qmd://fixture/guides/bicycle-repair.md",
+    "line": 1,
+    "title": "Bicycle repair",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Bicycle repair\n\n## Fixing a puncture",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.06644374132156372,
+        0.01610010862350464
+      ],
+      "rrf": {
+        "rank": 2,
+        "positionScore": 0.5,
+        "weight": 0.75,
+        "baseScore": 0.04764267990074442,
+        "topRankBonus": 0.02,
+        "totalScore": 0.06764267990074442,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 2,
+            "weight": 2,
+            "backendScore": 0.06644374132156372,
+            "rrfContribution": 0.03225806451612903
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental hygienists and dental aides. Its functionality has been tested under various scenarios.</think>",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": 0.01610010862350464,
+            "rrfContribution": 0.015384615384615385
+          }
+        ]
+      },
+      "rerankScore": 0.5000090993762559,
+      "blendedScore": 0.500002274844064
+    }
+  },
+  {
+    "docid": "#0593a8",
+    "score": 0.38,
+    "file": "qmd://fixture/guides/sourdough.md",
+    "line": 1,
+    "title": "Sourdough starter",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Sourdough starter\n\n## Hydration",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.022432446479797363,
+        0.08522790670394897
+      ],
+      "rrf": {
+        "rank": 3,
+        "positionScore": 0.3333333333333333,
+        "weight": 0.75,
+        "baseScore": 0.047619047619047616,
+        "topRankBonus": 0.02,
+        "totalScore": 0.06761904761904762,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 3,
+            "weight": 2,
+            "backendScore": 0.022432446479797363,
+            "rrfContribution": 0.031746031746031744
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental hygienists and dental aides. Its functionality has been tested under various scenarios.</think>",
+            "rank": 3,
+            "weight": 1,
+            "backendScore": 0.08522790670394897,
+            "rrfContribution": 0.015873015873015872
+          }
+        ]
+      },
+      "rerankScore": 0.5000110804712659,
+      "blendedScore": 0.37500277011781646
+    }
+  },
+  {
+    "docid": "#3c0636",
+    "score": 0.35,
+    "file": "qmd://fixture/README.md",
+    "line": 1,
+    "title": "Fixture corpus",
+    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.011292517185211182,
+        0.12892961502075195
+      ],
+      "rrf": {
+        "rank": 4,
+        "positionScore": 0.25,
+        "weight": 0.6,
+        "baseScore": 0.04689826302729529,
+        "topRankBonus": 0.02,
+        "totalScore": 0.06689826302729529,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 5,
+            "weight": 2,
+            "backendScore": 0.011292517185211182,
+            "rrfContribution": 0.03076923076923077
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental hygienists and dental aides. Its functionality has been tested under various scenarios.</think>",
+            "rank": 2,
+            "weight": 1,
+            "backendScore": 0.12892961502075195,
+            "rrfContribution": 0.016129032258064516
+          }
+        ]
+      },
+      "rerankScore": 0.5000787433157567,
+      "blendedScore": 0.3500314973263027
+    }
+  },
+  {
+    "docid": "#37a34e",
+    "score": 0.32,
+    "file": "qmd://fixture/notes/hydration.md",
+    "line": 1,
+    "title": "Hydration log",
+    "snippet": "@@ -1,3 @@ (0 before, 3 after)\n# Hydration log\n\n## Water intake",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.021074116230010986,
+        0.08059775829315186
+      ],
+      "rrf": {
+        "rank": 5,
+        "positionScore": 0.2,
+        "weight": 0.6,
+        "baseScore": 0.046875,
+        "topRankBonus": 0,
+        "totalScore": 0.046875,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 4,
+            "weight": 2,
+            "backendScore": 0.021074116230010986,
+            "rrfContribution": 0.03125
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental hygienists and dental aides. Its functionality has been tested under various scenarios.</think>",
+            "rank": 4,
+            "weight": 1,
+            "backendScore": 0.08059775829315186,
+            "rrfContribution": 0.015625
+          }
+        ]
+      },
+      "rerankScore": 0.5000602502802206,
+      "blendedScore": 0.32002410011208826
+    }
+  }
+]

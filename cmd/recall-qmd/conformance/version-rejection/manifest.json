@@ -1,0 +1,11 @@
+{
+  "case": "version-rejection",
+  "description": "A protocol range this adapter cannot satisfy fails the handshake explicitly rather than degrading to a version neither side implements.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 1
+}

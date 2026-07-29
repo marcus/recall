@@ -1,0 +1,11 @@
+{
+  "case": "search-full",
+  "description": "mode=full runs qmd's reranker, and the per-result rerank and blended scores appear in candidate metadata. index_config names the mode and the reranker model, so a run under this mode cannot be compared with a hybrid run by accident.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 2
+}
