@@ -66,12 +66,16 @@ while IFS= read -r archive; do
     exit 1
   fi
 
-  for required in README.md CHANGELOG.md LICENSE NOTICE docs/quickstart.md; do
+  for required in README.md CHANGELOG.md LICENSE NOTICE docs/gmail-adapter.md docs/quickstart.md; do
     [[ -f $root/$required ]] || {
       echo "$archive is missing $required" >&2
       exit 1
     }
   done
+  [[ -f $root/cmd/recall-gmail/conformance/handshake/manifest.json ]] || {
+    echo "$archive is missing the recall-gmail conformance suite" >&2
+    exit 1
+  }
 done <"$temporary/archives"
 
 if command -v sha256sum >/dev/null 2>&1; then

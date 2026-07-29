@@ -1,0 +1,11 @@
+{
+  "case": "search-denied",
+  "description": "An expired gog credential reports source_denied in search and denied health rather than a healthy empty inbox.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of recorded gog output",
+    "WORKDIR": "fresh adapter workdir"
+  },
+  "volatile": [],
+  "responses": 3
+}

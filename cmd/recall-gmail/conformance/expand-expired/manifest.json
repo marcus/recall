@@ -1,0 +1,11 @@
+{
+  "case": "expand-expired",
+  "description": "A malformed local part is locator_unknown; a well-formed thread Gmail reports missing is locator_expired rather than source_unavailable.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of recorded gog output",
+    "WORKDIR": "fresh adapter workdir"
+  },
+  "volatile": [],
+  "responses": 3
+}

@@ -16,11 +16,15 @@ class Recall < Formula
       "-X github.com/marcus/recall/pkg/buildinfo.Commit=homebrew",
     ].join(" ")
     system "go", "build", *std_go_args(output: bin/"recall", ldflags:), "./cmd/recall"
+    system "go", "build", *std_go_args(output: bin/"recall-gmail", ldflags:), "./cmd/recall-gmail"
     system "go", "build", *std_go_args(output: bin/"recall-stream", ldflags:), "./cmd/recall-stream"
+    (share/"recall").install "cmd/recall-gmail/conformance" => "gmail-conformance"
   end
 
   test do
     assert_match "recall @VERSION@ (homebrew)", shell_output("#{bin}/recall version")
+    assert_match "recall-gmail/1 @VERSION@", shell_output("#{bin}/recall-gmail -version")
     assert_match "recall-stream/1 @VERSION@", shell_output("#{bin}/recall-stream -version")
+    assert_predicate share/"recall/gmail-conformance/handshake/manifest.json", :exist?
   end
 end

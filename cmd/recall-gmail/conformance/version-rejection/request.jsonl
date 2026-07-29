@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":2,"protocol_version_max":2,"workdir":"${WORKDIR}","source_id":"mail","location":"owner@example.test"}}

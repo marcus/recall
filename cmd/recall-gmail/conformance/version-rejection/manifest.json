@@ -1,0 +1,10 @@
+{
+  "case": "version-rejection",
+  "description": "A protocol range this adapter cannot satisfy is rejected rather than silently downgraded.",
+  "flow": "lockstep",
+  "placeholders": {
+    "WORKDIR": "fresh adapter workdir"
+  },
+  "volatile": [],
+  "responses": 1
+}

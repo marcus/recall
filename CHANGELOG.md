@@ -8,6 +8,14 @@ migration guidance.
 
 ## Unreleased
 
+### Added
+
+- Added the optional first-party `recall-gmail` external adapter. It reads
+  Gmail through `gog`, ships synthetic conformance transcripts, excludes bulk
+  categories from its default corpus, keeps message bodies out of pointers,
+  strips URLs during expansion, and raises credential-shaped mail to
+  `restricted`.
+
 ## [0.1.0] - 2026-07-28
 
 ### Added

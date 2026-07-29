@@ -1,0 +1,11 @@
+{
+  "case": "cancel-inflight",
+  "description": "A search cancelled while stalled returns deadline_exceeded and emits no late result.",
+  "flow": "lockstep",
+  "placeholders": {
+    "FIXTURE": "absolute path of recorded gog output",
+    "WORKDIR": "fresh adapter workdir"
+  },
+  "volatile": [],
+  "responses": 2
+}

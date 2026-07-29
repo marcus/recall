@@ -60,6 +60,8 @@ once the first one works.
   conformance
 - [Writing an adapter](docs/writing-an-adapter.md) — the working guide, with a
   dependency-free [Python adapter template](templates/adapter-python)
+- [Gmail adapter](docs/gmail-adapter.md) — read-only gog setup, safe defaults,
+  configuration, and coverage behavior
 - [Evaluation](docs/evaluation.md) — packs, metrics, gates, and research policy
 - [Profile example](docs/profile-example.md) — a concrete source inventory
 - [HTTP and MCP surfaces](docs/surfaces.md) — service mode, authentication,
@@ -76,10 +78,13 @@ make install            # builds every command into ~/.local/bin
 make install PREFIX=/usr/local
 ```
 
-`make install` builds every command shipped by this repository: the Recall core
-and `recall-stream`, the reference external adapter. Private-source adapters
-live with the consumers that configure them. `make uninstall` removes the same
-command set.
+`make install` builds every command shipped by this repository: the Recall
+core, `recall-stream`, the reference external adapter, and `recall-gmail`, the
+optional first-party Gmail adapter. `recall-gmail` has no compile-time
+dependency on Google tooling; configuring it requires
+[`gog`](https://github.com/openclaw/gogcli) on `PATH`. Private, consumer-specific
+adapters live with the consumers that configure them. `make uninstall` removes
+the same command set.
 
 Verify the installation and resolved trust boundary:
 
@@ -153,7 +158,8 @@ deliberate retrieval change moves a metric, re-record the affected baseline in
 the same commit and explain the trade in the pack note; see
 [evaluation.md](docs/evaluation.md#layout).
 
-External adapters ship recorded JSON-RPC transcripts. A transcript captures
+External adapters, including `recall-gmail`, ship recorded JSON-RPC
+transcripts. A transcript captures
 what the real adapter process returned, with only declared volatile fields
 masked. Replay it with:
 
@@ -167,9 +173,9 @@ The format and required cases are documented in
 ## Project status and name
 
 Recall is pre-1.0. The CLI, HTTP API, MCP tools, built-in document, Tasks, and
-td sources, reference stream adapter, external adapter protocol, conformance
-runner, and evaluation harness are working; compatibility may still change
-before the first stable release.
+td sources, reference stream and first-party Gmail adapters, external adapter
+protocol, conformance runner, and evaluation harness are working;
+compatibility may still change before the first stable release.
 
 The project will publish as Recall, and the module and repository path
 `github.com/marcus/recall` are its canonical identity. The bare command name is

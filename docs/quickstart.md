@@ -19,13 +19,18 @@ make install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`make install` builds and installs the core command and the reference external
-adapter:
+`make install` builds and installs the core command, the reference external
+adapter, and the optional Gmail adapter:
 
 ```text
 installed recall -> /Users/you/.local/bin
+installed recall-gmail -> /Users/you/.local/bin
 installed recall-stream -> /Users/you/.local/bin
 ```
+
+`recall-gmail` remains inert until you explicitly configure a Gmail source. It
+does not change this account-free quickstart; see
+[Gmail adapter](gmail-adapter.md) when you want mail search.
 
 Confirm that the command on `PATH` is this project:
 
