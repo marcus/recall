@@ -77,11 +77,8 @@ func runInit(env Env, args []string) int {
 	}
 	body := initConfig(docs, ids[0], ids[1], ids[2])
 	configPath := paths.ConfigFile()
-	action := "created"
-	if *force {
-		action = "replaced"
-	}
-	if err := writeConfigAtomic(configPath, []byte(body), *force); err != nil {
+	action, err := writeConfigAtomic(configPath, []byte(body), *force)
+	if err != nil {
 		fail(env, err)
 		return ExitError
 	}
@@ -115,7 +112,6 @@ func runInit(env Env, args []string) int {
 }
 
 func resolveInitDocs(env Env, asked string, allowPrompt bool) (string, error) {
-	asked = strings.TrimSpace(asked)
 	if asked == "" {
 		if !allowPrompt || !interactiveReader(env.stdin()) {
 			return "", fmt.Errorf("--docs is required with --json or when stdin is not an interactive terminal")
@@ -127,8 +123,8 @@ func resolveInitDocs(env Env, asked string, allowPrompt bool) (string, error) {
 		if err != nil && len(line) == 0 {
 			return "", fmt.Errorf("reading documents directory: %w", err)
 		}
-		asked = strings.TrimSpace(line)
-		if asked == "" {
+		asked = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		if strings.TrimSpace(asked) == "" {
 			return "", fmt.Errorf("documents directory must not be blank")
 		}
 	}
@@ -157,11 +153,7 @@ func resolveInitDocs(env Env, asked string, allowPrompt bool) (string, error) {
 
 func interactiveReader(r io.Reader) bool {
 	f, ok := r.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return ok && isTerminal(f)
 }
 
 func expandInitHome(path string) (string, error) {
@@ -273,15 +265,15 @@ func tomlString(value string) string {
 	return b.String()
 }
 
-func writeConfigAtomic(path string, body []byte, force bool) (err error) {
+func writeConfigAtomic(path string, body []byte, force bool) (action string, err error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("creating config directory %s: %w", dir, err)
+		return "", fmt.Errorf("creating config directory %s: %w", dir, err)
 	}
 
 	tmp, err := os.CreateTemp(dir, ".config.toml.tmp-*")
 	if err != nil {
-		return fmt.Errorf("creating temporary config in %s: %w", dir, err)
+		return "", fmt.Errorf("creating temporary config in %s: %w", dir, err)
 	}
 	tmpPath := tmp.Name()
 	defer func() {
@@ -289,38 +281,41 @@ func writeConfigAtomic(path string, body []byte, force bool) (err error) {
 		_ = os.Remove(tmpPath)
 	}()
 	if err := tmp.Chmod(0o600); err != nil {
-		return fmt.Errorf("securing temporary config: %w", err)
+		return "", fmt.Errorf("securing temporary config: %w", err)
 	}
 	if _, err := tmp.Write(body); err != nil {
-		return fmt.Errorf("writing temporary config: %w", err)
+		return "", fmt.Errorf("writing temporary config: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
-		return fmt.Errorf("syncing temporary config: %w", err)
+		return "", fmt.Errorf("syncing temporary config: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing temporary config: %w", err)
+		return "", fmt.Errorf("closing temporary config: %w", err)
 	}
 
-	if force {
+	// Publishing by hard link is atomic and tells us whether the destination
+	// existed at the exact publication boundary. That keeps --force's result
+	// truthful even when another initializer races this one.
+	switch err := os.Link(tmpPath, path); {
+	case err == nil:
+		action = "created"
+		if err := os.Remove(tmpPath); err != nil {
+			return "", fmt.Errorf("removing temporary config: %w", err)
+		}
+	case os.IsExist(err) && force:
 		if err := os.Rename(tmpPath, path); err != nil {
-			return fmt.Errorf("replacing %s: %w", path, err)
+			return "", fmt.Errorf("replacing %s: %w", path, err)
 		}
-	} else {
-		// Linking a complete same-directory temporary file publishes it
-		// atomically and fails if the destination already exists. Unlike a
-		// preflight Stat, this cannot race another initializer into clobbering.
-		if err := os.Link(tmpPath, path); err != nil {
-			if os.IsExist(err) {
-				return fmt.Errorf("%s already exists; pass --force to replace it", path)
-			}
-			return fmt.Errorf("creating %s: %w", path, err)
-		}
-		_ = os.Remove(tmpPath)
+		action = "replaced"
+	case os.IsExist(err):
+		return "", fmt.Errorf("%s already exists; pass --force to replace it", path)
+	default:
+		return "", fmt.Errorf("creating %s: %w", path, err)
 	}
 
 	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()
 		_ = d.Close()
 	}
-	return nil
+	return action, nil
 }

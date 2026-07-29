@@ -146,6 +146,21 @@ func TestInitRefusesToOverwriteUnlessForced(t *testing.T) {
 	}
 }
 
+func TestInitForceReportsCreatedWhenNothingWasReplaced(t *testing.T) {
+	h := newHarness(t, harnessOptions{})
+	docs := filepath.Join(h.root, "documents")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := h.run("init", "--docs", docs, "--force", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("forced first init exit %d: %s", code, stderr)
+	}
+	contains(t, stdout, `"action": "created"`,
+		"--force must not claim it replaced a file that did not exist")
+}
+
 func TestInitValidatesItsNonInteractiveBoundaryBeforeWriting(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	h.env.Stdin = strings.NewReader("")
@@ -165,6 +180,46 @@ func TestInitValidatesItsNonInteractiveBoundaryBeforeWriting(t *testing.T) {
 	contains(t, stderr, "documents directory", "invalid source path should be actionable")
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Fatalf("invalid init wrote a configuration: %v", err)
+	}
+}
+
+func TestInitTreatsDevNullAsNonInteractive(t *testing.T) {
+	h := newHarness(t, harnessOptions{})
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devNull.Close()
+	h.env.Stdin = devNull
+
+	code, stdout, stderr := h.run("init")
+	if code != cli.ExitError {
+		t.Fatalf("init from %s exit = %d, want %d", os.DevNull, code, cli.ExitError)
+	}
+	if strings.Contains(stdout, "Documents directory:") {
+		t.Fatalf("init prompted with non-terminal stdin: %q", stdout)
+	}
+	contains(t, stderr, "--docs is required with --json or when stdin is not an interactive terminal",
+		"cron and launchd commonly attach stdin to the null device")
+}
+
+func TestInitPreservesExplicitDirectoryWhitespace(t *testing.T) {
+	h := newHarness(t, harnessOptions{})
+	docs := filepath.Join(h.root, "documents ")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := h.run("init", "--docs", docs)
+	if code != cli.ExitOK {
+		t.Fatalf("init with whitespace-bearing directory exit %d: %s", code, stderr)
+	}
+	body, err := os.ReadFile(filepath.Join(h.root, "config", "recall", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `location = "`+docs+`"`) {
+		t.Fatalf("generated config changed the explicit path %q:\n%s", docs, body)
 	}
 }
 
