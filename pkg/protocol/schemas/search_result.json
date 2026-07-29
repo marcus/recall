@@ -48,6 +48,11 @@
         "record_type": { "$ref": "common.json#/$defs/record_type" },
         "title": { "type": "string" },
         "excerpt": { "type": "string" },
+        "excerpt_kind": {
+          "description": "What the excerpt is evidence of: 'matched' is the span the query matched, 'preview' is the record's opening and asserts that nothing in its text matched. Omitted is a third state and not a default — a source that does not select excerpts by query, or that could not read the record to find out, says nothing rather than claiming a preview.",
+          "type": "string",
+          "enum": ["matched", "preview"]
+        },
         "local_rank": {
           "description": "One-based position in this source's own result list. The only mandatory relevance signal.",
           "type": "integer",
