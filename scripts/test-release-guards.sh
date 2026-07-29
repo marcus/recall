@@ -48,7 +48,9 @@ cp "$repo_root/CHANGELOG.md" "$guard_repo/"
   git -c user.name=release-test -c user.email=release-test@example.invalid \
     tag -a v0.1.0 -m "Release v0.1.0"
   git push --quiet origin refs/tags/v0.1.0
-  git checkout --quiet --detach v0.1.0
+  tag_commit=$(git rev-parse "refs/tags/v0.1.0^{commit}")
+  git checkout --quiet --detach "$tag_commit"
+  git tag -d v0.1.0 >/dev/null
   RELEASE_VERSION=v0.1.0 ./scripts/check-release-state.sh tagged >/dev/null
   git checkout --quiet main
   git -c user.name=release-test -c user.email=release-test@example.invalid \

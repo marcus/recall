@@ -58,6 +58,14 @@ case "$mode" in
     fi
     ;;
   tagged)
+    # actions/checkout resolves a tag event to its commit but does not
+    # necessarily leave the annotated tag object under refs/tags. Fetch the
+    # already validated exact ref before checking its object type and target.
+    if ! git fetch --force --no-tags origin \
+      "refs/tags/$release_version:refs/tags/$release_version"; then
+      echo "Error: could not fetch remote tag $release_version" >&2
+      exit 1
+    fi
     if [[ $(git cat-file -t "refs/tags/$release_version" 2>/dev/null || true) != tag ]]; then
       echo "Error: $release_version must be an annotated tag" >&2
       exit 1
