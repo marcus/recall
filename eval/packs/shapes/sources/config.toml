@@ -1,0 +1,47 @@
+# Synthetic regression corpus. Both instances below read the same fixture tree
+# so the shapes-views profile models two configured views of one underlying
+# record. No source reaches the network, and no fixture derives from a user's
+# documents.
+
+[defaults]
+profile = "shapes-docs"
+timeout_ms = 2000
+fusion_reserve_ms = 25
+
+[[sources]]
+source_uid = "01SHAPESDOCS"
+source_id = "shapes-docs"
+adapter = "documents"
+location = "${PACK}/sources/corpus"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.4
+timeout_ms = 2000
+freshness_policy = "indexed: rebuilt from the synthetic fixture tree at handshake"
+
+[sources.settings]
+extensions = [".md"]
+examples_quote_queries = true
+
+[[sources]]
+source_uid = "02SHAPESVIEW"
+source_id = "shapes-view"
+adapter = "documents"
+location = "${PACK}/sources/corpus"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.2
+timeout_ms = 2000
+freshness_policy = "indexed: second configured view over the same synthetic fixture tree"
+
+[sources.settings]
+extensions = [".md"]
+examples_quote_queries = true
+
+[profiles.shapes-docs]
+sources = ["shapes-docs"]
+max_sensitivity = "internal"
+
+[profiles.shapes-views]
+sources = ["shapes-docs", "shapes-view"]
+max_sensitivity = "internal"

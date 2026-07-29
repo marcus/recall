@@ -104,18 +104,18 @@ const (
 
 	// DefaultRelevanceFloor is the least relevance that reaches the result list.
 	//
-	// The ceiling on it is measured rather than felt, and there is exactly one
-	// binding constraint: blog-005 requires clara-home:profile/TOOLS.md#L46-L84
-	// at relevance 0.1333, and firstuse fails its declared assertions at a floor
-	// of 0.14. (smoke is looser — every gate holds to 0.14 and it only degrades
-	// at 0.25 — so it bounds nothing here.) A floor is bounded above by the
-	// weakest hit a committed pack demands, or it stops filtering noise and
+	// The ceiling on it is measured rather than felt. A private real-corpus
+	// development pack requires a hit at relevance 0.1333 and fails its
+	// declared assertions at a floor of 0.14. That corpus no longer lives in
+	// the public tree; the committed synthetic packs deliberately do not
+	// calibrate this production default. A floor is bounded above by the
+	// weakest real hit an evaluation demands, or it stops filtering noise and
 	// starts having an opinion about what a question deserves.
 	//
 	// The live profile bounds it from the same side and closer to the ground:
 	// `kubernetes` has exactly one hit there, at relevance 0.1299. So 0.10 is
-	// the value with margin on both, and the packs are what would have to move
-	// to raise it.
+	// the value with margin on both. The ranking unit test preserves the
+	// measured bracket: 0.0825 is withheld and 0.1333 survives at this default.
 	//
 	// What it buys, on the live home profile with the result budget disabled:
 	// "what is the sidecar project for" 108 results to 92, "how do i run the

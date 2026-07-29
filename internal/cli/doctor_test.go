@@ -150,7 +150,7 @@ sources = ["mail"]
 		return d
 	}
 
-	opaque := run(t, "marcus@vorwaller.net", "")
+	opaque := run(t, "operator@example.com", "")
 	if got := checkStatus(t, opaque, "access"); got != cli.CheckPass {
 		t.Errorf("opaque identifier access = %q, want pass", got)
 	}
@@ -469,15 +469,14 @@ func TestDoctorPrefersFailureOverDegradation(t *testing.T) {
 // question. A pack pins its corpus, so it measures the sources chosen when it
 // was written; this measures the profile in front of you.
 //
-// The concrete failure it is built from: `fujifilm` abstained in
-// eval/packs/firstuse and returned six results on the home profile, because a
-// source added afterwards quoted the query verbatim in its own issue text. The
-// pack stayed green the whole time.
+// The concrete failure it is built from: a fixed pack abstained while a live
+// profile later returned results because a new source quoted the query verbatim
+// in its own issue text. The pack stayed green the whole time.
 func TestDoctorCatchesAnAbstentionThatStoppedAbstaining(t *testing.T) {
 	const withQueries = twoSourceTOML + `
 [[evaluation.must_abstain]]
-query = "fujifilm"
-reason = "nothing in this corpus is about the camera maker"
+query = "xylophonium"
+reason = "the invented term occurs nowhere in this corpus"
 `
 
 	t.Run("still abstains", func(t *testing.T) {
@@ -522,7 +521,7 @@ reason = "nothing in this corpus is about the camera maker"
 		if got := checkStatus(t, d, "abstention"); got != cli.CheckFail {
 			t.Errorf("check = %q, want fail", got)
 		}
-		contains(t, stdout, "fujifilm",
+		contains(t, stdout, "xylophonium",
 			"the report has to name the query, or an operator cannot tell which line of config to look at")
 	})
 }
@@ -534,7 +533,7 @@ func TestDoctorDegradesRatherThanFailsWhenAMustAbstainQueryCannotRun(t *testing.
 	h := newHarness(t, harnessOptions{
 		userTOML: twoSourceTOML + `
 [[evaluation.must_abstain]]
-query = "fujifilm"
+query = "xylophonium"
 reason = "nothing in this corpus is about the camera maker"
 `,
 		adapters: fakeAdapters(map[string]*fake{

@@ -74,16 +74,14 @@ clean:
 # runs both.
 #
 # Both packs run, and a failure in either fails the target. smoke covers the
-# failure vocabulary a healthy corpus cannot produce; firstuse covers seven
-# observed queries, six over a pinned snapshot and one over a documented
-# synthetic reconstruction, and is the
-# gate every ranking and admission change has to pass. Run artifacts carry
+# failure vocabulary a healthy corpus cannot produce; shapes is a compact
+# synthetic guard for retrieval and admission regressions. Run artifacts carry
 # excerpts, so they go to a temporary directory and never into the tree.
 #
 # build-all rather than build: the core spawns external adapters by command
-# name, and these packs configure two of them, so a partial build measures a
-# source that is not there.
-EVAL_PACKS := smoke firstuse
+# name. The packs currently use built-ins only, but build-all keeps this target
+# honest if a future synthetic fixture adds an external adapter.
+EVAL_PACKS := smoke shapes
 
 .PHONY: eval
 eval: build-all

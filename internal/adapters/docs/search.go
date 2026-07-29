@@ -30,12 +30,12 @@ const (
 	// fraction is wrong in one direction or the other. smoke's "the backup
 	// restore runbook for atlas storage" is answered by a chunk carrying two of
 	// its six terms — the question names a distractor, and the answer is
-	// entitled to ignore it — while the chunks that flood firstuse's "what is
-	// the sidecar project for" carry two of three. Half the terms drops the
-	// first; a third of them admits the second. What separates a paraphrase from
-	// a coincidence is not how much of a question it covers, but whether it
-	// covers more of it than any single word would, which is also exactly the
-	// reported defect: one term of six admitted the whole corpus.
+	// entitled to ignore it — while shapes' "what is the orbit project for"
+	// guards the other side. Half the terms drops the first; a third admits too
+	// much of the second. What separates a paraphrase from a coincidence is not
+	// how much of a question it covers, but whether it covers more of it than
+	// any single word would, which is also exactly the reported defect: one
+	// term of six admitted the whole corpus.
 	//
 	// Weighing the terms by idf rather than counting them was measured and
 	// rejected: it drops that same smoke case, whose two covered terms are the

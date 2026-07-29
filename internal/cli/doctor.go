@@ -885,10 +885,9 @@ func renderDiagnosis(o *out, d Diagnosis) {
 // pack because a pack cannot ask it. A pack pins its corpus so that a ranking
 // change can be measured against something fixed, which means it measures the
 // sources chosen when it was written and never the profile in front of you.
-// The gap is real: `fujifilm` abstained in eval/packs/firstuse and answered
-// with six results on the home profile, because a source added afterwards
-// quoted the query in its own text. Every assertion in the pack was green
-// throughout.
+// The gap is real: a fixed development pack abstained while the live profile
+// later answered after a new source quoted the query in its own text. Every
+// fixed-corpus assertion remained green.
 //
 // An abstention is the only claim safe to make against a live, growing corpus.
 // Any new source can turn "nothing" into "something" and none can turn it back,

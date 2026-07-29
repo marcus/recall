@@ -1,0 +1,8 @@
+{"schema_version":1,"case_id":"mid-chunk-excerpt-001","lineage_root":"01SHAPESDOCS:guides/quartz-handbook.md#L3-L13","relevance":3,"required":true,"supports":["the quartz alignment procedure"]}
+{"schema_version":1,"case_id":"heading-representative-002","lineage_root":"01SHAPESDOCS:guides/aurora-guide.md#L1-L1","relevance":3,"required":true,"supports":["the aurora observation guidance"]}
+{"schema_version":1,"case_id":"link-destination-003","lineage_root":"01SHAPESDOCS:guides/lattice-reference.md#L3-L5","relevance":3,"required":true,"supports":["the lattice maintenance procedure"]}
+{"schema_version":1,"case_id":"link-destination-003","lineage_root":"01SHAPESDOCS:guides/link-index.md#L3-L10","relevance":0,"forbidden":true,"supports":["contains lattice only inside locator destinations"]}
+{"schema_version":1,"case_id":"duplicate-views-004","lineage_root":"01SHAPESDOCS:projects/orbit.md#L1-L5","relevance":3,"required":true,"supports":["what the orbit project is for"]}
+{"schema_version":1,"case_id":"duplicate-views-004","lineage_root":"02SHAPESVIEW:projects/orbit.md#L1-L5","relevance":3,"required":true,"supports":["the same record through the second configured view"]}
+{"schema_version":1,"case_id":"question-width-006","lineage_root":"01SHAPESDOCS:projects/orbit.md#L1-L5","relevance":3,"required":true,"supports":["what the orbit project is for"]}
+{"schema_version":1,"case_id":"question-width-006","lineage_root":"02SHAPESVIEW:projects/orbit.md#L1-L5","relevance":3,"required":true,"supports":["the same answer through the second configured view"]}

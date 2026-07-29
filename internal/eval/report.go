@@ -610,10 +610,14 @@ func caseAssertionViolations(c Case, r CaseResult) []string {
 			withheldBy[suppression.LineageRoot] = suppression.Reason
 		}
 	}
+	displayed := make(RootSet, len(r.Results))
+	for _, result := range r.Results {
+		displayed[result.Root] = true
+	}
 	for _, root := range sortedRoots(a.WithheldLineages) {
 		want := a.WithheldLineages[root]
 		switch got := withheldBy[root]; {
-		case ranked[root]:
+		case displayed[root]:
 			failures = append(failures, fmt.Sprintf(
 				"withheld_lineages: returned %s", root))
 		case got == "":

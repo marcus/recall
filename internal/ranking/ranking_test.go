@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/lineage"
 	"github.com/marcus/recall/internal/ranking"
 	"github.com/marcus/recall/pkg/recall"
@@ -1076,6 +1077,22 @@ func TestRelevancePairsWithTheRankItBelongsTo(t *testing.T) {
 
 // The floor is expressed in relevance because relevance is the only
 // cross-source-comparable signal fusion is permitted to read.
+func TestDefaultRelevanceFloorStaysInsideItsMeasuredBracket(t *testing.T) {
+	r := newRanker(t, func(c *ranking.Config) {
+		c.RelevanceFloor = config.DefaultRelevanceFloor
+	})
+	got := fuse(t, r, request(
+		cand("docs", "below.md#1", 1, relevance(0.0825)),
+		cand("docs", "required.md#1", 2, relevance(0.1333)),
+	))
+
+	if want := []string{"docs:required.md#1"}; !reflect.DeepEqual(order(got), want) {
+		t.Errorf("results = %v at default floor %v, want %v: a measured real-corpus "+
+			"candidate at 0.0825 must be withheld while the required 0.1333 hit survives",
+			order(got), config.DefaultRelevanceFloor, want)
+	}
+}
+
 func TestRelevanceFloorWithholdsResultsAndCountsThem(t *testing.T) {
 	r := newRanker(t, func(c *ranking.Config) { c.RelevanceFloor = 0.05 })
 

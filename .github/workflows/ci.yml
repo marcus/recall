@@ -27,9 +27,8 @@ jobs:
       # failed gate and `recall eval compare` exits non-zero when a measurement
       # moved down against the committed baseline, so the next drift fails a
       # build instead of waiting to be noticed. smoke covers the failure
-      # vocabulary a healthy corpus cannot produce; firstuse covers six real
-      # queries over a pinned snapshot of the configured home profile, and is
-      # the gate every ranking and admission change has to pass.
+      # vocabulary a healthy corpus cannot produce; shapes is a compact
+      # synthetic guard for retrieval and admission regressions.
       #
       # The pack list, the binaries, and the artifact directory live in the
       # `eval` target rather than here, so a local run and a CI run cannot

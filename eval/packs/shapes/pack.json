@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "pack_id": "shapes",
+  "version": "0.1.0",
+  "description": "Synthetic, committed, and network-free. Six compact cases preserve retrieval shapes that previously regressed: query-anchored excerpts, body-less heading representatives, locator exclusion, duplicate-view fusion, honest abstention, bounded natural-language breadth, and named relevance-floor suppression. The prose and queries are inventions, not a reconstruction of any user's corpus or a calibration source for production defaults.",
+  "profile": "shapes-docs",
+  "cases": "cases.jsonl",
+  "judgments": "judgments.jsonl",
+  "sources": "sources",
+  "network_access": false,
+  "budgets": {
+    "p95_latency_ms": 400,
+    "model_calls": 0,
+    "tokens": 0,
+    "external_requests": 0
+  },
+  "thresholds": {
+    "abstention_accuracy": 1.0
+  },
+  "sensitivity_ceiling": "internal",
+  "baseline": {
+    "recorded": "2026-07-28",
+    "note": "Synthetic regression guard. Every fixture is written to exhibit a retrieval shape, never to manufacture or calibrate a particular relevance value. The relevance floor's measured calibration lives in a ranking unit test; this pack only verifies the observable mechanics of withholding and naming a below-floor quoted example."
+  }
+}

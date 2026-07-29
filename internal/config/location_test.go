@@ -15,13 +15,13 @@ func TestClassifyLocationUsesDeclaredSyntax(t *testing.T) {
 		want     LocationKind
 	}{
 		{"empty", "", LocationEmpty},
-		{"email account", "marcus@vorwaller.net", LocationOpaque},
+		{"email account", "operator@example.com", LocationOpaque},
 		{"mailbox name", "Archive 2026", LocationOpaque},
-		{"device name", "Marcus MacBook Pro", LocationOpaque},
+		{"device name", "Studio Workstation", LocationOpaque},
 		{"bare identifier", "notes", LocationOpaque},
 		{"dot-prefixed identifier", ".index", LocationOpaque},
 		{"https endpoint", "https://notes.example/api", LocationScheme},
-		{"adapter scheme", "google://marcus@vorwaller.net", LocationScheme},
+		{"adapter scheme", "google://operator@example.com", LocationScheme},
 		{"scheme without slashes", "mailto:marcus@example.net", LocationScheme},
 		{"opaque urn", "urn:uuid:1234", LocationScheme},
 		{"one-letter URI", "x:opaque", LocationScheme},
@@ -33,8 +33,8 @@ func TestClassifyLocationUsesDeclaredSyntax(t *testing.T) {
 		{"POSIX absolute", "/srv/notes", LocationPath},
 		{"home", "~", LocationPath},
 		{"home child", "~/notes", LocationPath},
-		{"ambiguous Windows drive absolute defaults URI", `C:\Users\Marcus\Mail`, LocationScheme},
-		{"ambiguous Windows drive slash absolute defaults URI", `C:/Users/Marcus/Mail`, LocationScheme},
+		{"ambiguous Windows drive absolute defaults URI", `C:\Users\ExampleUser\Mail`, LocationScheme},
+		{"ambiguous Windows drive slash absolute defaults URI", `C:/Users/ExampleUser/Mail`, LocationScheme},
 		{"ambiguous Windows drive relative defaults URI", `C:Mail`, LocationScheme},
 		{"Windows UNC", `\\server\share\mail`, LocationPath},
 		{"traversal is still a path", "../../../../etc/passwd", LocationPath},
@@ -60,10 +60,10 @@ func TestResolveLocationRewritesOnlyPaths(t *testing.T) {
 		name, location, want string
 		rewritten            bool
 	}{
-		{"email", "marcus@vorwaller.net", "marcus@vorwaller.net", false},
-		{"device", "Marcus MacBook Pro", "Marcus MacBook Pro", false},
+		{"email", "operator@example.com", "operator@example.com", false},
+		{"device", "Studio Workstation", "Studio Workstation", false},
 		{"URL", "https://example.test/a/../b", "https://example.test/a/../b", false},
-		{"scheme", "google://marcus@vorwaller.net", "google://marcus@vorwaller.net", false},
+		{"scheme", "google://operator@example.com", "google://operator@example.com", false},
 		{"relative", "./notes", filepath.Join(base, "notes"), true},
 		{"parent", "../notes", filepath.Join(filepath.Dir(base), "notes"), true},
 		{"nested", "archive/notes", filepath.Join(base, "archive", "notes"), true},
@@ -167,7 +167,7 @@ func TestForeignWindowsPathsAreNotCorruptedWhenDeclared(t *testing.T) {
 	}
 	kind := "path"
 	for _, location := range []string{
-		`C:\Users\Marcus\Mail`, `C:/Users/Marcus/Mail`, `C:Mail`, `\\server\share\mail`,
+		`C:\Users\ExampleUser\Mail`, `C:/Users/ExampleUser/Mail`, `C:Mail`, `\\server\share\mail`,
 	} {
 		got, err := resolveLocation(location, t.TempDir(), &kind)
 		if err != nil {
@@ -198,9 +198,9 @@ func TestLocationClassificationDoesNotDependOnExistence(t *testing.T) {
 // ever be changed merely because of its spelling or the contents of base.
 func FuzzResolveNonPathIsIdentity(f *testing.F) {
 	for _, seed := range []string{
-		"", "marcus@example.net", "Archive 2026", "device-01", ".index",
-		"https://example.test/a/../b", "google://marcus@example.net",
-		"mailto:marcus@example.net", "urn:uuid:1234",
+		"", "operator@example.com", "Archive 2026", "device-01", ".index",
+		"https://example.test/a/../b", "google://operator@example.com",
+		"mailto:operator@example.com", "urn:uuid:1234",
 	} {
 		f.Add(seed)
 	}

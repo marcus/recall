@@ -400,7 +400,7 @@ location = "https://notes.example/api/v1"
 }
 
 func TestOpaqueLocationReachesAdapterUnchanged(t *testing.T) {
-	const account = "marcus@vorwaller.net"
+	const account = "operator@example.com"
 	body := `
 [[sources]]
 source_id = "mail"

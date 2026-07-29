@@ -367,11 +367,11 @@ func TestPartialMatchesSortBelowCompleteOnes(t *testing.T) {
 // TestSingleTermQueryIsUnaffectedByCoverage. One term is either present or it
 // is not, so coverage is 1 or the chunk was never scored — the guard is that
 // no arithmetic on the way there can make a one-word query return less than the
-// documents that hold the word. `bonnie` and `dentist` are that query.
+// documents that hold the word. `riley` and `dentist` are that query.
 func TestSingleTermQueryIsUnaffectedByCoverage(t *testing.T) {
 	t.Parallel()
 	a, _ := newAdapter(t, writtenCorpus(t, map[string]string{
-		"owner.md":   "# Owner\nBonnie is the one who books the dentist.\n",
+		"owner.md":   "# Owner\nRiley is the one who books the dentist.\n",
 		"routine.md": "# Routine\nThe dentist appointment is a standing one, twice a year.\n",
 		"tools.md":   "# Tools\nNothing here has anything to do with either of them.\n",
 	}), nil)
@@ -380,10 +380,10 @@ func TestSingleTermQueryIsUnaffectedByCoverage(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{query: "bonnie", want: []string{"owner.md"}},
+		{query: "riley", want: []string{"owner.md"}},
 		{query: "dentist", want: []string{"owner.md", "routine.md"}},
 		// A question around one content term is still one content term.
-		{query: "who is bonnie", want: []string{"owner.md"}},
+		{query: "who is riley", want: []string{"owner.md"}},
 	} {
 		got := paths(t, search(t, a, tc.query))
 		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
@@ -649,16 +649,16 @@ func TestBodylessHeadingAndMatchedContentStayDistinguishable(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("create research directory: %v", err)
 	}
-	body := "# Retina specialists — drivable range\n\n" +
-		"## Boise area\n\n" +
-		"### Best first call\n\n" +
-		"The practice has a fellowship-trained retina surgeon and an emergency policy.\n"
+	body := "# Aurora observations — surveyable range\n\n" +
+		"## Northern sector\n\n" +
+		"### Instrument notes\n\n" +
+		"A calibrated spectrometer records aurora emissions for later comparison.\n"
 	if err := os.WriteFile(filepath.Join(dir, "specialists.md"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write document: %v", err)
 	}
 	a, _ := newAdapter(t, root, nil)
 
-	resp := search(t, a, "retina")
+	resp := search(t, a, "aurora")
 	var preview, matched bool
 	for _, c := range resp.Candidates {
 		if c.SourceRecordID != "research/specialists.md" {
@@ -668,18 +668,18 @@ func TestBodylessHeadingAndMatchedContentStayDistinguishable(t *testing.T) {
 		case recall.ExcerptPreview:
 			preview = preview || c.Locator.Local == "research/specialists.md#L3-L3"
 		case recall.ExcerptMatched:
-			matched = matched || strings.Contains(strings.ToLower(c.Excerpt), "retina")
+			matched = matched || strings.Contains(strings.ToLower(c.Excerpt), "aurora")
 		}
 	}
 	if !preview || !matched {
-		t.Fatalf("retina candidates preview=%v matched=%v; want the body-less heading and content",
+		t.Fatalf("aurora candidates preview=%v matched=%v; want the body-less heading and content",
 			preview, matched)
 	}
 
-	// "drivable" appears only in the H1. Descendant chunks inherit that
+	// "surveyable" appears only in the H1. Descendant chunks inherit that
 	// heading path, so the record remains reachable even though none can claim
 	// a matched body excerpt.
-	headingOnly := search(t, a, "drivable")
+	headingOnly := search(t, a, "surveyable")
 	if len(headingOnly.Candidates) == 0 {
 		t.Fatal("heading-only term became unreachable")
 	}

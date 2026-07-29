@@ -55,10 +55,9 @@ type Evaluation struct {
 	// pins its corpus — it has to, or a ranking change could not be measured
 	// against a fixed thing — so it measures a source set chosen on the day it
 	// was written, never the profile anyone actually runs. That gap is not
-	// theoretical: `fujifilm` abstained in eval/packs/firstuse and returned six
-	// results on the home profile for three days, because a source added in
-	// between quoted the query in its own issue text. Every assertion was
-	// green.
+	// theoretical: a fixed development pack correctly abstained while the live
+	// profile later returned results after a new source quoted the query in its
+	// own issue text. Every fixed-corpus assertion was still green.
 	//
 	// So these carry only what cannot drift. An abstention is the one claim a
 	// growing corpus cannot make truer: any new source can turn "nothing"

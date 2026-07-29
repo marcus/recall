@@ -576,6 +576,29 @@ func TestEveryDeclaredCaseAssertionCanFailTheRun(t *testing.T) {
 	}
 }
 
+func TestWithheldLineageMayRemainInTheRankedDiagnosticPool(t *testing.T) {
+	root := recall.LineageRoot("uid:view")
+	c := goodCase("case")
+	c.Assertions = &eval.Assertions{
+		WithheldLineages: map[recall.LineageRoot]string{
+			root: recall.SuppressDuplicateView,
+		},
+	}
+	result := eval.CaseResult{
+		Ranked:  []recall.LineageRoot{"uid:shown", root},
+		Results: []eval.ResultRef{{Root: "uid:shown"}},
+		Suppressions: []recall.Suppression{{
+			Reason:      recall.SuppressDuplicateView,
+			Count:       1,
+			LineageRoot: root,
+		}},
+	}
+	if score := eval.Score(c, nil, result); len(score.AssertionViolations) > 0 {
+		t.Fatalf("a ranked cluster member that was not displayed was called returned: %v",
+			score.AssertionViolations)
+	}
+}
+
 func TestSuppressedLineageRequiresPositiveSuppressionTelemetry(t *testing.T) {
 	root := recall.LineageRoot("uid:hidden")
 	tests := []struct {

@@ -18,8 +18,8 @@ func termSet(list ...string) map[string]bool {
 // term, not from the head of the chunk.
 func TestExcerptWindowIsCutAroundTheMatchedLine(t *testing.T) {
 	t.Parallel()
-	const head = "Nothing in this system depends on OpenClaw running."
-	const match = "`com.marcus.perch` keeps planner, blog, and dispatch databases open there."
+	const head = "Nothing in this system depends on the coordinator running."
+	const match = "`example.planner` keeps planner, blog, and dispatch databases open there."
 	body := []string{head, ""}
 	for range 20 {
 		body = append(body, strings.Repeat("filler ", 12))

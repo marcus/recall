@@ -80,7 +80,7 @@ func TestExplainShowsLocationResolutionDecision(t *testing.T) {
 source_id = "mail"
 adapter = "documents"
 freshness_mode = "indexed"
-location = "marcus@vorwaller.net"
+location = "operator@example.com"
 
 [[sources]]
 source_id = "notes"
@@ -98,10 +98,10 @@ location_kind = "opaque"
 	e := mustLoad(t, "testdata/home", projectFile).Explain()
 
 	mail := explainedSource(t, e, "mail")
-	if got := mail.Fields["location_original"].Value; got != "marcus@vorwaller.net" {
+	if got := mail.Fields["location_original"].Value; got != "operator@example.com" {
 		t.Errorf("opaque original = %q", got)
 	}
-	if got := mail.Fields["location"].Value; got != "marcus@vorwaller.net" {
+	if got := mail.Fields["location"].Value; got != "operator@example.com" {
 		t.Errorf("opaque resolved = %q", got)
 	}
 	if got := mail.Fields["location_kind"].Value; got != "opaque" {

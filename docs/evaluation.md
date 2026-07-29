@@ -45,36 +45,19 @@ answer/abstain/fail, unavailable/denied/partial/timed-out sources, expansion
 and locator revision checks, `as_of` against a source declaring `none`, the
 config trust boundary, and suppression.
 
-**First-use pack.** Committed and network-free. Six queries an agent put to
-Recall on 2026-07-27 on its first use of the tool, against the configured home
-profile, plus one query sampled from the live profile while verifying a ranking
-fix the next day. The first six use pinned real records. The seventh uses an
-explicitly documented minimal synthetic document shape so the regression does
-not copy personal medical or geographic context from the live document. All seven cases are
-enforced outright. They cover a single-term profile hit, a clean abstention,
-cross-source relevance, excerpt selection, duplicate source views, sentence
-term coverage, and the matched chunk that should represent a document whose
-score was earned by a body-less heading. The excerpt assertions state what no
-ranking metric can: whether the text handed to the caller carries useful
-matched content. An `expected_fail` marking comes off the moment its defect is
-fixed; `expected_failures_current` fails if a stale marking remains.
+**Shapes pack.** Small, synthetic, committed, and network-free. It preserves
+seven retrieval properties that previously regressed: query-anchored excerpts
+for mid-chunk matches; body-less headings that root and score a document without
+becoming its displayed representative; locator destinations excluded from prose
+indexing; duplicate source views fused into one result with explicit
+suppression; honest complete-coverage abstention; a natural-language question
+bounded against its keyword form; and a below-floor record withheld by name.
 
-Its corpus is **pinned and committed**, which the development pack's is not, and
-the reason is what it gates. Every change to ranking or admission has to pass
-it, so it has to run in CI, and CI has no clara-home checkout, no Tasks store,
-and no project-catalog instance. The pin is a git commit rather than a working
-tree: documents are `git show 3c9b4c6:<path>` from clara-home, chosen because
-that is the revision of `profile/TOOLS.md` holding the line the excerpt case is
-about, which is gone from the file today. Tasks and project records are real
-CLI and API output captured the same day and replayed. The corpus is trimmed to
-what the seven cases need and scrubbed of anything they do not; `eval/packs/
-firstuse/sources/config.toml` records exactly what was kept, what was replaced,
-and why. Except for the documented body-less-heading reconstruction, it is real
-prose nobody wrote to be retrieved, which is the one structural defence against
-fixtures tuned to rank well. The reconstruction is intentionally minimal,
-region-neutral, and contains no personal medical detail. The corpus is small
-enough that its ranking numbers are a regression baseline rather than a claim
-about retrieval quality.
+Every fixture is an invention written to exhibit its property, never a
+reconstruction of a user's corpus or a way to derive a production constant.
+In particular, the relevance-floor case verifies mechanics only. The measured
+calibration for `DefaultRelevanceFloor` is preserved as a bracketed ranking unit
+test rather than laundered through prose written for an evaluation.
 
 **Development pack.** Real questions from the configured system, over the two
 sources of the first vertical slice: indexed project documents and live
@@ -123,19 +106,16 @@ optimization score.
 eval/
   schema/          pack, case, judgment, run schemas, plus embed.go
   packs/smoke/     pack.json, cases.jsonl, judgments.jsonl, sources/, transcripts/
-  packs/firstuse/  pack.json, cases.jsonl, judgments.jsonl, sources/
-  baselines/       smoke.json, firstuse.json
+  packs/shapes/    pack.json, cases.jsonl, judgments.jsonl, sources/
+  baselines/       smoke.json, shapes.json
 ```
 
-The repository holds schemas, two packs, and their baselines. It never holds
-authored development questions, development judgments, personal absolute paths,
-or run artifacts. Tests enforce the committed-pack allowlist and scan committed
-evaluation artifacts for personal absolute paths.
-
-The first-use pack is the one exception to "no copied source bodies", made
-deliberately and bounded: it carries a trimmed, scrubbed snapshot of the home
-corpus because the ranking work it gates runs in CI. Adding a third committed
-pack means editing the allowlist test, which is the point of having one.
+The repository holds schemas, two wholly synthetic packs, and their baselines.
+It never holds authored development questions, real source bodies, development
+judgments, personal absolute paths, or run artifacts. Tests enforce the
+committed-pack allowlist and scan committed evaluation artifacts for personal
+absolute paths. Adding a third committed pack means editing the allowlist test,
+which is the point of having one.
 
 Run artifacts contain excerpts even when packs do not. They inherit the pack's
 sensitivity, default to `$XDG_STATE_HOME/recall/<profile>/eval/`, and are never
@@ -151,8 +131,8 @@ anything about individual cases.
 Refresh one deliberately, never as a side effect of a run:
 
 ```sh
-recall eval run --pack eval/packs/smoke --output "$d"
-cp "$d/run.json" eval/baselines/smoke.json
+recall eval run --pack eval/packs/shapes --output "$d"
+cp "$d/run.json" eval/baselines/shapes.json
 
 # Uses the private development_pack and development_baseline from user config.
 recall eval run --output "$private_run"
@@ -160,11 +140,11 @@ cp "$private_run/run.json" "$private_development_baseline"
 ```
 
 Changing any measured pack input changes its content hash, and a baseline
-naming a different hash is not comparable at all. Tests assert the committed
-smoke baseline names the committed smoke pack, so a pack edit that forgets the
-refresh step fails in `make test` rather than surfacing in CI as a phantom
-ranking regression. Private development baseline discipline is checked by the
-local comparison.
+naming a different hash is not comparable at all. Tests assert each committed
+baseline names its committed pack, so a pack edit that forgets the refresh step
+fails in `make test` rather than surfacing in CI as a phantom ranking
+regression. Private development baseline discipline is checked by the local
+comparison.
 
 Earlier commits contained a development-pack snapshot that crossed this
 boundary. The current tree removes it, but ordinary deletion does not erase
@@ -253,8 +233,8 @@ most result slots one record may occupy
 substrings a named result's excerpt must contain
 ```
 
-The last four came with the first-use pack, because they are what its seven
-queries are about and no ranking metric can state any of them. Graded metrics
+The last four are central to the shapes pack, because no ranking metric can
+state any of them. Graded metrics
 score the shape of a whole list, so none of them says which single record is
 the answer. A count is not a rank: the caller pays for every result, and a
 phrasing that returns three times as many for no more information is a defect
@@ -397,17 +377,15 @@ on one host would fail every build on another. CI runs both committed packs
 against their committed baselines, which is what `make eval` does:
 
 ```sh
-for p in smoke firstuse; do
+for p in smoke shapes; do
   recall eval run     --pack "eval/packs/$p" --output "$d/$p"
   recall eval compare "eval/baselines/$p.json" "$d/$p"
 done
 ```
 
 A change to ranking or admission has to pass that target. The smoke pack covers
-the failure vocabulary a healthy corpus cannot produce; the first-use pack
-covers seven observed queries whose answers a person checked, which is the only thing
-that catches a change improving synthetic retrieval while making a real
-question worse.
+the failure vocabulary a healthy corpus cannot produce; the shapes pack keeps
+small, explicit regression fixtures separate from the broad smoke corpus.
 
 The private development pack remains a required local development and release
 gate on top of both. It is larger, its questions are authored rather than
@@ -492,7 +470,7 @@ overall pools the cases where a metric is defined, the case-tag macro weights
 each tag group equally, and the source-family macro weights each family equally.
 Quoting one and later reading another off the bottom of `summary.md` can invent
 a regression that never happened. A metric written down without its population
-is a trap laid for the next reader. Smoke, first-use, and private-development
+is a trap laid for the next reader. Smoke, shapes, and private-development
 numbers are three different populations over three different corpora and must
 never be compared to one another.
 
@@ -528,7 +506,7 @@ are floors on behavior a release must clear at all, and they are checked by
 `run` on a single run with nothing to compare against.
 
 Regression protection is the separate job of `compare` against the pack's
-baseline. The smoke and first-use baselines are committed; the development
+baseline. The smoke and shapes baselines are committed; the development
 baseline is private. On every pack comparison is exact rather than statistical.
 Every rate is deterministic — the same pack over the same commit produces the
 same number to the last bit, on repeated runs and across ten commits — so run

@@ -8,18 +8,10 @@ import (
 	"testing"
 )
 
-// The repository carries two packs, and no more without a deliberate change
-// here. Authored development questions and source fixtures inherit the source
-// corpus's sensitivity and belong behind a user-configured path outside the
-// clone; keeping this as an allowlist makes each exception an argument someone
-// had to write down rather than an unnoticed copy of private bodies.
-//
-//   - smoke is synthetic throughout.
-//   - firstuse is not. It carries a trimmed, scrubbed snapshot of the
-//     configured home corpus, pinned to one commit, because the ranking work it
-//     gates has to run in CI and CI has none of those sources. What it holds is
-//     documented in its sources/config.toml; what it may not hold is anything
-//     the six cases do not need.
+// The repository carries two synthetic packs, and no more without a deliberate
+// change here. Authored development questions and source fixtures inherit the
+// source corpus's sensitivity and belong behind a user-configured path outside
+// the clone. The allowlist makes any new committed corpus an explicit review.
 func TestRepositoryCarriesOnlyTheAllowedPacks(t *testing.T) {
 	root := filepath.Join("..", "..", "eval", "packs")
 	entries, err := os.ReadDir(root)
@@ -33,9 +25,9 @@ func TestRepositoryCarriesOnlyTheAllowedPacks(t *testing.T) {
 		}
 	}
 	slices.Sort(packs)
-	if !slices.Equal(packs, []string{"firstuse", "smoke"}) {
-		t.Fatalf("committed packs = %v, want firstuse and smoke; another real "+
-			"development pack must stay outside the repository", packs)
+	if !slices.Equal(packs, []string{"shapes", "smoke"}) {
+		t.Fatalf("committed packs = %v, want shapes and smoke; real development "+
+			"packs must stay outside the repository", packs)
 	}
 }
 
