@@ -3,6 +3,7 @@ package eval_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -198,33 +199,34 @@ func TestSmokePackLineageRootsArePersisted(t *testing.T) {
 // and the case-tag macro average is the dimension a regression is visible
 // along.
 var smokeRequiredTags = map[string]string{
-	"exact identifiers":            "exact",
-	"aliases":                      "alias",
-	"near-miss false positives":    "near-miss",
-	"lexical paraphrase":           "paraphrase",
-	"cross-source fusion":          "cross-source",
-	"duplicate lineage":            "duplicate-lineage",
-	"distinct corroborating roots": "corroboration",
-	"current evidence":             "current",
-	"historical evidence":          "historical",
-	"stale evidence":               "stale",
-	"superseded evidence":          "superseded",
-	"answer behavior":              "answer",
-	"abstain behavior":             "abstain",
-	"unavailable source":           "unavailable",
-	"denied source":                "denied",
-	"partial source":               "partial",
-	"timed-out source":             "timeout",
-	"expansion, summary":           "detail-summary",
-	"expansion, excerpt":           "detail-excerpt",
-	"expansion, full":              "detail-full",
-	"expansion, context":           "detail-context",
-	"locator revision":             "locator-revision",
-	"as_of against as_of none":     "as-of-unsupported",
-	"config trust boundary":        "config-trust",
-	"suppression in pre_reply":     "suppress-pre-reply",
-	"suppression in explicit":      "suppress-explicit",
-	"sensitivity ceiling":          "sensitivity-ceiling",
+	"exact identifiers":              "exact",
+	"aliases":                        "alias",
+	"near-miss false positives":      "near-miss",
+	"lexical paraphrase":             "paraphrase",
+	"vocabulary-mismatch paraphrase": "paraphrase-semantic",
+	"cross-source fusion":            "cross-source",
+	"duplicate lineage":              "duplicate-lineage",
+	"distinct corroborating roots":   "corroboration",
+	"current evidence":               "current",
+	"historical evidence":            "historical",
+	"stale evidence":                 "stale",
+	"superseded evidence":            "superseded",
+	"answer behavior":                "answer",
+	"abstain behavior":               "abstain",
+	"unavailable source":             "unavailable",
+	"denied source":                  "denied",
+	"partial source":                 "partial",
+	"timed-out source":               "timeout",
+	"expansion, summary":             "detail-summary",
+	"expansion, excerpt":             "detail-excerpt",
+	"expansion, full":                "detail-full",
+	"expansion, context":             "detail-context",
+	"locator revision":               "locator-revision",
+	"as_of against as_of none":       "as-of-unsupported",
+	"config trust boundary":          "config-trust",
+	"suppression in pre_reply":       "suppress-pre-reply",
+	"suppression in explicit":        "suppress-explicit",
+	"sensitivity ceiling":            "sensitivity-ceiling",
 }
 
 func TestSmokePackCoversEveryCategory(t *testing.T) {
@@ -281,6 +283,180 @@ func TestSmokePackAbstentionsAreDeliberate(t *testing.T) {
 	}
 	if abstentions == 0 {
 		t.Error("no abstention cases: abstention accuracy would be undefined for the pack")
+	}
+}
+
+// smokeSemanticTag marks the paraphrase cases whose answer shares almost no
+// surface term with the question. They are the pack's measurement of the
+// vocabulary-mismatch gap, so the property that makes them measure it — the
+// overlap — is asserted here rather than trusted to a note.
+const smokeSemanticTag = "paraphrase-semantic"
+
+// smokeFunctionWords mirrors internal/adapters/docs.isEnglishFunctionWord.
+//
+// It is duplicated rather than exported because this test is an audit of the
+// pack, not of the adapter: what it needs is the same reading of "content term"
+// a person would do by hand when writing one of these cases. If the adapter's
+// list grows, the audit here becomes conservative — it counts a word the
+// adapter would have dropped — which can only make the bound harder to satisfy.
+var smokeFunctionWords = map[string]bool{
+	"a": true, "an": true, "the": true,
+	"am": true, "are": true, "be": true, "been": true, "being": true, "did": true,
+	"do": true, "does": true, "is": true, "was": true, "were": true,
+	"what": true, "when": true, "where": true, "which": true, "who": true,
+	"whom": true, "whose": true, "why": true, "how": true,
+}
+
+var smokeWordPattern = regexp.MustCompile(`[0-9A-Za-z]+`)
+
+func smokeContentTerms(s string) []string {
+	var out []string
+	for _, tok := range smokeWordPattern.FindAllString(strings.ToLower(s), -1) {
+		if !smokeFunctionWords[tok] {
+			out = append(out, tok)
+		}
+	}
+	return out
+}
+
+// smokeChunkText returns the text a judged document chunk is indexed under: its
+// own lines, plus the document's H1, which the chunker carries into every
+// section's term set as the ancestor heading path.
+func smokeChunkText(t *testing.T, corpus, local string) string {
+	t.Helper()
+	path, span, ok := strings.Cut(local, "#")
+	if !ok {
+		t.Fatalf("%q is not a chunk locator", local)
+	}
+	var first, last int
+	if _, err := fmt.Sscanf(span, "L%d-L%d", &first, &last); err != nil {
+		t.Fatalf("%q does not carry a line span: %v", local, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(smokePackDir(t), "sources", corpus, path))
+	if err != nil {
+		t.Fatalf("read judged fixture: %v", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	if last > len(lines) {
+		t.Fatalf("%q names line %d of a %d-line file", local, last, len(lines))
+	}
+	text := strings.Join(lines[first-1:last], "\n")
+	if strings.HasPrefix(lines[0], "# ") && first > 1 {
+		text = lines[0] + "\n" + text
+	}
+	return text
+}
+
+// TestSmokePackParaphraseSemanticOverlap is the audit that makes the
+// vocabulary-mismatch family mean what it says.
+//
+// A case in this family claims that its answer cannot be reached by matching
+// words, and the number that claim produces is a near-zero one. Nothing stops a
+// later edit from putting one of the question's words into the answering passage
+// — at which point the case starts being answerable lexically, its score rises,
+// and the rise looks like a semantic source earning something it did not. So the
+// overlap is bounded here: at most one content term shared between the question
+// and the passage judged authoritative for it.
+func TestSmokePackParaphraseSemanticOverlap(t *testing.T) {
+	t.Parallel()
+	_, cases, judgments := smokeLoad(t)
+
+	corpora := map[recall.SourceUID]string{
+		"01SMOKENOTES":    "notes",
+		"01SMOKEHANDBOOK": "handbook",
+	}
+	requiredRoots := map[string][]recall.LineageRoot{}
+	judged := map[string]int{}
+	for _, j := range judgments {
+		judged[j.CaseID]++
+		if j.Required {
+			requiredRoots[j.CaseID] = append(requiredRoots[j.CaseID], j.LineageRoot)
+		}
+	}
+
+	answering, abstaining := 0, 0
+	for _, c := range cases {
+		semantic := false
+		paraphrase := false
+		for _, tag := range c.Tags {
+			switch tag {
+			case smokeSemanticTag:
+				semantic = true
+			case "paraphrase":
+				paraphrase = true
+			}
+		}
+		if !semantic {
+			continue
+		}
+		if !paraphrase {
+			t.Errorf("case %q is tagged %q but not paraphrase; the family has to be visible "+
+				"in the group the pack already reports, or its regression hides in a tag "+
+				"nothing else compares", c.CaseID, smokeSemanticTag)
+		}
+		if c.ExpectedBehavior == eval.BehaviorAbstain {
+			abstaining++
+			if judged[c.CaseID] != 0 {
+				t.Errorf("case %q must abstain but carries %d judgment(s); an undefined "+
+					"ranking metric is not a zero, and grading a question with no answer "+
+					"would score honesty as a ranking failure",
+					c.CaseID, judged[c.CaseID])
+			}
+			continue
+		}
+		answering++
+
+		roots := requiredRoots[c.CaseID]
+		if len(roots) != 1 {
+			t.Errorf("case %q names %d required lineage roots; a vocabulary-mismatch case "+
+				"is about one passage the words cannot reach", c.CaseID, len(roots))
+			continue
+		}
+		if c.Assertions == nil || c.Assertions.ExpectedTopLineage == "" {
+			t.Errorf("case %q declares no expected_top_lineage; the whole claim is which "+
+				"single passage answers, and no graded metric can state it", c.CaseID)
+		} else if c.Assertions.ExpectedTopLineage != roots[0] {
+			t.Errorf("case %q must rank %q first but marks %q required",
+				c.CaseID, c.Assertions.ExpectedTopLineage, roots[0])
+		}
+
+		loc, err := roots[0].Locator()
+		if err != nil {
+			t.Errorf("case %q: %v", c.CaseID, err)
+			continue
+		}
+		corpus, ok := corpora[loc.SourceUID]
+		if !ok {
+			t.Errorf("case %q is judged on source %q, which this audit cannot read as a "+
+				"document corpus", c.CaseID, loc.SourceUID)
+			continue
+		}
+
+		passage := map[string]bool{}
+		for _, term := range smokeContentTerms(smokeChunkText(t, corpus, loc.Local)) {
+			passage[term] = true
+		}
+		var shared []string
+		for _, term := range smokeContentTerms(c.Query) {
+			if passage[term] {
+				shared = append(shared, term)
+			}
+		}
+		sort.Strings(shared)
+		if len(shared) > 1 {
+			t.Errorf("case %q shares %d content terms with the passage judged authoritative "+
+				"for it (%v); this family measures the questions words cannot answer, so at "+
+				"most one is allowed", c.CaseID, len(shared), shared)
+		}
+	}
+
+	if answering < 3 {
+		t.Errorf("%d answering %s cases; one vocabulary gap is an anecdote, a family of "+
+			"them is a metric", answering, smokeSemanticTag)
+	}
+	if abstaining == 0 {
+		t.Errorf("no must-abstain %s case: a semantic source would be measured on recall "+
+			"and never on honesty", smokeSemanticTag)
 	}
 }
 
