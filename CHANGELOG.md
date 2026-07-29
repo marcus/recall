@@ -10,6 +10,19 @@ migration guidance.
 
 ### Added
 
+- Added the optional first-party `recall-qmd` external adapter. It exposes a
+  [qmd](https://github.com/tobi/qmd) collection as a semantic document source
+  running *alongside* the built-in lexical adapter over the same corpus, with a
+  `mode` setting isolating qmd's full-text, vector, hybrid, and reranked layers
+  and recording the choice in `index_config`. Relevance is recomputed on
+  Recall's shared definition rather than taken from qmd's saturating score,
+  document identity matches what the lexical adapter derives for the same file,
+  and every operation re-verifies that the configured collection still indexes
+  the configured corpus. See [qmd-adapter.md](docs/qmd-adapter.md).
+- The `excerpt_kind` candidate field is now accepted over the wire. It was
+  documented in the adapter protocol and present in `pkg/recall`, but absent
+  from `search_result.json`, so an external adapter that emitted it was rejected
+  by schema validation rather than degraded.
 - Added the optional first-party `recall-gmail` external adapter. It reads
   Gmail through `gog`, ships synthetic conformance transcripts, excludes bulk
   categories from its default corpus, keeps message bodies out of pointers,

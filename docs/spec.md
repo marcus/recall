@@ -1283,12 +1283,13 @@ lineage, freshness, permissions, provenance, expansion, temporal semantics, and
 evaluation. Specialized engines sit behind adapters when they solve a hard
 subproblem better.
 
-[QMD](https://github.com/tobi/qmd) is the intended second document backend:
-local BM25, vector search, hybrid fusion, local reranking, bounded line
-retrieval, JSON output. It ships **after** the built-in lexical adapter, as a
-second implementation of the same adapter contract, so the benchmark can
-compare them. It integrates over a process boundary and never dictates the core
-language.
+[QMD](https://github.com/tobi/qmd) is the second document backend: local BM25,
+vector search, hybrid fusion, local reranking, bounded line retrieval, JSON
+output. It ships **after** the built-in lexical adapter, as a second
+implementation of the same adapter contract, so the benchmark can compare them.
+It integrates over a process boundary and never dictates the core language. It
+now exists as the optional first-party `recall-qmd` external adapter; see
+[qmd-adapter.md](qmd-adapter.md), including what it does not fix.
 
 [MemoryWiki](https://github.com/MemoryWiki/MemoryWiki) is a design reference
 for provenance, conflict preservation, and write safety when memory

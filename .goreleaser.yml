@@ -54,11 +54,29 @@ builds:
         -X github.com/marcus/recall/pkg/buildinfo.Version=v{{ .Version }}
         -X github.com/marcus/recall/pkg/buildinfo.Commit={{ .Commit }}
 
+  - id: recall-qmd
+    main: ./cmd/recall-qmd
+    binary: recall-qmd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/marcus/recall/pkg/buildinfo.Version=v{{ .Version }}
+        -X github.com/marcus/recall/pkg/buildinfo.Commit={{ .Commit }}
+
 archives:
   - id: release
     ids:
       - recall
       - recall-gmail
+      - recall-qmd
       - recall-stream
     formats:
       - tar.gz
@@ -71,7 +89,9 @@ archives:
       - LICENSE
       - NOTICE
       - cmd/recall-gmail/conformance/**/*
+      - cmd/recall-qmd/conformance/**/*
       - docs/gmail-adapter.md
+      - docs/qmd-adapter.md
       - docs/quickstart.md
 
 checksum:

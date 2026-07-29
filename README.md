@@ -79,12 +79,16 @@ make install PREFIX=/usr/local
 ```
 
 `make install` builds every command shipped by this repository: the Recall
-core, `recall-stream`, the reference external adapter, and `recall-gmail`, the
-optional first-party Gmail adapter. `recall-gmail` has no compile-time
-dependency on Google tooling; configuring it requires
-[`gog`](https://github.com/openclaw/gogcli) on `PATH`. Private, consumer-specific
-adapters live with the consumers that configure them. `make uninstall` removes
-the same command set.
+core, `recall-stream`, the reference external adapter, and two optional
+first-party adapters, `recall-gmail` and `recall-qmd`. Neither has a
+compile-time dependency on the tool it drives, and neither does anything until a
+source is configured for it: `recall-gmail` needs
+[`gog`](https://github.com/openclaw/gogcli) on `PATH`, and `recall-qmd` needs
+[`qmd`](https://github.com/tobi/qmd) plus its local models — see
+[qmd-adapter.md](docs/qmd-adapter.md), which also explains that qmd runs
+*alongside* the built-in lexical document adapter rather than replacing it.
+Private, consumer-specific adapters live with the consumers that configure them.
+`make uninstall` removes the same command set.
 
 Verify the installation and resolved trust boundary:
 
@@ -158,8 +162,8 @@ deliberate retrieval change moves a metric, re-record the affected baseline in
 the same commit and explain the trade in the pack note; see
 [evaluation.md](docs/evaluation.md#layout).
 
-External adapters, including `recall-gmail`, ship recorded JSON-RPC
-transcripts. A transcript captures
+External adapters, including `recall-gmail` and `recall-qmd`, ship recorded
+JSON-RPC transcripts. A transcript captures
 what the real adapter process returned, with only declared volatile fields
 masked. Replay it with:
 
