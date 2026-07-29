@@ -28,7 +28,20 @@ func TestSDKFromExternalModule(t *testing.T) {
 	runGo(t, scratch, "test", "./...")
 }
 
-func runGo(t *testing.T, dir string, args ...string) {
+// TestSDKPackagesDoNotDependOnRecallInternalPackages guards the dependency
+// boundary directly. An external module can compile a public package that
+// itself imports a sibling internal package, so the scratch-module test above
+// is necessary but not sufficient to prove the SDK is self-contained.
+func TestSDKPackagesDoNotDependOnRecallInternalPackages(t *testing.T) {
+	output := runGo(t, ".", "list", "-deps", "-f={{.ImportPath}}", "./pkg/...")
+	for _, importPath := range strings.Fields(output) {
+		if strings.HasPrefix(importPath, "github.com/marcus/recall/internal/") {
+			t.Errorf("public SDK depends on private package %s", importPath)
+		}
+	}
+}
+
+func runGo(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
@@ -37,4 +50,5 @@ func runGo(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
+	return string(output)
 }

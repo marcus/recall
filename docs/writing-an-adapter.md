@@ -131,8 +131,9 @@ tests import
 and call `conformance.Verify`. The
 [`testdata/external-sdk`](../testdata/external-sdk) scratch module is a minimal
 adapter with a passing recorded handshake transcript. It is copied outside this
-module during `make check`, so the test also proves no `internal/` import has
-leaked into the SDK dependency graph.
+module during `make check`, proving an external author can compile and test
+against the SDK. A separate `go list -deps ./pkg/...` assertion guards the SDK
+dependency graph against imports from Recall's `internal/` packages.
 
 The Go SDK is pre-1.0. Minor versions may contain breaking API changes; each
 break will be listed in [`CHANGELOG.md`](../CHANGELOG.md) with migration
