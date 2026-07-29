@@ -1,107 +1,188 @@
-# Recall
+# Recall (`github.com/marcus/recall`)
 
-Recall is a portable retrieval layer for personal AI agents. It searches
-heterogeneous, user-controlled sources and returns compact evidence with stable
-provenance.
+An agent working on your behalf needs to find decisions, tasks, and project
+state scattered across tools that have no common index. `grep` can search one
+tree; it cannot ask a notes directory, a task tracker, and a live project
+catalog the same question, or tell you which of those sources failed to answer.
+Recall searches each source on its own terms and returns one compact, honest
+set of evidence pointers.
 
-Each source answers a narrow question — "which of my records best match this
-request?" — in its own native way. Recall decides which sources are eligible,
-fuses their ranked lists without comparing incomparable scores, groups
-projections of the same record into one evidence lineage, and returns pointers
-the agent can expand under a budget.
+Here is the human output captured by Recall's deterministic CLI fixtures.
+These are pointers, not copied documents: choose one, then pass its locator to
+`recall expand`.
 
-- [Specification](docs/spec.md) — contracts, ranking, trust, time, surfaces
-- [Adapter protocol](docs/adapter-protocol.md) — message shapes, transport,
+```text
+$ recall query "backup-restore.md"
+outcome answered  coverage complete  results 2
+
+1. notes:runbooks/backup-restore.md#L3-L7  exact
+   Backup And Restore > Restore Drill
+ > Every quarter we restore the newest snapshot into a scratch volume and compare checksums against the source. The drill is scheduled by a task so its rotation is visible.
+
+$ recall query "marcus"
+outcome answered  coverage complete  results 1
+
+1. docs:team.md  corroborated 2
+   title team.md
+   excerpt for team.md
+
+$ recall query --profile smoke-degraded "checksum newest scratch volume"
+outcome answered  coverage degraded  results 1
+degraded coverage: flaky (partial), slow (timeout)
+
+1. notes:runbooks/backup-restore.md#L3-L7
+   Backup And Restore > Restore Drill
+ > Every quarter we restore the newest snapshot into a scratch volume and compare checksums against the source. The drill is scheduled by a task so its rotation is visible.
+```
+
+Recall keeps the facts that matter when sources disagree or fail:
+
+- It fuses ranked lists without pretending one source's score is comparable to
+  another's.
+- It follows declared lineage and groups multiple projections of one record as
+  one piece of evidence.
+- Exit codes distinguish a complete miss from an incomplete search. An
+  abstention exits 2; degraded coverage exits 3.
+- Records withheld by sensitivity, relevance, deduplication, or response budget
+  are counted with their reason. They do not silently disappear.
+
+## Quickstart
+
+Start with the [quickstart](docs/quickstart.md). It covers installation,
+`recall init`, indexing a directory you control, the first query, and expansion.
+The [profile example](docs/profile-example.md) shows how to add more sources
+once the first one works.
+
+## Documentation
+
+- [Specification](docs/spec.md) — contracts, ranking, trust, time, and surfaces
+- [Adapter protocol](docs/adapter-protocol.md) — message shapes, transport, and
   conformance
-- [Writing an adapter](docs/writing-an-adapter.md) — the working guide, and
-  [`templates/adapter-python`](templates/adapter-python) to copy
-- [Evaluation](docs/evaluation.md) — packs, metrics, gates, research policy
+- [Writing an adapter](docs/writing-an-adapter.md) — the working guide, with a
+  dependency-free [Python adapter template](templates/adapter-python)
+- [Evaluation](docs/evaluation.md) — packs, metrics, gates, and research policy
 - [Profile example](docs/profile-example.md) — a concrete source inventory
 - [HTTP and MCP surfaces](docs/surfaces.md) — service mode, authentication,
   endpoint semantics, and agent-host tools
 
-Status: the first vertical slice is in. The CLI fuses two heterogeneous sources
-— indexed project documents and live structured tasks — plus a reference
-external adapter that exercises the wire protocol and evidence lineage, and an
-evaluation harness with a committed smoke pack.
-
-External adapters ship here as separate commands:
-
-- `recall-stream` — the reference implementation, and the smallest complete
-  thing an adapter author can copy: an append-only JSONL event source that
-  emits `derived_from` edges.
-- `recall-ongoing` — the ongoing project catalog over its HTTP API: every local
-  repository with its git, LOC, td, GitHub, and traffic measurements, and the
-  attention classifications ongoing computes over them, carried through with
-  the reasons behind each one. See `cmd/recall-ongoing/ongoing` for what it
-  declares and why.
-
-An adapter that lives outside this repository starts from
-`templates/adapter-python`: a complete adapter in one dependency-free Python
-file, shipping recorded conformance transcripts, so a copy inherits a passing
-suite rather than an empty one. It is Python rather than Go on purpose — an
-external adapter is a process speaking JSON-RPC on stdio, and a Go template
-against this module's internal packages would prove the packages rather than the
-wire and could not be copied out of the tree at all.
-
-`eval/baselines/smoke.json` is the frozen smoke run. CI runs the pack and
-`recall eval compare`s the result against it on every change, and the comparison
-exits non-zero if any rate moves down, so drift fails a build instead of waiting
-to be noticed. Refresh it deliberately when a change is meant to move a number —
-see [evaluation.md](docs/evaluation.md#layout).
-
-Quote a metric with the population it came from. Overall pools cases, the
-case-tag macro weights tags equally, and they differ by construction: nDCG@10 is
-0.7665 pooled and 0.7615 across tags on the same run.
-
 ## Install
 
+Recall requires Go 1.26.4 or newer.
+
 ```sh
+git clone https://github.com/marcus/recall.git
+cd recall
 make install            # builds every command into ~/.local/bin
 make install PREFIX=/usr/local
 ```
 
-`install` builds **all** binaries under `cmd/`, not just the CLI. External
-adapters are separate executables that the core spawns by command name, so
-installing `recall` alone produces a configuration that validates and then
-cannot reach half its sources. `make uninstall` removes them again.
+`make install` builds every command under `cmd/`, including external adapters
+that the core starts by command name. `make uninstall` removes the same command
+set.
 
-Verify:
+Verify the installation and resolved trust boundary:
 
 ```sh
 recall version
-recall doctor           # config validity, trust boundary, health, freshness
+recall doctor
 ```
 
 ## Use
 
 ```sh
 recall query "what did we decide about ranking"
-recall query "…" --explain   # provenance, lineage, scores, source outcomes, plan
-recall query "…" --json      # pointers as JSON, for a program
-recall query "…" --json --explain   # the whole response, every field
+recall query "…" --explain       # provenance, lineage, scores, source outcomes
+recall query "…" --json          # compact pointers for a program
+recall query "…" --json --explain
 recall expand <locator> --detail full
-recall refresh [--source <source-id>]  # publish fresh adapter-owned indexes
-recall sources          # instances, capabilities, health, freshness
-recall config explain   # resolved configuration and where each value came from
+recall refresh [--source <source-id>]
+recall sources
+recall config explain
 recall eval run --pack eval/packs/smoke
-recall serve            # long-lived local HTTP API, loopback by default
-recall mcp              # MCP tools over stdio
+recall serve                     # local HTTP API; loopback by default
+recall mcp                       # MCP tools over stdio
 ```
 
-Exit codes distinguish `answered` (0), `error` (1), `abstained` (2),
-`degraded` (3), and `failed` (4) — "nothing matched" and "a source could not
-answer" are never the same result.
+Exit codes are part of the query contract:
 
-A default result is a pointer: rank, locator, title, and excerpt, marked `exact`
-when the query named the record outright and `corroborated N` when it stands on
-more than one independent record. It is what a caller chooses from before
-spending a call on `recall expand`. Degraded coverage and withheld records are
-always stated; scores, provenance, lineage, source outcomes, and the plan are
-behind `--explain`, on the human encoding and the JSON one alike — see
-[output tiers and parity](docs/spec.md#output-tiers-and-parity).
+| Code | Outcome | Meaning |
+| ---: | --- | --- |
+| 0 | answered | Results were returned and every eligible source answered. |
+| 1 | error | Usage, configuration, or another command-level error. |
+| 2 | abstained | Nothing matched and at least one source answered. |
+| 3 | degraded | One or more eligible sources could not answer. |
+| 4 | failed | Every source asked failed. |
 
-Configuration lives at `~/.config/recall/config.toml` with adapter definitions
-in `adapters.d/`; `recall config explain` prints the resolved view. Adapter
-commands may only be declared in user-level configuration — see the
-[trust boundary](docs/spec.md#layers-and-trust-boundary).
+The default output is deliberately small: rank, locator, title, excerpt, and
+the claims needed to interpret them. `--explain` adds source-local scores,
+provenance, lineage, source outcomes, and the resolved plan. `--json` changes
+the encoding, not the information tier.
+
+Configuration lives at `~/.config/recall/config.toml`, with adapter definitions
+under `~/.config/recall/adapters.d/`. `recall config explain` prints the merged
+configuration and the file that supplied each value. Adapter commands may only
+come from user-level configuration; a repository's `recall.toml` cannot make
+Recall execute a program.
+
+## Go adapter SDK
+
+Go adapters import `github.com/marcus/recall/pkg/adapter`,
+`github.com/marcus/recall/pkg/protocol`, and
+`github.com/marcus/recall/pkg/recall`; recorded transcript tests use
+`github.com/marcus/recall/pkg/conformance`.
+
+The SDK is pre-1.0: minor releases may include breaking API changes. Every
+breaking SDK change will be listed in `CHANGELOG.md` with migration guidance.
+See [Writing an adapter](docs/writing-an-adapter.md#go-adapters) for the
+external Go adapter workflow.
+
+## Evaluation and conformance
+
+`make eval` runs the two committed packs through the same application layer as
+the CLI, then compares them with `eval/baselines/smoke.json` and
+`eval/baselines/shapes.json`. `smoke` covers the broad protocol and failure
+vocabulary. `shapes` is wholly synthetic and network-free; it guards the
+retrieval shapes that tend to regress, including query-anchored excerpts,
+heading-only representatives, link-destination exclusion, duplicate-view
+fusion, honest abstention, bounded natural-language breadth, and named
+below-floor suppression. Real development packs stay outside the clone.
+
+Any overall or group-specific rate that moves down fails comparison. When a
+deliberate retrieval change moves a metric, re-record the affected baseline in
+the same commit and explain the trade in the pack note; see
+[evaluation.md](docs/evaluation.md#layout).
+
+External adapters ship recorded JSON-RPC transcripts. A transcript captures
+what the real adapter process returned, with only declared volatile fields
+masked. Replay it with:
+
+```sh
+recall doctor --conformance <adapter>
+```
+
+The format and required cases are documented in
+[Writing an adapter](docs/writing-an-adapter.md#conformance).
+
+## Project status and name
+
+Recall is pre-1.0. The CLI, HTTP API, MCP tools, built-in document/task
+sources, external adapter protocol, conformance runner, and evaluation harness
+are working; compatibility may still change before the first stable release.
+
+The project will publish as Recall, and the module and repository path
+`github.com/marcus/recall` are its canonical identity. The bare command name is
+crowded. In particular,
+[`hyperengineering/recall`](https://github.com/hyperengineering/recall) is an
+active Go-installable and Homebrew-distributed AI-memory CLI with the same
+binary name, and similarly named packages exist on PyPI and npm. Use the fully
+qualified repository or module path when installing and linking to this
+project. The name will be revisited before 1.0 if command-level confusion
+becomes material.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change, especially for
+adapter transcript and evaluation-baseline rules. Security reports belong in
+the private channel described in [SECURITY.md](SECURITY.md).
+
+Recall is licensed under the [Apache License 2.0](LICENSE).

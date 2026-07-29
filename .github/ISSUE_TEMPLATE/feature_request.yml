@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose a new capability, source seam, or contract change
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can a user or agent not do today?
+    validations:
+      required: true
+  - type: textarea
+    id: agent
+    attributes:
+      label: Agent-facing path
+      description: Show the non-interactive CLI, API, MCP, or SDK shape you expect an agent to use.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Source and trust boundaries
+      description: Which adapter, storage, sensitivity, or configuration seam does this affect?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include workarounds that already exist.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This proposal contains no credentials or private corpus material.
+          required: true
