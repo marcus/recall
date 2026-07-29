@@ -1,6 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"ongoing","location":"http://ongoing.example:7766","settings":{"replay":"${FIXTURE}"}}}
-{"jsonrpc":"2.0","id":2,"method":"recall/expand","params":{"locator":"ongoing:project_1111111111111111111111aa","detail":"summary","budget_bytes":8192,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":3,"method":"recall/expand","params":{"locator":"ongoing:project_1111111111111111111111aa","detail":"excerpt","budget_bytes":8192,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":4,"method":"recall/expand","params":{"locator":"ongoing:project_1111111111111111111111aa","detail":"full","budget_bytes":8192,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":5,"method":"recall/expand","params":{"locator":"ongoing:project_1111111111111111111111aa","detail":"context","budget_bytes":8192,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":6,"method":"recall/expand","params":{"locator":"ongoing:project_1111111111111111111111aa","detail":"full","budget_bytes":180,"deadline":"2099-01-01T00:00:00Z"}}

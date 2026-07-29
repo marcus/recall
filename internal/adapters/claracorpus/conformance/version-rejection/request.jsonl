@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":2,"protocol_version_max":3,"workdir":"${WORKDIR}","source_id":"clara-signals","location":"${FIXTURE}","settings":{"store":"signals","upstream":{"tasks":"tasks","slack":"slack-dms"}}}}

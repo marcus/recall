@@ -15,27 +15,27 @@ import (
 func TestConformanceDirectoryIsCarriedThrough(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, home+"/recall/config.toml", `
-[adapters.ongoing]
-command = "/usr/local/bin/recall-ongoing"
+[adapters.notes]
+command = "/usr/local/bin/recall-notes"
 freshness_modes = ["live"]
-conformance = "/srv/recall/cmd/recall-ongoing/conformance"
+conformance = "/srv/recall-notes/conformance"
 `)
 	cfg, err := config.Load(config.Options{Paths: tempPaths(t, home), Builtins: builtins})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	def, ok := cfg.Adapter("ongoing")
+	def, ok := cfg.Adapter("notes")
 	if !ok {
 		t.Fatal("the adapter did not load")
 	}
-	if def.Conformance != "/srv/recall/cmd/recall-ongoing/conformance" {
+	if def.Conformance != "/srv/recall-notes/conformance" {
 		t.Errorf("conformance = %q, want the declared directory", def.Conformance)
 	}
 	// It has to survive into the explained configuration too: the whole point
 	// of the trust boundary is that a user can see what will be run and what it
 	// will be checked against.
 	for _, a := range cfg.Explain().Adapters {
-		if a.Name == "ongoing" && a.Conformance != def.Conformance {
+		if a.Name == "notes" && a.Conformance != def.Conformance {
 			t.Errorf("explained conformance = %q, want %q", a.Conformance, def.Conformance)
 		}
 	}
@@ -48,10 +48,10 @@ func TestRelativeConformanceDirectoryIsRejected(t *testing.T) {
 	// nothing.
 	home := t.TempDir()
 	writeFile(t, home+"/recall/config.toml", `
-[adapters.ongoing]
-command = "/usr/local/bin/recall-ongoing"
+[adapters.notes]
+command = "/usr/local/bin/recall-notes"
 freshness_modes = ["live"]
-conformance = "cmd/recall-ongoing/conformance"
+conformance = "adapters/recall-notes/conformance"
 `)
 	_, err := config.Load(config.Options{Paths: tempPaths(t, home), Builtins: builtins})
 	if !errors.Is(err, config.ErrInvalid) {

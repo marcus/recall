@@ -21,7 +21,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/adapters/tasks"
 	"github.com/marcus/recall/internal/adapters/td"
@@ -75,14 +74,6 @@ type Adapter struct {
 // binary or a real corpus ever being reachable.
 func Builtins() []Adapter {
 	return []Adapter{
-		{
-			// Clara's corpus is shared by the home and work installations.
-			// Signals and memory remain separate configured source instances;
-			// the built-in is the common retrieval implementation.
-			Name:           "clara-corpus",
-			FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
-			New:            func() adapter.Adapter { return claracorpus.New(claracorpus.Options{}) },
-		},
 		{
 			// "documents" rather than "docs": the name appears in every
 			// user's configuration and in every evaluation pack, and it names

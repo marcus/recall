@@ -16,12 +16,12 @@ a complete adapter in one dependency-free Python file, with recorded conformance
 transcripts. Copy it. Everything this document argues for is implemented there,
 and the transcripts are the same behavior frame by frame.
 
-Two other adapters in this tree are worth reading once you have the shape:
+Two Go examples in this tree are worth reading once you have the shape:
 
 - `cmd/recall-stream` — the reference implementation. An append-only JSONL event
   source that emits `derived_from` lineage edges.
-- `cmd/recall-ongoing` — a live source over an HTTP API, with no index, refusing
-  `as_of` outright and explaining why.
+- `testdata/external-sdk` — the smallest adapter and transcript suite that
+  compiles from a separate Go module using only `pkg/...`.
 
 ## What you own, and what you must not
 
@@ -444,9 +444,10 @@ be appended at any later time, so the set of records in the file at a past
 instant is not the set an event-time filter selects, and the format publishes no
 append time to reconstruct it from.
 
-Never answer an `as_of` query from current state. `cmd/recall-ongoing` declares
-`none` rather than filtering on `latestCommitAt`, which would answer a historical
-question from a field describing now.
+Never answer an `as_of` query from current state. A live catalog adapter over a
+current-state API should declare `none` rather than filtering on a field such as
+`latestCommitAt`, which would answer a historical question from a field
+describing now.
 
 ## Sensitivity, excerpts, and trust
 

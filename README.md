@@ -76,9 +76,10 @@ make install            # builds every command into ~/.local/bin
 make install PREFIX=/usr/local
 ```
 
-`make install` builds every command under `cmd/`, including external adapters
-that the core starts by command name. `make uninstall` removes the same command
-set.
+`make install` builds every command shipped by this repository: the Recall core
+and `recall-stream`, the reference external adapter. Private-source adapters
+live with the consumers that configure them. `make uninstall` removes the same
+command set.
 
 Verify the installation and resolved trust boundary:
 
@@ -165,9 +166,10 @@ The format and required cases are documented in
 
 ## Project status and name
 
-Recall is pre-1.0. The CLI, HTTP API, MCP tools, built-in document/task
-sources, external adapter protocol, conformance runner, and evaluation harness
-are working; compatibility may still change before the first stable release.
+Recall is pre-1.0. The CLI, HTTP API, MCP tools, built-in document, Tasks, and
+td sources, reference stream adapter, external adapter protocol, conformance
+runner, and evaluation harness are working; compatibility may still change
+before the first stable release.
 
 The project will publish as Recall, and the module and repository path
 `github.com/marcus/recall` are its canonical identity. The bare command name is

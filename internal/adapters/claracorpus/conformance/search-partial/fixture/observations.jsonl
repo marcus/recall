@@ -1,4 +1,0 @@
-{"type":"observation","schema_version":2,"id":"ob000001","ref":"tasks:cc33dd44","signal_id":"11110002","action":"dismissed","source":"tasks","kind":"todo","occurred_at":"2026-03-02T18:00:00Z","metadata":{}}
-{"type":"observation","schema_version":2,"id":"ob000002","ref":"tasks:cc33dd44","signal_id":"11110002","action":"acted","source":"tasks","kind":"todo","occurred_at":"2026-03-03T09:15:00Z","metadata":{},"event_key":"after:ob000001"}
-{"type":"observation","schema_version":2,"id":"ob000003","ref":"tasks:aa11bb22","signal_id":"11110001","action":"reprioritized","source":"tasks","kind":"todo","occurred_at":"2026-03-03T10:00:00Z","metadata":{"from_priority":"P2","to_priority":"P1"}}
-{"type":"observation","schema_version":2,"id":"ob000009","ref":"tasks:aa11bb22","action":"acted","source":"tasks","kind":"todo"}

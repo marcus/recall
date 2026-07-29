@@ -1,5 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"clara-memory","location":"${FIXTURE}","settings":{"store":"memory","upstream":{"tasks":"tasks"},"debug_today":"2026-03-10"}}}
-{"jsonrpc":"2.0","id":2,"method":"recall/expand","params":{"locator":"clara-memory:mem/v2/me000002","detail":"full","budget_bytes":4096,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":3,"method":"recall/expand","params":{"locator":"clara-memory:mem/v2/me000002","detail":"context","budget_bytes":4096,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":4,"method":"recall/expand","params":{"locator":"clara-memory:mem/v2/me000003","detail":"full","budget_bytes":4096,"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":5,"method":"recall/expand","params":{"locator":"clara-memory:sig/v2/11110001","detail":"summary","budget_bytes":4096,"deadline":"2099-01-01T00:00:00Z"}}

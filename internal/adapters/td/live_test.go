@@ -490,14 +490,14 @@ func TestLiveLocalRedirectWinsBeforeSameBasenameGitRoot(t *testing.T) {
 // A `workspace` setting that names something other than the workspace td
 // resolves to is refused, rather than renaming that database for every locator
 // this source emits. This is the false ACCEPT from the report: a source
-// pointing at clara-home, configured `workspace = "recall"`, answered
+// pointing at atlas-workspace, configured `workspace = "recall"`, answered
 // `td:recall/td-224186` out of the wrong database entirely.
 func TestLiveAssertedWorkspaceMustMatchTheDatabase(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping: -short excludes tests that spawn the real td CLI")
 	}
 	binary := liveBinary(t)
-	root := liveWorkspace(t, binary, "clara-home", issueSpec{title: "Anything", priority: "P3"})
+	root := liveWorkspace(t, binary, "atlas-workspace", issueSpec{title: "Anything", priority: "P3"})
 
 	a := td.New(td.Options{})
 	_, err := a.Initialize(context.Background(), adapter.Config{
@@ -517,13 +517,13 @@ func TestLiveAssertedWorkspaceMustMatchTheDatabase(t *testing.T) {
 		t.Fatalf("a workspace name naming another database is usable: %v", mismatch.Diagnostics)
 	}
 	detail, _ := mismatch.Diagnostics["identity"].(string)
-	if !strings.Contains(detail, "clara-home") || !strings.Contains(detail, "recall") {
+	if !strings.Contains(detail, "atlas-workspace") || !strings.Contains(detail, "recall") {
 		t.Errorf("identity diagnostic does not name both asserted and opened workspaces: %v", mismatch.Diagnostics)
 	}
 
 	// The same setting, naming what td actually opened, is fine — and is
 	// recorded as an identity that was asserted as well as observed.
-	agreed := newLiveAdapterWith(t, binary, "td-clara-home", root, map[string]any{"workspace": "clara-home"})
+	agreed := newLiveAdapterWith(t, binary, "td-atlas", root, map[string]any{"workspace": "atlas-workspace"})
 	if got := health(t, agreed).Diagnostics["workspace_asserted"]; got != true {
 		t.Errorf("diagnostics[workspace_asserted] = %v, want true", got)
 	}

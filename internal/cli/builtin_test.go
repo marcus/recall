@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/cli"
 	"github.com/marcus/recall/pkg/recall"
 )
@@ -126,35 +125,13 @@ func TestDocumentCorpusStaleRefreshesToHealthyNewGenerationEndToEnd(t *testing.T
 	}
 }
 
-func TestTwoClaraStoresUseOneBuiltInWithoutChangingProfileSyntax(t *testing.T) {
-	corpus := t.TempDir()
-	write(t, filepath.Join(corpus, "signals.jsonl"),
-		`{"type":"signal","schema_version":2,"id":"s1","source":"tasks","kind":"todo","ref":"tasks:t1","source_id":"t1","title":"Review the migration","first_seen":"2026-03-01","last_seen":"2026-03-01","lifecycle_state":"active"}`+"\n")
-	write(t, filepath.Join(corpus, "memory.jsonl"),
-		`{"type":"memory","schema_version":2,"id":"m1","kind":"fact","subject":"review","title":"Independent review matters","body":"Use an adversarial reviewer.","weight":1,"created":"2026-03-01","last_seen":"2026-03-01"}`+"\n")
-	write(t, filepath.Join(corpus, "state.json"), `{}`+"\n")
-
-	h := newHarness(t, harnessOptions{
-		userTOML: strings.ReplaceAll(builtinClaraTOML, "CORPUS", corpus),
-	})
-	code, stdout, stderr := h.run("sources", "--profile", "personal", "--json")
-	if code != cli.ExitOK {
-		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+func TestBuiltinsContainOnlyPublicSources(t *testing.T) {
+	got := make([]string, 0, len(cli.Builtins()))
+	for _, builtin := range cli.Builtins() {
+		got = append(got, builtin.Name)
 	}
-	var listing cli.SourceListing
-	if err := json.Unmarshal([]byte(stdout), &listing); err != nil {
-		t.Fatal(err)
-	}
-	if len(listing.Sources) != 2 {
-		t.Fatalf("sources = %d, want separate signals and memory instances", len(listing.Sources))
-	}
-	for _, source := range listing.Sources {
-		if source.AdapterID != claracorpus.AdapterID {
-			t.Errorf("%s adapter_id = %q", source.SourceID, source.AdapterID)
-		}
-		if source.Health == nil || source.Health.Status != recall.HealthHealthy {
-			t.Errorf("%s health = %+v", source.SourceID, source.Health)
-		}
+	if joined := strings.Join(got, ","); joined != "documents,tasks,td" {
+		t.Fatalf("built-ins = %q, want only public document and tracker sources", joined)
 	}
 }
 
@@ -232,45 +209,6 @@ base_prior = 1.0
 [profiles.work]
 sources = ["docs"]
 max_sensitivity = "internal"
-`
-
-const builtinClaraTOML = `
-[defaults]
-profile = "personal"
-timeout_ms = 20000
-
-[[sources]]
-source_uid = "01CLARASIGNALS01"
-source_id = "clara-signals"
-adapter = "clara-corpus"
-location = "CORPUS"
-location_kind = "path"
-freshness_mode = "indexed"
-sensitivity = "internal"
-base_prior = 1.0
-record_types = ["task", "message", "event"]
-
-[sources.settings]
-store = "signals"
-upstream = { tasks = "tasks" }
-
-[[sources]]
-source_uid = "01CLARAMEMORY001"
-source_id = "clara-memory"
-adapter = "clara-corpus"
-location = "CORPUS"
-location_kind = "path"
-freshness_mode = "indexed"
-sensitivity = "confidential"
-base_prior = 1.0
-record_types = ["memory"]
-
-[sources.settings]
-store = "memory"
-
-[profiles.personal]
-sources = ["clara-signals", "clara-memory"]
-max_sensitivity = "confidential"
 `
 
 const streamTOML = `

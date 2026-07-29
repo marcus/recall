@@ -1173,7 +1173,7 @@ func TestProjectScopeRoutesAndDoesNotFakeCompleteCoverage(t *testing.T) {
 	h := newHarness(t, func(f map[string]*fake) {
 		f["fakedocs"].project = "recall"
 		f["fakedocs"].candidates = []recall.Candidate{cand("docs", "d1", 1)}
-		f["faketasks"].project = "clara-home"
+		f["faketasks"].project = "atlas-workspace"
 		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "t1", 1)}
 	})
 

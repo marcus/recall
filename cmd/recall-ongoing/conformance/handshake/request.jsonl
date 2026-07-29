@@ -1,3 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"recall/initialize","params":{"protocol_version_min":1,"protocol_version_max":1,"workdir":"${WORKDIR}","source_id":"ongoing","location":"http://ongoing.example:7766","settings":{"replay":"${FIXTURE}"}}}
-{"jsonrpc":"2.0","id":2,"method":"recall/health","params":{"deadline":"2099-01-01T00:00:00Z"}}
-{"jsonrpc":"2.0","id":3,"method":"recall/refresh","params":{"deadline":"2099-01-01T00:00:00Z","full":true}}
