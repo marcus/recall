@@ -18,17 +18,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.16.0
+          install-only: true
       - name: Validate tag against live main
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
         run: ./scripts/check-release-state.sh tagged
       - name: Run release gates
         run: |
-          make check
+          make build test
           make eval
           go vet ./...
           git diff --check
           make release-snapshot
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
 
   release:
     needs: verify
