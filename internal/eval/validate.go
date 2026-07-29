@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Errors Validate reports. They are sentinels because `recall eval validate`

@@ -6,7 +6,7 @@ import (
 	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/pointer"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // renderCosts prices every response a core built here can be asked to render:

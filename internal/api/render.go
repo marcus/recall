@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // renderQueryText is the compact form of a response, for a model to read.

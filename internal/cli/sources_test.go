@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/cli"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // `recall sources` is the command an operator runs before believing an answer,

@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // compareRelevance orders two clusters within one exactness partition: higher

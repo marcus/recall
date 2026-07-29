@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func goodPack() *eval.Pack {

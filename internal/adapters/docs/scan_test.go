@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // TestExcludedDirectoriesAreNotCorpus. Tool state lives in dot-directories, and

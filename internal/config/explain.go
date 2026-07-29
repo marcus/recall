@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Explanation is the resolved configuration with the provenance of every

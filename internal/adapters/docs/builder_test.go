@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/adapters/docs"
-	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/pkg/protocol"
 )
 
 // builderEnv re-executes this test binary as a real index builder.

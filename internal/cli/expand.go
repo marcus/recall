@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 const expandHelp = `usage: recall expand [flags] <locator>

@@ -32,8 +32,8 @@ import (
 	"syscall"
 
 	"github.com/marcus/recall/cmd/recall-ongoing/ongoing"
-	"github.com/marcus/recall/internal/adapter"
-	"github.com/marcus/recall/internal/buildinfo"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/buildinfo"
 )
 
 func main() {

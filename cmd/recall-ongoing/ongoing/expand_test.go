@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func expandFixture(t *testing.T, local string, detail recall.DetailLevel, budget int64, extra map[string]any) (recall.ExpandResponse, error) {

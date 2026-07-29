@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 const sourcesHelp = `usage: recall sources [flags]

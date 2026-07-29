@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapters/td"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Losing every probe is a failed search even when the listing answered. The

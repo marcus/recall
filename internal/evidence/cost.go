@@ -3,7 +3,7 @@ package evidence
 import (
 	"encoding/json"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Cost prices a response as one surface renders it.

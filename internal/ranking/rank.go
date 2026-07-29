@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // ErrRequest reports a fusion request that cannot be served, such as one with

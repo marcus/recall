@@ -11,7 +11,7 @@
 //
 // This test lives here and not inside templates/adapter-python because that
 // directory is copied wholesale into someone else's tree, where an import of
-// github.com/marcus/recall/internal/conformance would not resolve and would not
+// github.com/marcus/recall/pkg/conformance would not resolve and would not
 // mean anything.
 package templates_test
 
@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/recall/internal/conformance"
+	"github.com/marcus/recall/pkg/conformance"
 )
 
 // pythonTemplate is the copyable template and the count of cases it must ship:

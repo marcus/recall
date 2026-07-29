@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/marcus/recall/cmd/recall-stream/stream"
-	"github.com/marcus/recall/internal/adapter"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Two schema versions, two upstream systems, one of them unmapped. Every test

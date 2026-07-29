@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Cut points. They are constants rather than parameters because a report whose

@@ -2,8 +2,8 @@ GO      ?= go
 PKG     := github.com/marcus/recall
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-LDFLAGS := -X $(PKG)/internal/buildinfo.Version=$(VERSION) \
-           -X $(PKG)/internal/buildinfo.Commit=$(COMMIT)
+LDFLAGS := -X $(PKG)/pkg/buildinfo.Version=$(VERSION) \
+           -X $(PKG)/pkg/buildinfo.Commit=$(COMMIT)
 BIN     := bin
 
 PREFIX  ?= $(HOME)/.local

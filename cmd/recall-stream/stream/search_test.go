@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func search(t *testing.T, req recall.SearchRequest, corpusBody string) recall.SearchResponse {

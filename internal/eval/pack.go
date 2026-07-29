@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // SchemaVersion is the pack, case, judgment, and run schema version this build

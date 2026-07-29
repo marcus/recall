@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Eligibility reasons. They are a closed vocabulary because they are reported
@@ -29,7 +29,7 @@ const (
 	ReasonAdapterUnavailable = "adapter_unavailable"
 	ReasonStoreConflict      = "store_identity_conflict"
 
-	// The reasons an ADAPTER may state live in internal/recall, beside the
+	// The reasons an ADAPTER may state live in pkg/recall, beside the
 	// outcome they qualify, because they are part of the search contract and
 	// not of this planner — an adapter must not have to import the thing that
 	// decides its eligibility in order to say what it does not serve. They are

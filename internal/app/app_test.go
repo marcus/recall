@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/app"
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // fake is a scriptable adapter. Every way a real source misbehaves is a field

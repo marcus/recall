@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/tasks"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // liveStore is a complete, valid v2 store written directly to disk.

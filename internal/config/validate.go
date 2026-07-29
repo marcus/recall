@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // validate checks everything that can be decided without contacting a source.

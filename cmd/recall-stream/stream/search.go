@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/marcus/recall/internal/adapter"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // excerptBytes bounds a candidate's preview. A candidate is a pointer, not a

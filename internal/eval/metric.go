@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Grades is one case's judged relevance, keyed by lineage root. A root absent

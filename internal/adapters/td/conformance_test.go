@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/td"
-	"github.com/marcus/recall/internal/conformance"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/conformance"
 )
 
 // Rerecord rewrites each case's response.jsonl from a live run:

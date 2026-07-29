@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 var resolver = lineage.MapResolver{

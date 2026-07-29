@@ -13,8 +13,8 @@ import (
 	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/cli"
 	"github.com/marcus/recall/internal/evidence"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // --budget-tokens is the flag that exists to bound a response, and it used to

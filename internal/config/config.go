@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Config is a resolved configuration: the user layer with the project layer

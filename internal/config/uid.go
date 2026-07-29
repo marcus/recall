@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // A source_uid is generated once and then lives forever inside persisted

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Problem is an error as a surface reports it: a code from a closed vocabulary

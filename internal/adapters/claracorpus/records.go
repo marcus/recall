@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // generatedPreferenceType is the provenance type Clara stamps on a preference

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // These tests are about the committed first-use pack rather than about this

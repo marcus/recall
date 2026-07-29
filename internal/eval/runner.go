@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Engine is the application layer a run measures.

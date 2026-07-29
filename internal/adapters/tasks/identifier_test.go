@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/adapters/tasks"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // The id this table is built around. It is a real id from the recorded example

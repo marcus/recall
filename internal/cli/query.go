@@ -11,8 +11,8 @@ import (
 
 	"github.com/marcus/recall/internal/explain"
 	"github.com/marcus/recall/internal/pointer"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 const queryHelp = `usage: recall query [flags] <text>

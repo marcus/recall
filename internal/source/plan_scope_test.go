@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // A source that is configured, enabled, and visible in `recall sources` but not

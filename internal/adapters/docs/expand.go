@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Expansion bounds. Detail levels are a contract with the caller's token

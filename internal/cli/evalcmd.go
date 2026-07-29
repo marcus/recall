@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/marcus/recall/internal/app"
-	"github.com/marcus/recall/internal/buildinfo"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/eval"
+	"github.com/marcus/recall/pkg/buildinfo"
 )
 
 const evalHelp = `usage: recall eval <validate|run|compare|report> [flags]

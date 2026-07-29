@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/evidence"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 type stubCore struct {

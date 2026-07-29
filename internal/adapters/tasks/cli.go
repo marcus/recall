@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/pkg/protocol"
 )
 
 // Result is one finished Tasks CLI invocation.

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // MaxDepth bounds how far declared derivation edges are followed. A chain

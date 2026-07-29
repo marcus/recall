@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/docs"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // The adapter's on-disk layout, restated here because the tests assert on it.

@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Adapter identity and defaults.

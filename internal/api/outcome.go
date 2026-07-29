@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Response headers that carry the outcome vocabulary out of band.

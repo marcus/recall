@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // group is one lineage root and every candidate that projects it. Two

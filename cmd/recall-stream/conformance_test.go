@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/conformance"
+	"github.com/marcus/recall/pkg/conformance"
 )
 
 // The conformance suite drives the real binary in a real process.

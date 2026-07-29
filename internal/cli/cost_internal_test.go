@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/api"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Every surface this process renders has to be priced here. `recall mcp` and

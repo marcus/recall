@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Refresh updates one source, or every eligible checkpoint-capable source in

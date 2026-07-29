@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapters/docs"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // TestFirstHandshakePublishesAGeneration. A source that answered "unavailable"

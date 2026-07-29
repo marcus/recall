@@ -6,7 +6,7 @@ import (
 
 	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/pointer"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // ToolCost prices what an MCP tool result actually delivers.

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Client calls a running `recall serve` and satisfies [Core].

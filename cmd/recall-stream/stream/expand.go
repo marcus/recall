@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // episodeWindow is how far either side of a record DetailContext gathers.

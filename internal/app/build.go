@@ -8,8 +8,8 @@ import (
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // BuildOptions assemble the core from configuration.

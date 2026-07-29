@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func expandReq(loc recall.Locator, detail recall.DetailLevel, budget int64) recall.ExpandRequest {

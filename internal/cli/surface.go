@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/marcus/recall/internal/api"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // surfaceCore is the one in-process implementation every non-config CLI

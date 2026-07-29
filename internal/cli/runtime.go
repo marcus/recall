@@ -7,8 +7,8 @@ import (
 
 	"github.com/marcus/recall/internal/app"
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // load resolves configuration the way every command needs it: the user layer,

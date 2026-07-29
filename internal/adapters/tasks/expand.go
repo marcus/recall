@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Expand retrieves the evidence behind a locator.

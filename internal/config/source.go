@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Layer names where a resolved value came from. The order of the constants is

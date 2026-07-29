@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Core is the application capability a surface exposes, narrowed to what a

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapters/docs"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Every setting below decides what the index contains. A setting with no test

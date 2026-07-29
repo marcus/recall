@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Schema versions this build can read. A record outside the range is counted

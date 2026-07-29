@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/cli"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Expansion is stateless with respect to the query that produced the locator,

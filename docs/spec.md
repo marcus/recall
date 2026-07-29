@@ -1243,19 +1243,19 @@ out-of-process adapters over the versioned protocol.
 ### Package Boundaries
 
 ```text
-cmd/recall           CLI entry points
-internal/recall      domain types; depends on nothing else
-internal/lineage     locator resolution, lineage roots, independence
-internal/config      loading, merge, trust boundary, validation
-internal/source      registry, instance resolution, eligibility, plan
-internal/app         orchestration: fan out, admit, fuse, shape, decide
-internal/adapter     adapter interface, subprocess supervision
-internal/protocol    JSON-RPC framing, schemas, conformance replay
-internal/ranking     grouping, clustering, fusion, selection
-internal/evidence    expansion, budget shaping, sanitization
-internal/explain     structured explanations and rendering
-internal/eval        packs, metrics, gates, runs, reports
-internal/api         HTTP and MCP transports
+cmd/recall          CLI entry points
+pkg/recall          domain types; depends on nothing else
+internal/lineage    locator resolution, lineage roots, independence
+internal/config     loading, merge, trust boundary, validation
+internal/source     registry, instance resolution, eligibility, plan
+internal/app        orchestration: fan out, admit, fuse, shape, decide
+pkg/adapter         adapter interface, subprocess supervision
+pkg/protocol        JSON-RPC framing, schemas, conformance replay
+internal/ranking    grouping, clustering, fusion, selection
+internal/evidence   expansion, budget shaping, sanitization
+internal/explain    structured explanations and rendering
+internal/eval       packs, metrics, gates, runs, reports
+internal/api        HTTP and MCP transports
 ```
 
 Built-in and external adapters implement the same Go interface. JSON-RPC is a

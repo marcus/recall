@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 const refreshHelp = `usage: recall refresh [flags]

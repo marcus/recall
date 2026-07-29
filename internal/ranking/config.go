@@ -6,7 +6,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Fusion defaults. These are evaluation parameters, not tuning knobs: a change

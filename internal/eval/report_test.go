@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // scored builds a case score carrying one metric, which is all the grouping

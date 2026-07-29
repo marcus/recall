@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/evidence"
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/protocol"
 	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // App is the application core.

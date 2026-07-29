@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // A prior outside its range is a configuration defect, not a value to clamp.

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/cli"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // A script has to be able to tell "nothing matched" from "the sources were

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/buildinfo"
 	"github.com/marcus/recall/internal/pointer"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/buildinfo"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Version is the API version in every path. It changes when a response shape

@@ -21,16 +21,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/adapters/tasks"
 	"github.com/marcus/recall/internal/adapters/td"
 	"github.com/marcus/recall/internal/api"
-	"github.com/marcus/recall/internal/buildinfo"
 	"github.com/marcus/recall/internal/config"
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/buildinfo"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Exit codes. A script has to be able to tell "nothing matched" from "the

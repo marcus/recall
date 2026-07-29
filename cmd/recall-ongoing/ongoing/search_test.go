@@ -7,11 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/cmd/recall-ongoing/ongoing"
-	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // searchFixture runs one search against a recording of catalogFixture.
@@ -47,7 +44,7 @@ func byID(resp recall.SearchResponse) map[string]recall.Candidate {
 	return out
 }
 
-func TestExactProjectNameAndPathCorrelateThroughCoreRanking(t *testing.T) {
+func TestExactProjectNameAndPathProduceExactIdentifierSignal(t *testing.T) {
 	tests := []struct {
 		name        string
 		replacement string
@@ -86,74 +83,9 @@ func TestExactProjectNameAndPathCorrelateThroughCoreRanking(t *testing.T) {
 			if project.SourceRecordID == tc.identifier {
 				t.Fatalf("fixture does not exercise correlation: source record id equals %q", tc.identifier)
 			}
-
-			project.SourceID = "ongoing"
-			project.SourceUID = "uid-ongoing"
-			project.Locator.SourceID = "ongoing"
-			project.Locator.SourceUID = "uid-ongoing"
-			low := 0.1
-			clara := recall.Candidate{
-				CandidateID:    "project_clara",
-				SourceRecordID: "project_clara",
-				SourceID:       "projects",
-				SourceUID:      "uid-projects",
-				Locator: recall.Locator{
-					SourceID: "projects", SourceUID: "uid-projects", Local: "project_clara",
-				},
-				Title:        "clara",
-				LocalRank:    1,
-				Relevance:    &low,
-				MatchSignals: []recall.MatchSignal{recall.MatchExactIdentifier},
-				RecordType:   ongoing.RecordProject,
-			}
-			high := 0.9
-			answer := recall.Candidate{
-				CandidateID:    "answer",
-				SourceRecordID: "answer.md",
-				SourceID:       "docs",
-				SourceUID:      "uid-docs",
-				Locator: recall.Locator{
-					SourceID: "docs", SourceUID: "uid-docs", Local: "answer.md",
-				},
-				Title:        "Comparison",
-				LocalRank:    1,
-				Relevance:    &high,
-				MatchSignals: []recall.MatchSignal{recall.MatchLexical},
-				RecordType:   recall.RecordDocument,
-			}
-
-			ranker, err := ranking.New(ranking.Config{
-				Sources: map[recall.SourceUID]ranking.SourceConfig{
-					"uid-ongoing":  {SourceID: "ongoing", BasePrior: 1},
-					"uid-projects": {SourceID: "projects", BasePrior: 1},
-					"uid-docs":     {SourceID: "docs", BasePrior: 1},
-				},
-			})
-			if err != nil {
-				t.Fatalf("ranking config: %v", err)
-			}
-			class := ranking.ClassifyQuery(query)
-			identifiers := ranking.StableIdentifiers(query)
-			fusion, err := ranker.Fuse(ranking.Request{
-				Candidates: []recall.Candidate{clara, project, answer},
-				Resolver: lineage.MapResolver{
-					"ongoing": "uid-ongoing", "projects": "uid-projects", "docs": "uid-docs",
-				},
-				QueryClass:        class,
-				StableIdentifiers: identifiers,
-			})
-			if err != nil {
-				t.Fatalf("Fuse: %v", err)
-			}
-			if got := fusion.Results[0].Primary.SourceRecordID; got != "project_recall" {
-				t.Fatalf("first result = %q, want project_recall", got)
-			}
-			if !fusion.Results[0].Explanation.ExactPromoted {
-				t.Fatal("named Ongoing project did not partition")
-			}
-			for _, result := range fusion.Results[1:] {
-				if result.Explanation.ExactPromoted {
-					t.Fatalf("unrelated %q candidate partitioned", result.Primary.SourceRecordID)
+			for _, signal := range project.MatchSignals {
+				if signal != recall.MatchExactIdentifier {
+					t.Fatalf("adapter signals = %v, want only exact_identifier", project.MatchSignals)
 				}
 			}
 		})

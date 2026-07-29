@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // roots turns document labels into lineage roots. Metrics key on lineage

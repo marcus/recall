@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/marcus/recall/internal/protocol"
+	"github.com/marcus/recall/pkg/protocol"
 )
 
 // workspaceSep separates the workspace from the issue id inside a locator's

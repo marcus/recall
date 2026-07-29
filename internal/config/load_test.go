@@ -11,7 +11,7 @@ import (
 
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // builtins stands in for the adapters compiled into Recall. Configuration

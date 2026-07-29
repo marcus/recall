@@ -13,7 +13,7 @@ import (
 
 	"github.com/marcus/recall/internal/api"
 	"github.com/marcus/recall/internal/cli"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 type transportCore struct {

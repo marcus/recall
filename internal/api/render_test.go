@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // The tool text is a projection of the structured response and may not state

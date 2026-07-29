@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/pointer"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Tool is one MCP tool definition.

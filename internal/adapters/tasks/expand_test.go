@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/adapters/tasks"
-	"github.com/marcus/recall/internal/protocol"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/protocol"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func expand(t *testing.T, a *tasks.Adapter, local string, detail recall.DetailLevel, budget int64) (recall.ExpandResponse, error) {

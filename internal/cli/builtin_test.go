@@ -10,7 +10,7 @@ import (
 
 	"github.com/marcus/recall/internal/adapters/claracorpus"
 	"github.com/marcus/recall/internal/cli"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Every other test in this package replaces the adapters, so this one proves

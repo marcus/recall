@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/docs"
 	"github.com/marcus/recall/internal/adapters/tasks"
 	"github.com/marcus/recall/internal/config"
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // These tests are about the committed smoke pack rather than about this

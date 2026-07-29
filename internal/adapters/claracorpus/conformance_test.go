@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/marcus/recall/internal/adapter"
 	"github.com/marcus/recall/internal/adapters/claracorpus"
-	"github.com/marcus/recall/internal/conformance"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/conformance"
 )
 
 // The conformance suite drives the built-in adapter over its real wire
@@ -24,7 +24,7 @@ import (
 //
 //	go test ./internal/adapters/claracorpus -run TestConformance -record
 //
-// The replaying is internal/conformance, which is the same engine behind
+// The replaying is pkg/conformance, which is the same engine behind
 // `recall doctor --conformance`. That is deliberate: a suite verified by a
 // second implementation would only prove the two agreed, and the transcripts
 // exist to hold this adapter to what the operator's own tool will check.
@@ -104,7 +104,7 @@ func TestEveryCaseIsExercisedByTheSuite(t *testing.T) {
 // record writes the frames one replay produced.
 //
 // The manifest's declared response count is the contract a replay is held to,
-// and internal/conformance refuses to load a case whose recording disagrees
+// and pkg/conformance refuses to load a case whose recording disagrees
 // with it — so a case whose shape changed cannot be re-recorded until the two
 // agree again. Writing the frames here and letting the next load enforce the
 // count is what keeps that check strict rather than working around it: a

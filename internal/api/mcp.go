@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/marcus/recall/internal/buildinfo"
+	"github.com/marcus/recall/pkg/buildinfo"
 )
 
 // MCPProtocolVersion is the Model Context Protocol revision this server
@@ -421,7 +421,7 @@ func (s *mcpServer) requireReady() *mcpError {
 
 // JSON-RPC's own standard error codes.
 //
-// They are the same numbers internal/protocol uses for the adapter contract,
+// They are the same numbers pkg/protocol uses for the adapter contract,
 // and they are declared again here rather than imported because the two are
 // separate protocols that happen to share a base specification. Importing the
 // adapter protocol's vocabulary into this one would suggest a coupling that

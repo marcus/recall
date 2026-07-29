@@ -8,15 +8,15 @@
 // request — and the budget prices all three by serializing this shape, so a
 // second opinion about which fields survive would be a second answer to what a
 // budget buys. It sits below internal/cli and internal/api and above
-// internal/recall, which cannot reach internal/source for the degraded summary
+// pkg/recall, which cannot reach internal/source for the degraded summary
 // without a cycle.
 package pointer
 
 import (
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
 	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Response is the pointer tier of a response, serialized: what `recall

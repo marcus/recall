@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/evidence"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 func TestStripsTerminalControlSequences(t *testing.T) {

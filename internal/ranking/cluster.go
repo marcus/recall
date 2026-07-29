@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	"github.com/marcus/recall/internal/lineage"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Metadata keys adapters use to declare identity for clustering. They are the

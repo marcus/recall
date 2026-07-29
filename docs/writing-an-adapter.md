@@ -94,12 +94,49 @@ still running — the notification sits unread in the pipe until the work it was
 meant to abandon has finished. If concurrency is genuinely impossible for your
 source, declare `max_concurrency: 1` rather than pretending.
 
-The payload schemas are in `internal/protocol/schemas/*.json`. They are JSON
-Schema and they are the contract both ends validate against; read them when a
-field's shape is in doubt. Note that a Go adapter living outside this repository
-cannot import `github.com/marcus/recall/internal/...` — Go forbids it — so an
-external Go adapter copies those schemas and writes its own framing, exactly as
-a Python one does.
+The payload schemas are embedded by
+[`pkg/protocol`](https://pkg.go.dev/github.com/marcus/recall/pkg/protocol) and
+also live in `pkg/protocol/schemas/*.json`. They are JSON Schema and they are
+the contract both ends validate against; read them when a field's shape is in
+doubt.
+
+## Go adapters
+
+A Go adapter imports the public SDK rather than copying the protocol:
+
+```go
+import (
+    "github.com/marcus/recall/pkg/adapter"
+    "github.com/marcus/recall/pkg/protocol"
+    "github.com/marcus/recall/pkg/recall"
+)
+```
+
+Implement [`adapter.Adapter`](https://pkg.go.dev/github.com/marcus/recall/pkg/adapter#Adapter),
+then expose that same implementation over stdio:
+
+```go
+func main() {
+    if err := adapter.Serve(context.Background(), os.Stdin, os.Stdout, notes{}); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+}
+```
+
+Use `protocol.NegotiateVersion` in `Initialize`; use the request, response,
+manifest, health, locator, and enum types from `pkg/recall`. Recorded transcript
+tests import
+[`pkg/conformance`](https://pkg.go.dev/github.com/marcus/recall/pkg/conformance)
+and call `conformance.Verify`. The
+[`testdata/external-sdk`](../testdata/external-sdk) scratch module is a minimal
+adapter with a passing recorded handshake transcript. It is copied outside this
+module during `make check`, so the test also proves no `internal/` import has
+leaked into the SDK dependency graph.
+
+The Go SDK is pre-1.0. Minor versions may contain breaking API changes; each
+break will be listed in [`CHANGELOG.md`](../CHANGELOG.md) with migration
+guidance.
 
 ## Coverage honesty
 
@@ -663,4 +700,5 @@ its caller that this source did not answer.
 - [ ] You write only inside the workdir.
 - [ ] The eight required conformance cases are recorded, and you have read the
       diff of the last recording.
+- [ ] A Go adapter's tests import only `github.com/marcus/recall/pkg/...`.
 - [ ] `recall doctor --conformance <adapter>` passes from a clean checkout.

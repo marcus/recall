@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/eval"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // engine is a scriptable stand-in for the application layer, keyed by query so

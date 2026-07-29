@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/marcus/recall/internal/ranking"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Entity matching is where a retrieval layer quietly goes wrong: merge two

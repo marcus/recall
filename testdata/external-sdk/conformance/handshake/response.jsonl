@@ -1,0 +1,1 @@
+{"id":1,"jsonrpc":"2.0","result":{"adapter_id":"example-notes/1","as_of_support":"none","capabilities":["search","expand"],"display_name":"Example Notes","freshness_modes":["live"],"protocol_version":1,"query_modes":["lexical"],"record_types":["document"],"sensitivity":"internal"}}

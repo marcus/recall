@@ -1,0 +1,10 @@
+{
+  "case": "handshake",
+  "description": "The public Go SDK serves a trivial adapter and negotiates version 1.",
+  "flow": "lockstep",
+  "placeholders": {
+    "WORKDIR": "absolute path of a fresh, writable, empty directory"
+  },
+  "volatile": [],
+  "responses": 1
+}

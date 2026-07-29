@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapters/td"
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Ordering inside a single probe is td's, not this adapter's: td scores a

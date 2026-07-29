@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcus/recall/internal/recall"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // Render writes an explanation as the compact block the CLI shows under a
