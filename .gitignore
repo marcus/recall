@@ -1,5 +1,6 @@
 .todos/
 bin/
+dist/
 coverage.out
 .sidecar/
 .sidecar-agent

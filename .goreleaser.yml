@@ -1,0 +1,67 @@
+version: 2
+
+project_name: recall
+
+builds:
+  - id: recall
+    main: ./cmd/recall
+    binary: recall
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/marcus/recall/pkg/buildinfo.Version=v{{ .Version }}
+        -X github.com/marcus/recall/pkg/buildinfo.Commit={{ .Commit }}
+
+  - id: recall-stream
+    main: ./cmd/recall-stream
+    binary: recall-stream
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/marcus/recall/pkg/buildinfo.Version=v{{ .Version }}
+        -X github.com/marcus/recall/pkg/buildinfo.Commit={{ .Commit }}
+
+archives:
+  - id: release
+    ids:
+      - recall
+      - recall-stream
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    wrap_in_directory: true
+    files:
+      - README.md
+      - CHANGELOG.md
+      - LICENSE
+      - NOTICE
+      - docs/quickstart.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"

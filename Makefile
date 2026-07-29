@@ -1,4 +1,5 @@
 GO      ?= go
+GORELEASER ?= goreleaser
 PKG     := github.com/marcus/recall
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -7,8 +8,10 @@ LDFLAGS := -X $(PKG)/pkg/buildinfo.Version=$(VERSION) \
 BIN     := bin
 
 PREFIX  ?= $(HOME)/.local
+RELEASE_VERSION ?=
 
-.PHONY: all build build-all install uninstall test lint fmt cover clean tidy check
+.PHONY: all build build-all install uninstall test lint fmt cover clean tidy check \
+	release-snapshot release-preflight release check-release-state
 
 all: check
 
@@ -66,7 +69,7 @@ uninstall:
 	done
 
 clean:
-	rm -rf $(BIN) coverage.out
+	rm -rf $(BIN) dist coverage.out
 
 # eval runs the committed packs through the same application layer the CLI
 # uses, and compares each against its committed baseline. It is a separate
@@ -92,3 +95,61 @@ eval: build-all
 			--pack eval/packs/$$p --output "$$d/$$p" || exit 1; \
 		$(BIN)/recall eval compare eval/baselines/$$p.json "$$d/$$p" || exit 1; \
 	done
+
+# This is both a local release dry run and the parity guard between cmd/ and
+# published archives. The verifier derives its expected binaries from cmd/, so
+# adding a command without adding it to GoReleaser fails here.
+release-snapshot:
+	$(GORELEASER) check
+	$(GORELEASER) release --snapshot --clean
+	./scripts/verify-release-archives.sh dist
+	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT && \
+		./scripts/render-homebrew-formula.sh v0.1.0 \
+			0000000000000000000000000000000000000000000000000000000000000000 \
+			"$$d/recall.rb"
+
+# Fail closed before creating a release tag. In particular, compare HEAD with
+# the live remote rather than a possibly stale origin/main tracking ref.
+check-release-state:
+	@test -n "$(RELEASE_VERSION)" || \
+		(echo "Error: RELEASE_VERSION is required (for example v0.1.0)" && exit 1)
+	@echo "$(RELEASE_VERSION)" | \
+		grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$$' || \
+		(echo "Error: RELEASE_VERSION must be strict SemVer vX.Y.Z" && exit 1)
+	@test "$$(git branch --show-current)" = main || \
+		(echo "Error: releases must be cut from main" && exit 1)
+	@test -z "$$(git status --porcelain)" || \
+		(echo "Error: working tree is not clean" && exit 1)
+	@git remote get-url origin >/dev/null 2>&1 || \
+		(echo "Error: origin remote is not configured" && exit 1)
+	@remote_head=$$(git ls-remote origin refs/heads/main | awk '{print $$1}') || exit 1; \
+		test -n "$$remote_head" || \
+			(echo "Error: origin/main does not exist" && exit 1); \
+		test "$$(git rev-parse HEAD)" = "$$remote_head" || \
+			(echo "Error: HEAD does not match live origin/main" && exit 1)
+	@! git rev-parse --verify --quiet "refs/tags/$(RELEASE_VERSION)" >/dev/null || \
+		(echo "Error: local tag $(RELEASE_VERSION) already exists" && exit 1)
+	@remote_tag=$$(git ls-remote --tags origin \
+		"refs/tags/$(RELEASE_VERSION)" "refs/tags/$(RELEASE_VERSION)^{}") || exit 1; \
+		test -z "$$remote_tag" || \
+			(echo "Error: remote tag $(RELEASE_VERSION) already exists" && exit 1)
+	@plain_version="$(RELEASE_VERSION)"; plain_version=$${plain_version#v}; \
+		grep -Fq "## [$$plain_version] - " CHANGELOG.md || \
+			(echo "Error: CHANGELOG.md has no $$plain_version release entry" && exit 1)
+
+.NOTPARALLEL: release-preflight release
+
+release-preflight: check-release-state
+	$(MAKE) check
+	$(MAKE) eval
+	$(GO) vet ./...
+	git diff --check
+	$(MAKE) release-snapshot
+
+# main must already be published and fork CI must already be green. This target
+# only creates and pushes the annotated tag; the tag workflow publishes assets.
+# The source-building Homebrew formula is rendered and published separately,
+# after the release exists, with explicit authorization for the tap repository.
+release: release-preflight
+	git tag -a "$(RELEASE_VERSION)" -m "Release $(RELEASE_VERSION)"
+	git push origin "refs/tags/$(RELEASE_VERSION)"
