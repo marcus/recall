@@ -71,6 +71,16 @@
 //     that rewrote the caller's query into another grammar would be measuring a
 //     query nobody asked.
 //
+//   - The workdir is unused, and the index is not inside it. The handshake
+//     supplies a writable directory and the rule is that an adapter writes its
+//     indexes and checkpoints only there; this adapter writes nothing at all,
+//     and the store a refresh advances belongs to qmd — `~/.cache/qmd` or a
+//     project-local `<corpus>/.qmd`. That is a deviation and it is stated rather
+//     than hidden: deleting Recall's state directory changes nothing here, which
+//     is the property the rule protects, but Recall also cannot bound where qmd
+//     keeps its own index. Everything this process writes is what `qmd update`
+//     and `qmd embed` write, only from a refresh, and never from a query.
+//
 //   - Determinism comes from replay, not from the tool. Warm repeated queries
 //     against qmd are byte-identical because it caches results, but query
 //     expansion is a language model and nothing about that is guaranteed.

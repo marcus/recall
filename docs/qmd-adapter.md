@@ -192,6 +192,13 @@ any stdout that is not the promised JSON array as a broken contract, because
 reading it as "no results" would turn a 2GB download into a successful empty
 search. Paying for the warm-up in a refresh means a query never does.
 
+The index is qmd's, not Recall's. The handshake hands every adapter a writable
+workdir and the contract says an adapter's indexes live there; this one writes
+nothing at all, and the store a refresh advances is qmd's own — `~/.cache/qmd` or
+a project-local `<corpus>/.qmd`. Deleting Recall's state directory therefore
+changes nothing about a qmd source, which is the property that rule protects, but
+Recall also cannot bound where qmd keeps its index.
+
 Refresh is the only operation that mutates anything. The adapter's argv allowlist
 admits whole invocation shapes rather than subcommands, so `qmd cleanup`, `qmd
 collection remove`, `qmd init`, and `qmd mcp` are unreachable, and `qmd update`
