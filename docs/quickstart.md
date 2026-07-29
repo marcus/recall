@@ -185,3 +185,5 @@ recall query "your first question"
 
 See [the profile example](profile-example.md) when you are ready to add Tasks,
 `td`, or an external adapter.
+
+<!-- Fork-originated CI acceptance probe; intentionally not for merge. -->
