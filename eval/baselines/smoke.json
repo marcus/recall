@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "run_id": "smoke-1785367205489683000",
+  "run_id": "smoke-1785371915303329000",
   "status": "pass",
-  "started_at": "2026-07-29T16:20:05.489683-07:00",
-  "finished_at": "2026-07-29T16:20:05.956107-07:00",
+  "started_at": "2026-07-29T17:38:35.303329-07:00",
+  "finished_at": "2026-07-29T17:38:35.804679-07:00",
   "pack": {
     "pack_id": "smoke",
     "version": "0.1.0",
-    "content_hash": "sha256:56806d27b8b052c3a5e3ef079e8f5607adc6de2e45ae9cec0c71b19758c32122"
+    "content_hash": "sha256:f26d0035c11810e01a029d15df0919894c7540cf71284d2487a4cd94012ad00d"
   },
   "environment": {
-    "recall_commit": "d2cbee4",
+    "recall_commit": "e6ff0f3",
     "dirty": true,
     "profile_hash": "",
     "os": "darwin",
@@ -19,27 +19,27 @@
     "warm": true
   },
   "metrics": {
-    "cases": 46,
+    "cases": 50,
     "overall": {
       "ndcg_at_10": {
-        "value": 0.7236068744517302,
-        "n": 40
+        "value": 0.6930704109732179,
+        "n": 44
       },
       "recall_at_5": {
-        "value": 0.85,
-        "n": 40
+        "value": 0.7954545454545454,
+        "n": 44
       },
       "recall_at_20": {
-        "value": 0.9,
-        "n": 40
+        "value": 0.8409090909090909,
+        "n": 44
       },
       "mrr_at_10": {
-        "value": 0.6328828828828829,
-        "n": 37
+        "value": 0.5955284552845528,
+        "n": 41
       },
       "success_at_5": {
-        "value": 0.9,
-        "n": 40
+        "value": 0.8409090909090909,
+        "n": 44
       },
       "forbidden_at_5": {
         "value": 0,
@@ -47,25 +47,25 @@
       },
       "abstention_accuracy": {
         "value": 1,
-        "n": 46
+        "n": 50
       },
       "coverage_accuracy": {
         "value": 1,
-        "n": 46
+        "n": 50
       },
       "locator_success": {
         "value": 1,
-        "n": 40
+        "n": 44
       },
       "provenance_accuracy": {
         "value": 1,
-        "n": 40
+        "n": 44
       },
       "source_outcome_accuracy": {
         "value": 1,
-        "n": 10
+        "n": 15
       },
-      "cases": 46,
+      "cases": 50,
       "latency": {
         "cold": {
           "n": 0,
@@ -73,9 +73,9 @@
           "p95_ns": 0
         },
         "warm": {
-          "n": 46,
-          "p50_ns": 1126209,
-          "p95_ns": 61678125
+          "n": 50,
+          "p50_ns": 794291,
+          "p95_ns": 62273583
         }
       }
     },
@@ -124,7 +124,7 @@
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 3
+            "n": 4
           },
           "cases": 6,
           "latency": {
@@ -135,8 +135,8 @@
             },
             "warm": {
               "n": 6,
-              "p50_ns": 632000,
-              "p95_ns": 61699917
+              "p50_ns": 569667,
+              "p95_ns": 62273583
             }
           }
         },
@@ -194,8 +194,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 737916,
-              "p95_ns": 745333
+              "p50_ns": 627375,
+              "p95_ns": 743125
             }
           }
         },
@@ -253,8 +253,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 69787292,
-              "p95_ns": 69787292
+              "p50_ns": 68905666,
+              "p95_ns": 68905666
             }
           }
         },
@@ -312,8 +312,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 179834,
-              "p95_ns": 892334
+              "p50_ns": 186459,
+              "p95_ns": 783208
             }
           }
         },
@@ -371,8 +371,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 892334,
-              "p95_ns": 892334
+              "p50_ns": 783208,
+              "p95_ns": 783208
             }
           }
         },
@@ -430,8 +430,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 1561333,
-              "p95_ns": 2385375
+              "p50_ns": 1546083,
+              "p95_ns": 1645209
             }
           }
         },
@@ -489,8 +489,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 854417,
-              "p95_ns": 966584
+              "p50_ns": 725542,
+              "p95_ns": 1024208
             }
           }
         },
@@ -548,8 +548,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 1587167,
-              "p95_ns": 8409875
+              "p50_ns": 1615750,
+              "p95_ns": 16317292
             }
           }
         },
@@ -607,8 +607,8 @@
             },
             "warm": {
               "n": 4,
-              "p50_ns": 283958,
-              "p95_ns": 8409875
+              "p50_ns": 353042,
+              "p95_ns": 16317292
             }
           }
         },
@@ -666,8 +666,8 @@
             },
             "warm": {
               "n": 7,
-              "p50_ns": 61571125,
-              "p95_ns": 69787292
+              "p50_ns": 61520084,
+              "p95_ns": 68905666
             }
           }
         },
@@ -725,8 +725,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 1982625,
-              "p95_ns": 1982625
+              "p50_ns": 1776416,
+              "p95_ns": 1776416
             }
           }
         },
@@ -784,8 +784,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 1135500,
-              "p95_ns": 1135500
+              "p50_ns": 932167,
+              "p95_ns": 932167
             }
           }
         },
@@ -843,8 +843,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 1146041,
-              "p95_ns": 1146041
+              "p50_ns": 674125,
+              "p95_ns": 674125
             }
           }
         },
@@ -902,8 +902,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 1504417,
-              "p95_ns": 1504417
+              "p50_ns": 901500,
+              "p95_ns": 901500
             }
           }
         },
@@ -961,31 +961,31 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 1137042,
-              "p95_ns": 1137042
+              "p50_ns": 2000125,
+              "p95_ns": 2000125
             }
           }
         },
         "document": {
           "ndcg_at_10": {
-            "value": 0.6696642376901167,
-            "n": 22
+            "value": 0.6262860128436517,
+            "n": 26
           },
           "recall_at_5": {
-            "value": 0.7727272727272727,
-            "n": 22
+            "value": 0.6923076923076923,
+            "n": 26
           },
           "recall_at_20": {
-            "value": 0.8181818181818182,
-            "n": 22
+            "value": 0.7307692307692307,
+            "n": 26
           },
           "mrr_at_10": {
-            "value": 0.611111111111111,
-            "n": 21
+            "value": 0.5533333333333332,
+            "n": 25
           },
           "success_at_5": {
-            "value": 0.8181818181818182,
-            "n": 22
+            "value": 0.7307692307692307,
+            "n": 26
           },
           "forbidden_at_5": {
             "value": 0,
@@ -993,25 +993,25 @@
           },
           "abstention_accuracy": {
             "value": 1,
-            "n": 25
+            "n": 29
           },
           "coverage_accuracy": {
             "value": 1,
-            "n": 25
+            "n": 29
           },
           "locator_success": {
             "value": 1,
-            "n": 22
+            "n": 26
           },
           "provenance_accuracy": {
             "value": 1,
-            "n": 22
+            "n": 26
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 2
+            "n": 7
           },
-          "cases": 25,
+          "cases": 29,
           "latency": {
             "cold": {
               "n": 0,
@@ -1019,9 +1019,9 @@
               "p95_ns": 0
             },
             "warm": {
-              "n": 25,
-              "p50_ns": 1126209,
-              "p95_ns": 19958583
+              "n": 29,
+              "p50_ns": 794291,
+              "p95_ns": 21194250
             }
           }
         },
@@ -1079,8 +1079,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 966584,
-              "p95_ns": 1278583
+              "p50_ns": 1024208,
+              "p95_ns": 1386709
             }
           }
         },
@@ -1138,8 +1138,8 @@
             },
             "warm": {
               "n": 8,
-              "p50_ns": 283958,
-              "p95_ns": 1587167
+              "p50_ns": 353042,
+              "p95_ns": 1615750
             }
           }
         },
@@ -1197,8 +1197,8 @@
             },
             "warm": {
               "n": 6,
-              "p50_ns": 737916,
-              "p95_ns": 41985542
+              "p50_ns": 743125,
+              "p95_ns": 46254709
             }
           }
         },
@@ -1256,8 +1256,8 @@
             },
             "warm": {
               "n": 5,
-              "p50_ns": 1137042,
-              "p95_ns": 1504417
+              "p50_ns": 901500,
+              "p95_ns": 2000125
             }
           }
         },
@@ -1315,8 +1315,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 758167,
-              "p95_ns": 2279292
+              "p50_ns": 569667,
+              "p95_ns": 1410042
             }
           }
         },
@@ -1374,8 +1374,8 @@
             },
             "warm": {
               "n": 5,
-              "p50_ns": 1242083,
-              "p95_ns": 8409875
+              "p50_ns": 1602375,
+              "p95_ns": 16317292
             }
           }
         },
@@ -1433,8 +1433,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 242208,
-              "p95_ns": 892334
+              "p50_ns": 214625,
+              "p95_ns": 783208
             }
           }
         },
@@ -1492,8 +1492,8 @@
             },
             "warm": {
               "n": 4,
-              "p50_ns": 367792,
-              "p95_ns": 41985542
+              "p50_ns": 547167,
+              "p95_ns": 46254709
             }
           }
         },
@@ -1551,8 +1551,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 1228500,
-              "p95_ns": 1278583
+              "p50_ns": 1168292,
+              "p95_ns": 1386709
             }
           }
         },
@@ -1610,8 +1610,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 938334,
-              "p95_ns": 938334
+              "p50_ns": 594666,
+              "p95_ns": 594666
             }
           }
         },
@@ -1669,31 +1669,90 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 745333,
-              "p95_ns": 1079583
+              "p50_ns": 627375,
+              "p95_ns": 751792
             }
           }
         },
         "paraphrase": {
           "ndcg_at_10": {
-            "value": 0.32630039497913377,
-            "n": 7
+            "value": 0.3486296245096645,
+            "n": 11
           },
           "recall_at_5": {
-            "value": 0.42857142857142855,
-            "n": 7
+            "value": 0.36363636363636365,
+            "n": 11
           },
           "recall_at_20": {
-            "value": 0.42857142857142855,
-            "n": 7
+            "value": 0.36363636363636365,
+            "n": 11
           },
           "mrr_at_10": {
-            "value": 0.35714285714285715,
-            "n": 7
+            "value": 0.3181818181818182,
+            "n": 11
           },
           "success_at_5": {
-            "value": 0.42857142857142855,
-            "n": 7
+            "value": 0.36363636363636365,
+            "n": 11
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 13
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 13
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 11
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 11
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 5
+          },
+          "cases": 13,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 13,
+              "p50_ns": 643459,
+              "p95_ns": 17823833
+            }
+          }
+        },
+        "paraphrase-semantic": {
+          "ndcg_at_10": {
+            "value": 0.22827933214107,
+            "n": 8
+          },
+          "recall_at_5": {
+            "value": 0.125,
+            "n": 8
+          },
+          "recall_at_20": {
+            "value": 0.125,
+            "n": 8
+          },
+          "mrr_at_10": {
+            "value": 0.125,
+            "n": 8
+          },
+          "success_at_5": {
+            "value": 0.125,
+            "n": 8
           },
           "forbidden_at_5": {
             "value": 0,
@@ -1709,15 +1768,15 @@
           },
           "locator_success": {
             "value": 1,
-            "n": 7
+            "n": 8
           },
           "provenance_accuracy": {
             "value": 1,
-            "n": 7
+            "n": 8
           },
           "source_outcome_accuracy": {
-            "value": 0,
-            "n": 0
+            "value": 1,
+            "n": 5
           },
           "cases": 9,
           "latency": {
@@ -1728,67 +1787,8 @@
             },
             "warm": {
               "n": 9,
-              "p50_ns": 794875,
-              "p95_ns": 1364709
-            }
-          }
-        },
-        "paraphrase-semantic": {
-          "ndcg_at_10": {
-            "value": 0.06885288809404667,
-            "n": 4
-          },
-          "recall_at_5": {
-            "value": 0,
-            "n": 4
-          },
-          "recall_at_20": {
-            "value": 0,
-            "n": 4
-          },
-          "mrr_at_10": {
-            "value": 0,
-            "n": 4
-          },
-          "success_at_5": {
-            "value": 0,
-            "n": 4
-          },
-          "forbidden_at_5": {
-            "value": 0,
-            "n": 0
-          },
-          "abstention_accuracy": {
-            "value": 1,
-            "n": 5
-          },
-          "coverage_accuracy": {
-            "value": 1,
-            "n": 5
-          },
-          "locator_success": {
-            "value": 1,
-            "n": 4
-          },
-          "provenance_accuracy": {
-            "value": 1,
-            "n": 4
-          },
-          "source_outcome_accuracy": {
-            "value": 0,
-            "n": 0
-          },
-          "cases": 5,
-          "latency": {
-            "cold": {
-              "n": 0,
-              "p50_ns": 0,
-              "p95_ns": 0
-            },
-            "warm": {
-              "n": 5,
-              "p50_ns": 794875,
-              "p95_ns": 1364709
+              "p50_ns": 586041,
+              "p95_ns": 17823833
             }
           }
         },
@@ -1846,8 +1846,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 61699917,
-              "p95_ns": 69787292
+              "p50_ns": 62273583,
+              "p95_ns": 68905666
             }
           }
         },
@@ -1905,8 +1905,67 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 2268417,
-              "p95_ns": 2268417
+              "p50_ns": 1814167,
+              "p95_ns": 1814167
+            }
+          }
+        },
+        "qmd": {
+          "ndcg_at_10": {
+            "value": 0.3877057761880933,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 0.25,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 0.25,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.25,
+            "n": 4
+          },
+          "success_at_5": {
+            "value": 0.25,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 477167,
+              "p95_ns": 581625
             }
           }
         },
@@ -1964,8 +2023,8 @@
             },
             "warm": {
               "n": 5,
-              "p50_ns": 1561333,
-              "p95_ns": 19958583
+              "p50_ns": 1546083,
+              "p95_ns": 21194250
             }
           }
         },
@@ -2023,8 +2082,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 986541,
-              "p95_ns": 19958583
+              "p50_ns": 766417,
+              "p95_ns": 21194250
             }
           }
         },
@@ -2082,8 +2141,8 @@
             },
             "warm": {
               "n": 4,
-              "p50_ns": 61475875,
-              "p95_ns": 61678125
+              "p50_ns": 61260750,
+              "p95_ns": 62738167
             }
           }
         },
@@ -2141,8 +2200,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 233209,
-              "p95_ns": 233209
+              "p50_ns": 353042,
+              "p95_ns": 353042
             }
           }
         },
@@ -2200,8 +2259,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 283958,
-              "p95_ns": 938334
+              "p50_ns": 299000,
+              "p95_ns": 594666
             }
           }
         },
@@ -2259,8 +2318,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 2279292,
-              "p95_ns": 2279292
+              "p50_ns": 1410042,
+              "p95_ns": 1410042
             }
           }
         },
@@ -2318,8 +2377,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 2268417,
-              "p95_ns": 2268417
+              "p50_ns": 1814167,
+              "p95_ns": 1814167
             }
           }
         },
@@ -2377,8 +2436,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 2268417,
-              "p95_ns": 2279292
+              "p50_ns": 1410042,
+              "p95_ns": 1814167
             }
           }
         },
@@ -2436,8 +2495,8 @@
             },
             "warm": {
               "n": 6,
-              "p50_ns": 1242083,
-              "p95_ns": 8409875
+              "p50_ns": 1386709,
+              "p95_ns": 16317292
             }
           }
         },
@@ -2495,8 +2554,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 61699917,
-              "p95_ns": 69787292
+              "p50_ns": 62738167,
+              "p95_ns": 68905666
             }
           }
         },
@@ -2554,32 +2613,32 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 61699917,
-              "p95_ns": 69787292
+              "p50_ns": 62273583,
+              "p95_ns": 68905666
             }
           }
         }
       },
       "macro": {
         "ndcg_at_10": {
-          "value": 0.7579837352673287,
-          "n": 41
+          "value": 0.7524622945447537,
+          "n": 42
         },
         "recall_at_5": {
-          "value": 0.8742186675113504,
-          "n": 41
+          "value": 0.8588716838716838,
+          "n": 42
         },
         "recall_at_20": {
-          "value": 0.9572378840671523,
-          "n": 41
+          "value": 0.9397477522477522,
+          "n": 42
         },
         "mrr_at_10": {
-          "value": 0.632220286488579,
-          "n": 41
+          "value": 0.6237926887926886,
+          "n": 42
         },
         "success_at_5": {
-          "value": 0.9572378840671523,
-          "n": 41
+          "value": 0.9397477522477522,
+          "n": 42
         },
         "forbidden_at_5": {
           "value": 0,
@@ -2587,25 +2646,25 @@
         },
         "abstention_accuracy": {
           "value": 1,
-          "n": 42
+          "n": 43
         },
         "coverage_accuracy": {
           "value": 1,
-          "n": 42
+          "n": 43
         },
         "locator_success": {
           "value": 1,
-          "n": 41
+          "n": 42
         },
         "provenance_accuracy": {
           "value": 1,
-          "n": 41
+          "n": 42
         },
         "source_outcome_accuracy": {
           "value": 1,
-          "n": 15
+          "n": 18
         },
-        "groups": 42
+        "groups": 43
       }
     },
     "by_source_family": {
@@ -2664,8 +2723,8 @@
             },
             "warm": {
               "n": 4,
-              "p50_ns": 61571125,
-              "p95_ns": 69787292
+              "p50_ns": 61520084,
+              "p95_ns": 68905666
             }
           }
         },
@@ -2723,8 +2782,8 @@
             },
             "warm": {
               "n": 14,
-              "p50_ns": 1278583,
-              "p95_ns": 41985542
+              "p50_ns": 1081834,
+              "p95_ns": 46254709
             }
           }
         },
@@ -2782,8 +2841,67 @@
             },
             "warm": {
               "n": 31,
-              "p50_ns": 1278583,
-              "p95_ns": 61678125
+              "p50_ns": 1168292,
+              "p95_ns": 62738167
+            }
+          }
+        },
+        "notes-semantic": {
+          "ndcg_at_10": {
+            "value": 0.3877057761880933,
+            "n": 4
+          },
+          "recall_at_5": {
+            "value": 0.25,
+            "n": 4
+          },
+          "recall_at_20": {
+            "value": 0.25,
+            "n": 4
+          },
+          "mrr_at_10": {
+            "value": 0.25,
+            "n": 4
+          },
+          "success_at_5": {
+            "value": 0.25,
+            "n": 4
+          },
+          "forbidden_at_5": {
+            "value": 0,
+            "n": 0
+          },
+          "abstention_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "coverage_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "locator_success": {
+            "value": 1,
+            "n": 4
+          },
+          "provenance_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "source_outcome_accuracy": {
+            "value": 1,
+            "n": 4
+          },
+          "cases": 4,
+          "latency": {
+            "cold": {
+              "n": 0,
+              "p50_ns": 0,
+              "p95_ns": 0
+            },
+            "warm": {
+              "n": 4,
+              "p50_ns": 477167,
+              "p95_ns": 581625
             }
           }
         },
@@ -2841,8 +2959,8 @@
             },
             "warm": {
               "n": 14,
-              "p50_ns": 938334,
-              "p95_ns": 2385375
+              "p50_ns": 783208,
+              "p95_ns": 1814167
             }
           }
         },
@@ -2900,32 +3018,32 @@
             },
             "warm": {
               "n": 9,
-              "p50_ns": 1587167,
-              "p95_ns": 8409875
+              "p50_ns": 1602375,
+              "p95_ns": 16317292
             }
           }
         }
       },
       "macro": {
         "ndcg_at_10": {
-          "value": 0.7438201495632624,
-          "n": 5
+          "value": 0.6844677540007341,
+          "n": 6
         },
         "recall_at_5": {
-          "value": 0.8597030209933436,
-          "n": 5
+          "value": 0.7580858508277863,
+          "n": 6
         },
         "recall_at_20": {
-          "value": 0.9599078341013826,
-          "n": 5
+          "value": 0.8415898617511521,
+          "n": 6
         },
         "mrr_at_10": {
-          "value": 0.646362433862434,
-          "n": 5
+          "value": 0.5803020282186949,
+          "n": 6
         },
         "success_at_5": {
-          "value": 0.9599078341013826,
-          "n": 5
+          "value": 0.8415898617511521,
+          "n": 6
         },
         "forbidden_at_5": {
           "value": 0,
@@ -2933,25 +3051,25 @@
         },
         "abstention_accuracy": {
           "value": 1,
-          "n": 5
+          "n": 6
         },
         "coverage_accuracy": {
           "value": 1,
-          "n": 5
+          "n": 6
         },
         "locator_success": {
           "value": 1,
-          "n": 5
+          "n": 6
         },
         "provenance_accuracy": {
           "value": 1,
-          "n": 5
+          "n": 6
         },
         "source_outcome_accuracy": {
           "value": 1,
-          "n": 3
+          "n": 4
         },
-        "groups": 5
+        "groups": 6
       }
     }
   },
@@ -3002,7 +3120,7 @@
       "name": "p95_latency",
       "status": "pass",
       "threshold": 400,
-      "observed": 61.678125
+      "observed": 62.273583
     },
     {
       "name": "declared_assertions",
@@ -3029,7 +3147,7 @@
         {
           "assertion": "expected_top_lineage",
           "violations": [
-            "expected_top_lineage: 01SMOKENOTES:home/car.md#L3-L6 ranked first, want 01SMOKENOTES:home/heating.md#L3-L6"
+            "expected_top_lineage: 01SMOKENOTES:house/car.md#L3-L6 ranked first, want 01SMOKENOTES:house/heating.md#L3-L6"
           ]
         }
       ]
@@ -3041,7 +3159,7 @@
         {
           "assertion": "expected_top_lineage",
           "violations": [
-            "expected_top_lineage: 01SMOKENOTES:home/garden.md#L3-L6 ranked first, want 01SMOKENOTES:home/kitchen.md#L8-L11"
+            "expected_top_lineage: 01SMOKENOTES:house/garden.md#L3-L6 ranked first, want 01SMOKENOTES:house/kitchen.md#L8-L11"
           ]
         }
       ]
@@ -3053,7 +3171,7 @@
         {
           "assertion": "expected_top_lineage",
           "violations": [
-            "expected_top_lineage: 01SMOKENOTES:home/car.md#L8-L11 ranked first, want 01SMOKENOTES:home/garden.md#L8-L11"
+            "expected_top_lineage: 01SMOKENOTES:house/car.md#L8-L11 ranked first, want 01SMOKENOTES:house/garden.md#L8-L11"
           ]
         }
       ]
@@ -3065,7 +3183,43 @@
         {
           "assertion": "expected_top_lineage",
           "violations": [
-            "expected_top_lineage: 01SMOKENOTES:home/kitchen.md#L3-L6 ranked first, want 01SMOKENOTES:home/laundry.md#L3-L6"
+            "expected_top_lineage: 01SMOKENOTES:house/kitchen.md#L3-L6 ranked first, want 01SMOKENOTES:house/laundry.md#L3-L6"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "paraphrase-semantic-boiler-qmd-047",
+      "reason": "Waiting on finer chunking under the semantic source: qmd embeds one vector per document in this corpus and chooses its own snippet window, so the span it returns names the right note without containing the paragraph that answers. Closing this is a qmd-side chunk boundary or a rerank layer, not a Recall change. Remove this marking when the case ranks its answer first.",
+      "assertions": [
+        {
+          "assertion": "expected_top_lineage",
+          "violations": [
+            "expected_top_lineage: 01SMOKEQMD:house/heating.md#L9-L12 ranked first, want 01SMOKEQMD:house/heating.md#L4-L7"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "paraphrase-semantic-bins-qmd-048",
+      "reason": "Waiting on finer chunking under the semantic source: qmd embeds one vector per document in this corpus and chooses its own snippet window, so the span it returns names the right note without containing the paragraph that answers. Closing this is a qmd-side chunk boundary or a rerank layer, not a Recall change. Remove this marking when the case ranks its answer first.",
+      "assertions": [
+        {
+          "assertion": "expected_top_lineage",
+          "violations": [
+            "expected_top_lineage: 01SMOKEQMD:house/kitchen.md#L4-L7 ranked first, want 01SMOKEQMD:house/kitchen.md#L9-L12"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "paraphrase-semantic-frost-qmd-049",
+      "reason": "Waiting on finer chunking under the semantic source: qmd embeds one vector per document in this corpus and chooses its own snippet window, so the span it returns names the right note without containing the paragraph that answers. Closing this is a qmd-side chunk boundary or a rerank layer, not a Recall change. Remove this marking when the case ranks its answer first.",
+      "assertions": [
+        {
+          "assertion": "expected_top_lineage",
+          "violations": [
+            "expected_top_lineage: 01SMOKEQMD:house/garden.md#L2-L5 ranked first, want 01SMOKEQMD:house/garden.md#L9-L12"
           ]
         }
       ]

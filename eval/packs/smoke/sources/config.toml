@@ -28,6 +28,15 @@ freshness_modes = ["indexed", "hybrid"]
 command = "recall-eval-replay"
 freshness_modes = ["indexed"]
 
+# The semantic half of the head-to-head. It answers from a recording for the
+# reasons docs/qmd-adapter.md gives: a committed pack runs with no network, qmd
+# needs about 2GB of models a CI machine has no business downloading, and the
+# tool is a model rather than a function even when it is warm. `replay` is the
+# settled spelling the runner's network policy reads.
+[adapters.qmd]
+command = "recall-qmd"
+freshness_modes = ["indexed"]
+
 [[sources]]
 source_uid = "01SMOKENOTES"
 source_id = "notes"
@@ -60,6 +69,44 @@ timeout_ms = 400
 
 [sources.settings]
 extensions = [".md"]
+
+# The same eleven notes, retrieved by embedding similarity instead of by words.
+#
+# It exists so the paraphrase-semantic cases have something to be measured
+# against: their answering passage shares at most one content term with the
+# question, so the lexical source scores near zero on them by construction, and
+# a near-zero number on its own says nothing about whether the corpus was
+# reachable at all.
+#
+# mode is vector, and that is the only mode that belongs beside a lexical
+# source. It has an admission floor of its own — a query the corpus has nothing
+# about does not clear qmd's cosine threshold and comes back as an empty list —
+# where hybrid and full are rank-normalized and hand back a confident list for
+# any query at all. docs/qmd-adapter.md:131 states the measurement.
+#
+# `location` is the copy of the notes corpus inside the replay directory, not
+# sources/notes, and it has to be: the adapter compares the directory its
+# collection indexes against the configured location on every operation, and the
+# recorded `qmd collection show` names that directory through a ${REPLAY_DIR}
+# token. The copy is byte-identical and is written from sources/notes by
+# record-qmd.sh. base_prior matches the notes source exactly, so nothing in the
+# paired profile is decided by a prior.
+[[sources]]
+source_uid = "01SMOKEQMD"
+source_id = "notes-semantic"
+adapter = "qmd"
+location = "${PACK}/sources/replay/qmd-vector/corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+freshness_policy = "indexed: recorded qmd 2.5.3 output over a frozen copy of the notes corpus"
+
+[sources.settings]
+collection = "notes"
+mode = "vector"
+replay = "${PACK}/sources/replay/qmd-vector"
 
 [[sources]]
 source_uid = "01SMOKETASKS"
@@ -198,6 +245,25 @@ max_sensitivity = "internal"
 
 [profiles.smoke-docs]
 sources = ["notes", "handbook"]
+max_sensitivity = "internal"
+
+# The semantic source is in these two profiles and no others, so no existing
+# case changes: the smoke-degraded precedent, one step further. A source family's
+# metric is the whole case score attributed to every family that returned a
+# result, so a profile holding both sources gives the two families the identical
+# fused number and the head-to-head becomes a tautology. One source per profile
+# is what makes BySourceFamily say which source earned what — the qmd-modes
+# precedent — and it is why the answering cases are asked here alone.
+[profiles.smoke-semantic]
+sources = ["notes-semantic"]
+max_sensitivity = "internal"
+
+# The pairing, which is where an abstention is actually at risk: a semantic
+# source is the thing that can turn a question with no answer into a confident
+# neighbour. The must-abstain case is asked here so both halves have to stay
+# silent, which is a strictly stronger claim than either alone.
+[profiles.smoke-paired]
+sources = ["notes", "handbook", "notes-semantic"]
 max_sensitivity = "internal"
 
 [profiles.smoke-tasks]

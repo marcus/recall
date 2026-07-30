@@ -83,14 +83,27 @@
 {"schema_version":1,"case_id":"sensitivity-source-ceiling-039","lineage_root":"01SMOKEVAULT:incidents/2026-02-payroll.md#L3-L6","relevance":0,"forbidden":true,"supports":["above the ceiling"]}
 {"schema_version":1,"case_id":"sensitivity-candidate-ceiling-040","lineage_root":"01SMOKELEDGER:expenses-2026.md#L3-L6","relevance":0,"forbidden":true,"supports":["a candidate above the profile ceiling"]}
 {"schema_version":1,"case_id":"sensitivity-ceiling-explicit-041","lineage_root":"01SMOKEVAULT:incidents/2026-02-payroll.md#L3-L6","relevance":0,"forbidden":true,"supports":["above the ceiling"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:home/heating.md#L3-L6","relevance":3,"required":true,"supports":["who comes","how often","what he does"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:home/heating.md#L1-L1","relevance":1,"supports":["the note the answer lives in"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:home/car.md#L3-L6","relevance":0,"supports":["a yearly service, and not of the boiler"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-bins-043","lineage_root":"01SMOKENOTES:home/kitchen.md#L8-L11","relevance":3,"required":true,"supports":["which evening","what goes in which container"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-bins-043","lineage_root":"01SMOKENOTES:home/garden.md#L3-L6","relevance":1,"supports":["another way rubbish leaves the house, on another day"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:home/garden.md#L8-L11","relevance":3,"required":true,"supports":["which tap","when","why"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:home/garden.md#L1-L1","relevance":1,"supports":["the note the answer lives in"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:home/car.md#L8-L11","relevance":0,"supports":["three shared words about a different winter job"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:home/laundry.md#L3-L6","relevance":3,"required":true,"supports":["why the drum will not spin","what to clear"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:home/laundry.md#L8-L11","relevance":1,"supports":["where wet washing goes meanwhile"]}
-{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:home/kitchen.md#L3-L6","relevance":0,"supports":["a filter in the other machine"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:house/heating.md#L3-L6","relevance":3,"required":true,"supports":["who comes","how often","what he does"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:house/heating.md#L1-L1","relevance":1,"supports":["the note the answer lives in"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-042","lineage_root":"01SMOKENOTES:house/car.md#L3-L6","relevance":0,"supports":["a yearly service, and not of the boiler"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-bins-043","lineage_root":"01SMOKENOTES:house/kitchen.md#L8-L11","relevance":3,"required":true,"supports":["which evening","what goes in which container"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-bins-043","lineage_root":"01SMOKENOTES:house/garden.md#L3-L6","relevance":1,"supports":["another way rubbish leaves the house, on another day"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:house/garden.md#L8-L11","relevance":3,"required":true,"supports":["which tap","when","why"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:house/garden.md#L1-L1","relevance":1,"supports":["the note the answer lives in"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-044","lineage_root":"01SMOKENOTES:house/car.md#L8-L11","relevance":0,"supports":["three shared words about a different winter job"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:house/laundry.md#L3-L6","relevance":3,"required":true,"supports":["why the drum will not spin","what to clear"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:house/laundry.md#L8-L11","relevance":1,"supports":["where wet washing goes meanwhile"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-045","lineage_root":"01SMOKENOTES:house/kitchen.md#L3-L6","relevance":0,"supports":["a filter in the other machine"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-qmd-047","lineage_root":"01SMOKEQMD:house/heating.md#L4-L7","relevance":3,"required":true,"supports":["who comes","how often","what he does"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-qmd-047","lineage_root":"01SMOKEQMD:house/heating.md#L9-L12","relevance":1,"supports":["the right note, the wrong paragraph"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-boiler-qmd-047","lineage_root":"01SMOKEQMD:house/car.md#L4-L7","relevance":0,"supports":["a yearly service, and not of the boiler"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-bins-qmd-048","lineage_root":"01SMOKEQMD:house/kitchen.md#L9-L12","relevance":3,"required":true,"supports":["which evening","what goes in which container"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-bins-qmd-048","lineage_root":"01SMOKEQMD:house/garden.md#L4-L7","relevance":1,"supports":["another way rubbish leaves the house, on another day"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-bins-qmd-048","lineage_root":"01SMOKEQMD:house/kitchen.md#L4-L7","relevance":0,"supports":["the right note, and a filter in it"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-qmd-049","lineage_root":"01SMOKEQMD:house/garden.md#L9-L12","relevance":3,"required":true,"supports":["which tap","when","why"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-qmd-049","lineage_root":"01SMOKEQMD:house/garden.md#L2-L5","relevance":1,"supports":["the right note, the wrong paragraph"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-qmd-049","lineage_root":"01SMOKEQMD:house/car.md#L9-L12","relevance":0,"supports":["three shared words about a different winter job"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-frost-qmd-049","lineage_root":"01SMOKEQMD:house/heating.md#L4-L7","relevance":0,"supports":["a nearby note about a different season"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-qmd-050","lineage_root":"01SMOKEQMD:house/laundry.md#L4-L7","relevance":3,"required":true,"supports":["why the drum will not spin","what to clear"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-qmd-050","lineage_root":"01SMOKEQMD:house/laundry.md#L9-L12","relevance":1,"supports":["where wet washing goes meanwhile"]}
+{"schema_version":1,"case_id":"paraphrase-semantic-laundry-qmd-050","lineage_root":"01SMOKEQMD:house/kitchen.md#L4-L7","relevance":0,"supports":["a filter in the other machine"]}

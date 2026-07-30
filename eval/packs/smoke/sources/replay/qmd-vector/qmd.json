@@ -1,0 +1,15 @@
+{
+  "comment": "Recorded qmd 2.5.3 vsearch output over the pack's notes corpus. Regenerate with eval/packs/smoke/record-qmd.sh; never edit by hand.",
+  "invocations": [
+    {"contains": ["--version"], "stdout": "version.txt"},
+    {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
+    {"contains": ["status"], "stdout": "status.txt"},
+    {"contains": ["who services the furnace once a year"], "stdout": "boiler.json"},
+    {"contains": ["when do i take the rubbish out"], "stdout": "bins.json"},
+    {"contains": ["how do i keep the hose from cracking in winter"], "stdout": "frost.json"},
+    {"contains": ["the clothes come out soaking wet every time"], "stdout": "laundry.json"},
+    {"contains": ["what did the chimney sweep charge us"], "stdout": "chimney.json"},
+    {"contains": ["update"], "stdout": "version.txt"}
+  ],
+  "default": {"stderr": "no recorded response for this query", "exit_code": 1}
+}
