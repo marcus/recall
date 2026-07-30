@@ -428,3 +428,47 @@ qwen3-reranker-0.6b-q8_0 + 1.3G qmd-query-expansion-1.7B-q4_k_m ≈ 2.1G).
 8. **Modes** (td-f63dca): setting `mode = bm25 | vector | hybrid | full`
    mapping to search/vsearch/query--no-rerank/query; recorded in
    `index_config`; committed eval packs use replay fixtures regardless.
+
+## Outcome (2026-07-29, td-7cd17e closed out)
+
+Option B shipped: `cmd/recall-qmd`, first-party external adapter, 16/16
+conformance, live in the home profile as `clara-home-semantic` (mode=vector).
+
+Measured, same corpus, same judgments (smoke paraphrase-semantic family):
+the lexical documents source ranks the right note first in 0 of 4; qmd-vector
+in 4 of 4 (nDCG@10 0.0689 → 0.3877). Span precision is qmd's weakness — right
+document 4/4, right paragraph 1/4 (one vector per document at this corpus
+size) — graded honestly and marked expected_fail on the chunking. The honesty
+contract held everywhere: the must-abstain paraphrase case abstains with all
+sources reporting success, live noise queries (kodachrome, zxqv, fujifilm)
+abstain coverage-complete, and a hidden qmd binary degrades to exit 3 with the
+source named. Live proof: "who takes care of my teeth" → the dentist record,
+rank 1, semantic attribution, zero shared content terms.
+
+Two core defects were found by this integration and fixed in the core:
+zero-relevance ties were ordered by locator string and called relevance
+ranking (now fall back to local_rank); and two sources over one location
+corroborated the same document as independent evidence (now collapsed by a
+location+record key, corroboration only, with an eval assertion that fails
+without the fix).
+
+Two open follow-ons: td-c83cbf (relevance_basis into the Manifest — the
+cosine basis is usable but systematically discounted vs lexical scores, and
+nothing typed declares it) and td-b78d25 (cross-adapter duplicate_view display
+seam — up to two result slots on one shared document when titles disagree).
+
+### Option A verdict: defer, original motivation resolved
+
+The dentist defect — this document's motivating case for a cross-encoder —
+is fixed by cosine-based relevance in vector mode: the source's own admission
+floor separates true paraphrases (0.42–0.51) from noise (below floor, honest
+empty), which is the admission-floor problem this plan called unsolvable in
+vector space; vsearch's floor plus a declared relevance basis turned out to
+be the written-down rule. What a reranker would still buy: span-level
+precision on qmd hits (better addressed by chunk-level embedding in qmd) and
+a shared scale across relevance bases (spec Open Decision 2, now td-c83cbf).
+Neither justifies one to two weeks and a model artifact today. Revisit if
+paired-profile ordering data from real clara-home usage shows the cosine
+discount burying semantic wins under wrong lexical hits — the eval hook for
+that decision (BySourceFamily on the paraphrase-semantic family) is now
+permanent.
