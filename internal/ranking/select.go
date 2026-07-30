@@ -8,18 +8,59 @@ import (
 )
 
 // compareRelevance orders two clusters within one exactness partition: higher
-// score first, then the score-basis candidate's locator and identity. The
-// display representative is deliberately absent: choosing a more useful chunk
-// to show must not become a hidden reranker. The tail of the comparison is a
-// unique key, so no two clusters ever compare equal and the order cannot depend
-// on which adapter answered first.
+// score first, then each source's own ordering where the score has none, then
+// the score-basis candidate's locator and identity. The display representative
+// is deliberately absent: choosing a more useful chunk to show must not become a
+// hidden reranker. The tail of the comparison is a unique key, so no two
+// clusters ever compare equal and the order cannot depend on which adapter
+// answered first.
 func compareRelevance(a, b *cluster) int {
 	return cmp.Or(
 		cmp.Compare(b.score, a.score),
+		zeroScoreLocalRank(a, b),
 		cmp.Compare(a.scoreBasis.Locator.String(), b.scoreBasis.Locator.String()),
 		cmp.Compare(a.scoreBasis.CandidateID, b.scoreBasis.CandidateID),
 		cmp.Compare(a.explain.LineageRoot, b.explain.LineageRoot),
 	)
+}
+
+// zeroScoreLocalRank breaks a tie between two clusters that both scored zero by
+// the ordering their own sources gave them.
+//
+// It exists because a fused score of zero carries no information at all.
+// Relevance is a FACTOR rather than a term — [Ranker.scoreGroup] computes prior
+// times relevance over the rank constant plus the rank — so a relevance of zero
+// annihilates the rank term and every candidate from that source scores exactly
+// zero, however the source ranked them. The next comparison was then a locator
+// STRING, which presented alphabetical order to a caller as a relevance
+// ranking. Any source reporting zero relevance reaches this, including the
+// built-in document adapter whenever the never-abstain exemption in
+// [Ranker.selectResults] admits a below-floor cluster.
+//
+// The gate is score == 0 and not a.score == b.score, deliberately. Zero is the
+// only value that provably discarded the source's ordering; anything else is a
+// score two clusters genuinely tied on, and widening the predicate would move
+// orderings that are not broken.
+//
+// It is NOT scoped to one source, and that is not an oversight. A same-source
+// fallback is not transitive: with two clusters from one source at ranks 1 and 2
+// and a third from another whose locator sorts before both, rank orders the
+// first pair, string order puts the third above the second and below the first,
+// and the result is a cycle — which breaks the strict weak ordering
+// [slices.SortFunc] requires and the uniqueness this comparison's own contract
+// asserts. Comparing ranks across sources is admissible here for the same reason
+// the fused score is RRF over local rank in the first place: that already
+// assumes ranks from different lists are comparable, and at zero there is
+// nothing left to degrade.
+//
+// Ordering only. Admission is decided per cluster against the relevance floor
+// before this runs, so no reordering can change which clusters are admitted or
+// turn an abstention into an answer.
+func zeroScoreLocalRank(a, b *cluster) int {
+	if a.score != 0 || b.score != 0 {
+		return 0
+	}
+	return cmp.Compare(a.scoreBasis.LocalRank, b.scoreBasis.LocalRank)
 }
 
 // selectResults performs step 7: diversity selection after relevance.
