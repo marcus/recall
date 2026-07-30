@@ -6,7 +6,7 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
-## Unreleased
+## [0.2.0] - 2026-07-29
 
 ### Added
 
@@ -58,5 +58,6 @@ migration guidance.
 - Query results preserve source sensitivity ceilings and distinguish complete
   abstention from degraded or failed coverage.
 
-[Unreleased]: https://github.com/marcus/recall/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/marcus/recall/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/marcus/recall/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marcus/recall/releases/tag/v0.1.0
