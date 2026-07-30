@@ -85,6 +85,7 @@
               "min_results",
               "max_results",
               "max_results_per_record",
+              "max_corroborated_units",
               "excerpt_contains"
             ]
           }
@@ -301,6 +302,11 @@
               "minLength": 1
             }
           }
+        },
+        "max_corroborated_units": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many independent pieces of evidence one result may claim. It asserts a number the caller is TOLD rather than something the answer contains, and it is the only way to see that claim: a result counting two views of one file as two agreeing sources returns the same records in the same order with the same retrieval metrics as one that counted them once."
         }
       }
     }

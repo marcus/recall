@@ -234,9 +234,10 @@ func resultRefs(c Case, resp recall.QueryResponse) []ResultRef {
 	refs := make([]ResultRef, 0, len(resp.Results))
 	for _, res := range resp.Results {
 		ref := ResultRef{
-			Root:        res.Explanation.LineageRoot,
-			RecordID:    res.Primary.SourceRecordID,
-			Fingerprint: res.Primary.ContentFingerprint,
+			Root:         res.Explanation.LineageRoot,
+			RecordID:     res.Primary.SourceRecordID,
+			Fingerprint:  res.Primary.ContentFingerprint,
+			Corroborated: res.Explanation.Corroboration.IndependentUnits,
 		}
 		if _, want := asked[ref.Root]; want {
 			ref.Excerpt = res.Primary.Excerpt

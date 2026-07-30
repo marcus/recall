@@ -135,6 +135,13 @@ type ResultRef struct {
 	RecordID    string             `json:"source_record_id,omitempty"`
 	Fingerprint string             `json:"content_fingerprint,omitempty"`
 	Excerpt     string             `json:"excerpt,omitempty"`
+
+	// Corroborated is how many independent pieces of evidence the result claims.
+	// It is recorded because it is a claim to a caller — "two sources agree" —
+	// and a false one is not visible in the result list, the order, or any
+	// retrieval metric: two views of one file counted twice look exactly like
+	// two sources that agree.
+	Corroborated int `json:"corroborated_units,omitempty"`
 }
 
 // CaseScore is every metric that is defined for one case, plus the groups the
@@ -663,6 +670,15 @@ func resultAssertionViolations(a *Assertions, results []ResultRef) []string {
 	if a.MaxResults != nil && len(results) > *a.MaxResults {
 		failures = append(failures, fmt.Sprintf(
 			"max_results: returned %d, want at most %d", len(results), *a.MaxResults))
+	}
+	if a.MaxCorroboratedUnits != nil {
+		for _, ref := range results {
+			if ref.Corroborated > *a.MaxCorroboratedUnits {
+				failures = append(failures, fmt.Sprintf(
+					"max_corroborated_units: %s claimed %d independent units, want at most %d",
+					ref.Root, ref.Corroborated, *a.MaxCorroboratedUnits))
+			}
+		}
 	}
 	if a.MaxResultsPerRecord != nil {
 		// A record is identified across sources only when it presents both

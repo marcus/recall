@@ -215,6 +215,7 @@ var AssertionFields = []string{
 	"min_results",
 	"max_results",
 	"max_results_per_record",
+	"max_corroborated_units",
 	"excerpt_contains",
 }
 
@@ -243,6 +244,7 @@ func (a *Assertions) Declared() map[string]bool {
 	set("min_results", a.MinResults != nil)
 	set("max_results", a.MaxResults != nil)
 	set("max_results_per_record", a.MaxResultsPerRecord != nil)
+	set("max_corroborated_units", a.MaxCorroboratedUnits != nil)
 	set("excerpt_contains", len(a.ExcerptContains) > 0)
 	return out
 }
@@ -303,6 +305,17 @@ type Assertions struct {
 	// because a caller pays for every result it is handed.
 	MinResults *int `json:"min_results,omitempty"`
 	MaxResults *int `json:"max_results,omitempty"`
+
+	// MaxCorroboratedUnits bounds how many independent pieces of evidence a
+	// result may claim.
+	//
+	// It is the one assertion about a number a caller is TOLD rather than about
+	// what the answer contains, and it exists because that claim is invisible
+	// everywhere else: a result that counts two views of one file as two
+	// agreeing sources returns the same records in the same order with the same
+	// retrieval metrics as one that counted them once. Only the score and the
+	// sentence shown to the caller differ, and the score is not asserted here.
+	MaxCorroboratedUnits *int `json:"max_corroborated_units,omitempty"`
 
 	// MaxResultsPerRecord bounds how many result slots one record may occupy.
 	// Identity is the source record id together with the content fingerprint,
