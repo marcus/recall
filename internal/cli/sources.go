@@ -51,13 +51,14 @@ type SourceStatus struct {
 	// so its empty health is the absence of a probe and not a bad report.
 	Probed bool `json:"probed"`
 
-	AdapterID    string              `json:"adapter_id,omitempty"`
-	DisplayName  string              `json:"display_name,omitempty"`
-	Capabilities []recall.Capability `json:"capabilities,omitempty"`
-	QueryModes   []recall.QueryMode  `json:"query_modes,omitempty"`
-	AsOfSupport  recall.AsOfSupport  `json:"as_of_support,omitempty"`
-	DerivesFrom  string              `json:"derives_from,omitempty"`
-	Health       *recall.Health      `json:"health,omitempty"`
+	AdapterID              string                         `json:"adapter_id,omitempty"`
+	DisplayName            string                         `json:"display_name,omitempty"`
+	Capabilities           []recall.Capability            `json:"capabilities,omitempty"`
+	QueryModes             []recall.QueryMode             `json:"query_modes,omitempty"`
+	AsOfSupport            recall.AsOfSupport             `json:"as_of_support,omitempty"`
+	DerivesFrom            string                         `json:"derives_from,omitempty"`
+	ExecutableRequirements []recall.ExecutableRequirement `json:"executable_requirements,omitempty"`
+	Health                 *recall.Health                 `json:"health,omitempty"`
 
 	// Error is why a probe failed, in the adapter's own words. It is shown
 	// because a source nobody can see the failure of is a source nobody can fix.
@@ -182,6 +183,7 @@ func (r *runtime) status(ctx context.Context, profile config.Profile, member boo
 	s.QueryModes = manifest.QueryModes
 	s.AsOfSupport = manifest.AsOfSupport
 	s.DerivesFrom = manifest.DerivesFrom
+	s.ExecutableRequirements = manifest.ExecutableRequirements
 	if s.FreshnessPolicy == "" {
 		s.FreshnessPolicy = manifest.FreshnessPolicy
 	}
@@ -225,6 +227,7 @@ func renderSources(o *out, listing SourceListing) {
 		capf.text("query modes", join(s.QueryModes))
 		capf.text("as_of", string(s.AsOfSupport))
 		capf.text("derives from", s.DerivesFrom)
+		capf.text("requires", executableRequirements(s.ExecutableRequirements))
 		if !capf.empty() {
 			o.block("  ", capf.String())
 		}
@@ -241,6 +244,21 @@ func renderSources(o *out, listing SourceListing) {
 			o.block("  ", "error "+s.Error)
 		}
 	}
+}
+
+func executableRequirements(in []recall.ExecutableRequirement) string {
+	if len(in) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(in))
+	for _, req := range in {
+		if req.Name == req.Command {
+			parts = append(parts, req.Name)
+			continue
+		}
+		parts = append(parts, req.Name+"="+req.Command)
+	}
+	return join(parts)
 }
 
 // healthLine renders an adapter's self-report. A recent index timestamp alone

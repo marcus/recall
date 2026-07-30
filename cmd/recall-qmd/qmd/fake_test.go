@@ -628,6 +628,9 @@ func TestRefreshRunsMaintenanceThenWarms(t *testing.T) {
 	if health.Status != recall.HealthHealthy {
 		t.Fatalf("status = %q: %v", health.Status, health.Diagnostics)
 	}
+	if health.CheckpointProgress != recall.CheckpointUnchanged {
+		t.Fatalf("checkpoint progress = %q, want unchanged", health.CheckpointProgress)
+	}
 	for _, sub := range []string{"update", "embed", "query"} {
 		if !runner.ran(sub) {
 			t.Errorf("refresh did not run %q: %v", sub, runner.invocations())

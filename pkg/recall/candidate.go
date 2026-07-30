@@ -151,6 +151,18 @@ type Manifest struct {
 
 	// SettingsSchema validates the instance's adapter-owned settings block.
 	SettingsSchema map[string]any `json:"settings_schema,omitempty"`
+
+	// ExecutableRequirements are external programs this configured adapter
+	// instance needs in order to serve requests.
+	ExecutableRequirements []ExecutableRequirement `json:"executable_requirements,omitempty"`
+}
+
+// ExecutableRequirement declares one external program an adapter shells out
+// to. Command is the effective configured executable name or path.
+type ExecutableRequirement struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // Supports reports whether the adapter can serve a freshness mode.
@@ -217,11 +229,27 @@ type Health struct {
 	// existence for a denied source.
 	Diagnostics map[string]any `json:"diagnostics,omitempty"`
 
+	// CheckpointProgress describes comparable checkpoint counts observed
+	// before and after the refresh that produced this report. It is omitted
+	// for ordinary probes and incomparable boundaries.
+	CheckpointProgress CheckpointProgress `json:"checkpoint_progress,omitempty"`
+
 	// ColdStart is how long the adapter took to become ready, when this probe
 	// followed a spawn. It counts against the request budget and is reported
 	// separately so cold and warm latency stay distinguishable.
 	ColdStart time.Duration `json:"cold_start_ns,omitempty"`
 }
+
+// CheckpointProgress is the direction of a refresh's comparable checkpoint
+// counters. It is separate from health: an operation can advance a partial
+// index without making it complete enough for a query.
+type CheckpointProgress string
+
+const (
+	CheckpointAdvanced  CheckpointProgress = "advanced"
+	CheckpointUnchanged CheckpointProgress = "unchanged"
+	CheckpointRegressed CheckpointProgress = "regressed"
+)
 
 // Usable reports whether a source in this state may be searched.
 func (h Health) Usable() bool {

@@ -378,6 +378,9 @@ func TestFailedRefreshReturnsHealth(t *testing.T) {
 	if health.Status == recall.HealthHealthy {
 		t.Fatal("a refresh that did not move the index forward reported healthy")
 	}
+	if health.CheckpointProgress != "" {
+		t.Fatalf("failed refresh reported checkpoint progress %q", health.CheckpointProgress)
+	}
 	detail, _ := health.Diagnostics["last_refresh_error"].(string)
 	if !strings.Contains(detail, "embed") {
 		t.Fatalf("diagnostics do not name the failed step: %v", health.Diagnostics)

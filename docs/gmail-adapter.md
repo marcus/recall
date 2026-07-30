@@ -88,7 +88,7 @@ mail access an explicit caller decision:
 ```toml
 [profiles.personal]
 sources = ["docs", "tasks", "mail"]
-sensitivity_ceiling = "confidential"
+max_sensitivity = "confidential"
 ```
 
 Check the resolved trust boundary and credential before querying:
@@ -98,6 +98,10 @@ recall config explain
 recall sources --profile personal
 recall query "dentist referral" --profile personal
 ```
+
+The adapter manifest declares the effective `gog_binary` value as its `gog`
+executable requirement. `recall sources` shows it and `recall doctor`
+preflights it; replay mode declares no gog requirement because it spawns none.
 
 ## Default corpus and precision escape hatch
 

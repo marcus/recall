@@ -97,6 +97,7 @@ func renderRefresh(o *out, resp recall.RefreshResponse) {
 		row.text("source", source.SourceID)
 		row.text("status", string(source.Status))
 		row.text("reason", string(source.Reason))
+		row.text("detail", source.DiagnosticDetail)
 		row.dur("elapsed", source.Elapsed)
 		if source.Health != nil {
 			row.text("health", string(source.Health.Status))

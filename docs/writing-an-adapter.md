@@ -553,6 +553,13 @@ exists because configuration cannot resolve paths inside an adapter-owned block;
 an adapter that resolved against the process working directory made the same
 configuration read different files depending on where Recall was started.
 
+If the configured instance shells out to another program, return it in
+`Manifest.ExecutableRequirements`. Declare the effective command after settings
+defaults and overrides are applied, not merely the package name you expect.
+`recall sources` then makes the dependency inspectable and `recall doctor`
+preflights it without learning adapter-specific settings keys. A replay or
+in-memory mode that invokes no program declares no requirement.
+
 ## Conformance
 
 Conformance is recorded transcripts, replayed. Ship them, or your adapter is

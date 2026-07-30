@@ -54,6 +54,20 @@
     },
     "freshness_policy": { "type": "string" },
     "sensitivity": { "$ref": "common.json#/$defs/sensitivity" },
-    "settings_schema": { "type": ["object", "null"] }
+    "settings_schema": { "type": ["object", "null"] },
+    "executable_requirements": {
+      "description": "External programs this configured adapter instance invokes.",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["name", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "command": { "type": "string", "minLength": 1 },
+          "purpose": { "type": "string" }
+        }
+      }
+    }
   }
 }

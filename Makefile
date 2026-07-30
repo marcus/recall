@@ -12,7 +12,7 @@ RELEASE_VERSION ?=
 export RELEASE_VERSION
 
 .PHONY: all build build-all install uninstall test lint fmt cover clean tidy check \
-	release-snapshot release-preflight release check-release-state
+	release-snapshot release-preflight release release-tap check-release-state
 
 all: check
 
@@ -108,6 +108,7 @@ release-snapshot:
 	$(GORELEASER) release --snapshot --clean
 	./scripts/verify-release-archives.sh dist
 	./scripts/test-release-guards.sh dist
+	./scripts/test-release-publication.sh
 	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT && \
 		./scripts/render-homebrew-formula.sh v0.1.0 \
 			0000000000000000000000000000000000000000000000000000000000000000 \
@@ -128,8 +129,13 @@ release-preflight: check-release-state
 	$(MAKE) release-snapshot
 
 # main must already be published and fork CI must already be green. This target
-# only creates and pushes the annotated tag; the tag workflow publishes assets.
-# The source-building Homebrew formula is rendered and published separately,
-# after the release exists, with explicit authorization for the tap repository.
+# creates the tag, waits for its exact release workflow, then publishes and
+# remotely verifies the Homebrew formula using the local operator's explicit
+# authorization for the tap repository.
 release: release-preflight
-	./scripts/publish-release-tag.sh
+	./scripts/publish-release.sh
+
+# Idempotent recovery when the tag exists but its workflow or tap publication
+# failed. It re-verifies the exact tag, workflow, public archive, and remote tap.
+release-tap:
+	./scripts/publish-homebrew-tap.sh

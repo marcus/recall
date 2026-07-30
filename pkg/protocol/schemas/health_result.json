@@ -52,6 +52,11 @@
     "diagnostics": {
       "$ref": "common.json#/$defs/diagnostics"
     },
+    "checkpoint_progress": {
+      "description": "Direction of comparable checkpoint counters across the refresh that produced this report.",
+      "type": "string",
+      "enum": ["advanced", "unchanged", "regressed"]
+    },
     "cold_start_ns": {
       "description": "Time to become ready, when this probe followed a spawn. Measured by the core; an adapter leaves it out.",
       "type": "integer",
