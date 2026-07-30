@@ -260,41 +260,87 @@ func TestSearchDoesNotTreatDottedFilenamesAsBearerLinks(t *testing.T) {
 	}
 }
 
-func TestHeaderRelevanceAndBulkNoisePolicy(t *testing.T) {
+// Relevance is measured over the header span the adapter has, on every
+// candidate. A body-only match is a real match Gmail found server-side, but the
+// adapter never sees that evidence, and reporting nothing for it reads as 1.0 in
+// fusion — an untested maximum that outranks every honestly scored source
+// (td-3f8578).
+func TestHeaderRelevanceIsAlwaysMeasuredOverTheVisibleSpan(t *testing.T) {
 	tests := []struct {
-		name          string
-		thread        thread
-		query         string
-		wantRelevance *float64
-		wantNil       bool
+		name   string
+		thread thread
+		query  string
+		want   float64
 	}{
-		{"direct header", bulkHeaderMatch, "bonnie", ptrFloat(0.5), false},
-		{"bulk body only", bulkBodyOnly, "bonnie", ptrFloat(0), false},
-		{"ordinary body only", nonBulkBodyOnly, "bonnie", nil, true},
-		{"explicit bulk", bulkBodyOnly, "bonnie category:promotions", nil, true},
-		{"mixed operator still suppresses", bulkBodyOnly, "bonnie after:2026/01/01", ptrFloat(0), false},
+		// Header coverage is what a high relevance has to mean, and a covering
+		// subject still gets one: this is the case that must stay near the top.
+		{"covering subject", bulkHeaderMatch, "bonnie summer reading", 0.97},
+		{"partial coverage", bulkHeaderMatch, "bonnie summer wedding anniversary", 0.47},
+		// Present and zero, not absent. Gmail matched a body the pointer cannot
+		// read, so the visible span supports no claim of aboutness.
+		{"ordinary body only", nonBulkBodyOnly, "bonnie", 0},
+		{"bulk body only", bulkBodyOnly, "bonnie", 0},
+		{"explicitly requested bulk body only", bulkBodyOnly, "bonnie category:promotions", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := search(t, initialized(t, runnerWithSearch(tt.thread),
 				map[string]any{"scope_query": "-in:spam -in:trash -in:chats"}), tt.query)
 			got := resp.Candidates[0].Relevance
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("relevance = %v, want nil", *got)
-				}
-				return
-			}
 			if got == nil {
-				t.Fatal("relevance is nil")
+				t.Fatal("relevance is nil: fusion would read this candidate as 1.0")
 			}
-			if tt.wantRelevance != nil && *tt.wantRelevance == 0 && *got != 0 {
-				t.Fatalf("relevance = %v, want 0", *got)
-			}
-			if tt.wantRelevance != nil && *tt.wantRelevance > 0 && *got <= 0.1 {
-				t.Fatalf("relevance = %v, want measurable header match", *got)
+			if diff := *got - tt.want; diff > 0.01 || diff < -0.01 {
+				t.Fatalf("relevance = %v, want %v", *got, tt.want)
 			}
 		})
+	}
+
+	// The three cases above are one ordering, and it is the ordering that
+	// matters: what the header shows outranks what only the server saw.
+	full := *search(t, initialized(t, runnerWithSearch(bulkHeaderMatch), nil),
+		"bonnie summer reading").Candidates[0].Relevance
+	partial := *search(t, initialized(t, runnerWithSearch(bulkHeaderMatch), nil),
+		"bonnie summer wedding anniversary").Candidates[0].Relevance
+	none := *search(t, initialized(t, runnerWithSearch(nonBulkBodyOnly), nil),
+		"bonnie").Candidates[0].Relevance
+	if !(full > partial && partial > none && none == 0) {
+		t.Fatalf("relevance ordering = full %v, partial %v, none %v", full, partial, none)
+	}
+}
+
+// A browse has no query to be about, so every record is equally relevant to it
+// and the shared definition answers 1. The point is that the adapter asserts it
+// rather than staying silent and being read as 1 by default.
+func TestBrowseRelevanceIsReportedRatherThanOmitted(t *testing.T) {
+	resp := search(t, initialized(t, runnerWithSearch(ordinaryThread), nil), "")
+	got := resp.Candidates[0].Relevance
+	if got == nil || *got != 1 {
+		t.Fatalf("browse relevance = %v, want reported 1", got)
+	}
+}
+
+// A measured zero has to survive JSON encoding as a number. Relevance is a
+// pointer precisely so that omitempty cannot turn "measured 0" back into "no
+// claim", which is the bug this whole change is about.
+func TestMeasuredZeroRelevanceReachesTheWireCandidate(t *testing.T) {
+	resp := search(t, initialized(t, runnerWithSearch(nonBulkBodyOnly), nil), "bonnie")
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Candidates []map[string]json.RawMessage `json:"candidates"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	value, ok := wire.Candidates[0]["relevance"]
+	if !ok {
+		t.Fatalf("wire candidate omitted relevance: %s", raw)
+	}
+	if string(value) != "0" {
+		t.Fatalf("wire relevance = %s, want 0", value)
 	}
 }
 
@@ -306,8 +352,13 @@ func TestExactThreadIDIsPromotedWithoutBulkPenalty(t *testing.T) {
 		!reflect.DeepEqual(got.MatchSignals, []recall.MatchSignal{recall.MatchExactIdentifier}) {
 		t.Fatalf("candidate = %+v", got)
 	}
-	if got.Relevance != nil {
-		t.Fatalf("exact identifier relevance = %v, want nil", *got.Relevance)
+	// A record named by name need not describe itself: the thread ID is not in
+	// the subject, so the measured span honestly holds nothing of the query. The
+	// core exempts an exact identifier match from the relevance floor outright
+	// and promotes it as a partition, so the zero costs it neither admission nor
+	// its position.
+	if got.Relevance == nil || *got.Relevance != 0 {
+		t.Fatalf("exact identifier relevance = %v, want reported 0", got.Relevance)
 	}
 }
 
@@ -455,5 +506,3 @@ func TestHealthClassifiesGogCredentialFailureAsDenied(t *testing.T) {
 		t.Fatalf("health = %+v, err = %v", h, err)
 	}
 }
-
-func ptrFloat(value float64) *float64 { return &value }

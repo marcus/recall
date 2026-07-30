@@ -23,14 +23,7 @@ var (
 		`from|to|cc|bcc|subject|label|category|is|in|has|list|filename|` +
 		`deliveredto|after|before|older|newer|older_than|newer_than|` +
 		`size|larger|smaller|rfc822msgid):`)
-	explicitBulkPattern = regexp.MustCompile(`(?i)^category:(?:promotions|social|forums)\b`)
 )
-
-var noiseCategories = map[string]bool{
-	"CATEGORY_PROMOTIONS": true,
-	"CATEGORY_SOCIAL":     true,
-	"CATEGORY_FORUMS":     true,
-}
 
 var automatedCategories = map[string]bool{
 	"CATEGORY_PROMOTIONS": true,
@@ -71,7 +64,6 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	pieces := shellPieces(queryText)
 	terms := lexicalTerms(pieces)
 	structured := hasOperator(pieces)
-	explicitBulk := hasExplicitBulk(pieces)
 	query, narrowings := buildQuery(queryText, req.Filters, set)
 
 	limit := set.MaxCandidates
@@ -154,7 +146,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 
 	candidates := make([]recall.Candidate, 0, len(rows))
 	for i, row := range rows {
-		candidate := makeCandidate(sourceID, row.thread, i+1, row.exact, terms, explicitBulk, now)
+		candidate := makeCandidate(sourceID, row.thread, i+1, row.exact, terms, now)
 		if outcome != recall.SearchSuccess {
 			candidate.ConfirmedAt = nil
 		}
@@ -209,7 +201,7 @@ func buildQuery(queryText string, filters recall.Filters, set Settings) (string,
 	return strings.TrimSpace(strings.Join(parts, " ")), narrowings
 }
 
-func makeCandidate(sourceID string, t thread, rank int, exact bool, terms []string, explicitBulk bool, now time.Time) recall.Candidate {
+func makeCandidate(sourceID string, t thread, rank int, exact bool, terms []string, now time.Time) recall.Candidate {
 	id := sanitizeLine(t.ID)
 	rawSender := sanitizeLine(t.From)
 	rawSubject := sanitizeLine(t.Subject)
@@ -231,7 +223,16 @@ func makeCandidate(sourceID string, t thread, rank int, exact bool, terms []stri
 	case len(terms) == 0:
 		signals = []recall.MatchSignal{recall.MatchField}
 	}
-	local := headerCoverage(sender, subject, terms)
+	// The header span is tokenized once. Both numbers below are measured over
+	// exactly it, which is what lets the relevance basis name a span the adapter
+	// actually searched.
+	header := tokenize(sender + " " + subject)
+	counts := make(map[string]int, len(header))
+	for _, term := range header {
+		counts[term]++
+	}
+	local := headerCoverage(counts, terms)
+	relevance := headerRelevance(counts, len(header), terms)
 	candidate := recall.Candidate{
 		CandidateID:        id,
 		SourceRecordID:     id,
@@ -241,6 +242,7 @@ func makeCandidate(sourceID string, t thread, rank int, exact bool, terms []stri
 		Excerpt:            clipPreview(preview(sender, subject, labels, count)),
 		LocalRank:          rank,
 		LocalScore:         &local,
+		Relevance:          &relevance,
 		MatchSignals:       signals,
 		ObservedAt:         ptrTime(now),
 		ConfirmedAt:        ptrTime(now),
@@ -248,9 +250,6 @@ func makeCandidate(sourceID string, t thread, rank int, exact bool, terms []stri
 		Sensitivity:        sensitivityOf(rawSubject, rawSender),
 		Metadata:           metadata(sender, subject, labels, count, t.Date),
 		ContentFingerprint: fingerprint(id, fmt.Sprint(count), t.Date),
-	}
-	if !exact {
-		candidate.Relevance = headerRelevance(sender, subject, labels, terms, explicitBulk)
 	}
 	if sent, ok := threadTime(t.Date); ok {
 		candidate.EventTime = &sent
@@ -339,52 +338,55 @@ func sensitivityOf(subject, sender string) recall.Sensitivity {
 	return recall.SensitivityConfidential
 }
 
-func headerCoverage(sender, subject string, terms []string) float64 {
+// headerCoverage is this source's own diagnostic score: the fraction of query
+// terms the visible header carries. counts is the header's token count map.
+func headerCoverage(counts map[string]int, terms []string) float64 {
 	if len(terms) == 0 {
 		return 0
 	}
-	haystack := make(map[string]bool)
-	for _, term := range tokenize(sender + " " + subject) {
-		haystack[term] = true
-	}
 	covered := 0
 	for _, term := range terms {
-		if haystack[term] {
+		if counts[term] > 0 {
 			covered++
 		}
 	}
 	return float64(covered) / float64(len(terms))
 }
 
-func headerRelevance(sender, subject string, labels, terms []string, explicitBulk bool) *float64 {
-	if len(terms) == 0 {
-		return nil
-	}
-	header := tokenize(sender + " " + subject)
-	counts := make(map[string]int)
-	for _, term := range header {
-		counts[term]++
-	}
-	covered, hits := 0, 0
-	for _, term := range terms {
-		if counts[term] > 0 {
-			covered++
-			hits += counts[term]
-		}
-	}
-	if covered == 0 {
-		if !explicitBulk {
-			for _, label := range labels {
-				if noiseCategories[label] {
-					zero := 0.0
-					return &zero
-				}
-			}
-		}
-		return nil
-	}
-	value := recall.Relevance(covered, len(terms), hits, len(header))
-	return &value
+// headerRelevance is [recall.Candidate.Relevance] over the only span this
+// adapter has: the safe sender and subject headers. length is that span's length
+// in terms.
+//
+// It always returns a number, including zero, and never declines to answer.
+// Gmail matches server-side against message bodies a pointer-first adapter never
+// fetches, so a thread can be a true match whose header shows nothing of the
+// query. Reporting nothing for that case is not neutral: fusion reads an absent
+// relevance as 1.0, the maximum, so the threads this adapter knows least about
+// outranked every source that measured honestly. Measured live in one personal
+// profile (td-3f8578), "who is Bonnie" put five such threads above the person
+// record and "when is the wedding anniversary" put twelve above the calendar
+// event with that exact title.
+//
+// Zero is the honest reading of a span that carries no query term, and the core
+// is built to survive it. The relevance floor withholds a low-relevance
+// candidate only while something else answers and stands down rather than
+// abstain, so a mail-only query still gets its threads
+// (internal/ranking/select.go); an exact identifier match is exempt from the
+// floor outright, which is why an exact thread ID keeps its promotion at
+// relevance 0 — the same shape internal/adapters/tasks reports for an exact task
+// id whose text holds no query term.
+//
+// The alternative was a calibrated middle value meaning "the body matched but
+// the header cannot show it". It is rejected because it is a constant presented
+// as a measurement: relevance_basis is declared lexical_span, which names a span
+// this adapter searched, and there is no span in which that number was measured.
+// A source that wants credit for body evidence has to be able to see the body.
+//
+// This subsumes the older rule that gave a body-only match in Promotions,
+// Social, or Forums relevance zero while leaving other body-only matches
+// unreported: every zero-coverage header now measures zero, whatever the label.
+func headerRelevance(counts map[string]int, length int, terms []string) float64 {
+	return recall.RelevanceOverCounts(terms, counts, length)
 }
 
 func shellPieces(query string) []string {
@@ -455,15 +457,6 @@ func lexicalTerms(pieces []string) []string {
 func hasOperator(pieces []string) bool {
 	for _, piece := range pieces {
 		if operatorPattern.MatchString(strings.Trim(piece, "{}()")) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasExplicitBulk(pieces []string) bool {
-	for _, piece := range pieces {
-		if explicitBulkPattern.MatchString(strings.Trim(piece, "{}()")) {
 			return true
 		}
 	}

@@ -154,13 +154,38 @@ suppression without placing a live credential in context.
 ## Ranking and coverage
 
 Gmail's result order is preserved. Recall promotes only an exact thread-ID
-match. Relevance is measured over safe sender and subject fields:
+match.
 
-- A sender or subject match uses Recall's shared relevance formula.
-- An ordinary body-only match makes no relevance claim because the pointer
-  cannot safely inspect enough body text to measure aboutness.
-- A body-only result in Promotions, Social, or Forums receives relevance zero,
-  unless the query explicitly selected that bulk category.
+**The measured span is the header, and only the header.** Every candidate
+carries a `relevance` computed by Recall's shared formula over the safe sender
+and subject fields — the whole of what a pointer holds. The number is never
+omitted, and it may be zero:
+
+- A sender or subject match scores by coverage and concentration over that
+  span, so a subject that covers the query scores near the top.
+- A body-only match scores zero. Gmail matched text server-side that this
+  adapter never fetches, so a low or zero number is not a claim that the thread
+  is unrelated — it is the honest reading of the visible evidence, which holds
+  nothing of the query.
+- An exact thread-ID match scores zero for the same reason and loses nothing by
+  it: an identifier hit is promoted as a partition and is exempt from the
+  relevance floor, because a record named by name need not describe itself.
+- An empty query is a browse rather than a search, and every thread scores 1
+  because there is no query to be about.
+
+A calibrated middle value for "the body matched but the header cannot show it"
+was rejected deliberately: the adapter declares `relevance_basis:
+lexical_span`, which names a span it searched, and such a constant is measured
+over no span at all. Omitting the number instead is worse than either, because
+fusion reads an absent relevance as 1.0 — so the threads the adapter knows
+least about would outrank every source that measured honestly.
+
+The practical consequence for a mixed profile: when a person, calendar, or task
+record genuinely answers a question, it wins on a measured number, and mail
+threads that matched only in their bodies sit below it while still being
+reported. A mail-only query is unaffected — the relevance floor withholds weak
+results only while something else answers, and stands down rather than return
+nothing.
 
 `scope_query` defines the source, so it does not make every search partial.
 Boundaries inside that corpus do:

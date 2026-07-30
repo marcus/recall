@@ -6,6 +6,21 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## Unreleased
+
+### Fixed
+
+- `recall-gmail` now reports `relevance` on every candidate, measured over the
+  sender and subject span it actually holds, including zero. It previously
+  omitted the number whenever the header covered none of the query terms —
+  which is most conversational queries, because Gmail matches server-side
+  against bodies a pointer-first adapter never fetches — and an omitted
+  relevance is fused as 1.0, the maximum. Mail threads therefore outranked
+  person, calendar, and task records that had measured themselves honestly. A
+  low mail relevance now means only that the visible header holds nothing of the
+  query, which is what the declared `lexical_span` basis says it measures; see
+  [gmail-adapter.md](docs/gmail-adapter.md).
+
 ## [0.3.0] - 2026-07-29
 
 ### Breaking

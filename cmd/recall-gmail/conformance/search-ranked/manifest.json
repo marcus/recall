@@ -1,6 +1,6 @@
 {
   "case": "search-ranked",
-  "description": "A wider configured scope preserves Gmail order, promotes exact identifiers, reports header relevance, suppresses incidental bulk-body matches, and exposes no snippet or body in pointers.",
+  "description": "A wider configured scope preserves Gmail order, promotes exact identifiers, reports relevance measured over the visible header span on every candidate — zero where only the server-side body matched, including an incidental bulk-body match — and exposes no snippet or body in pointers.",
   "flow": "lockstep",
   "placeholders": {
     "FIXTURE": "absolute path of recorded gog output",
