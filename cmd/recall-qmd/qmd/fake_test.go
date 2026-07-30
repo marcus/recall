@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -173,19 +174,10 @@ func hit(docid, file, title string, line, start, count int, score float64, expla
 	return body + "}"
 }
 
+// ftoa formats a score the way qmd writes one: the shortest decimal that round
+// trips, so a test asserting on 0.45 gets 0.45 and not a rounding of it.
 func ftoa(f float64) string {
-	// Small fixed set of scores in these tests; formatting them by hand keeps
-	// the recorded JSON readable in the assertions.
-	switch f {
-	case 1:
-		return "1"
-	case 0.5:
-		return "0.5"
-	case 0.25:
-		return "0.25"
-	default:
-		return "0.9"
-	}
+	return strconv.FormatFloat(f, 'g', -1, 64)
 }
 
 const lexicalExplain = `{"ftsScores":[2.5],"vectorScores":[],"rrf":{"rank":1,` +
@@ -679,6 +671,138 @@ func TestSearchNeverRunsMaintenance(t *testing.T) {
 	for _, sub := range []string{"update", "embed"} {
 		if runner.ran(sub) {
 			t.Fatalf("a query reached %q", sub)
+		}
+	}
+}
+
+// Vector mode end to end: the cosine reaches Relevance, quantized, while
+// LocalScore keeps the raw number and LocalRank keeps qmd's order.
+//
+// This is what a live rollout forced. Recomputing lexically here measured 0 for
+// every true paraphrase, so the core's relevance floor withheld exactly the
+// results this source exists to surface — the corpus held the answer, qmd found
+// it, and the answer was suppressed for not repeating the question's words.
+func TestVectorModeCarriesTheCosineAsRelevance(t *testing.T) {
+	root := corpus(t)
+	// The paraphrase: "who can clean my teeth" against a document that says
+	// "dental hygienist". Not one shared term, and cosine 0.48 measured by real
+	// qmd over this exact corpus. The live rollout's phrasing — "who takes care
+	// of my teeth", cosine 0.45 — shares the token "takes" with this fixture's
+	// wording, so the stricter paraphrase is used to keep the lexical comparison
+	// below honest.
+	results := "[" + hit("43f92c", "qmd://fixture/notes/tooth-care.md",
+		"Tooth care appointment", 5, 5, 2, 0.48, "") + "]"
+	settings := baseSettings()
+	settings["mode"] = "vector"
+	a := newAdapter(t, root, settings, healthyRunner(root, results))
+
+	resp, err := searchOnce(t, a, "who can clean my teeth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.SearchSuccess || len(resp.Candidates) != 1 {
+		t.Fatalf("outcome = %q with %d candidates: %v",
+			resp.Outcome, len(resp.Candidates), resp.Diagnostics)
+	}
+	c := resp.Candidates[0]
+	if c.Relevance == nil || *c.Relevance != 0.48 {
+		t.Fatalf("relevance = %v, want the quantized cosine 0.48", c.Relevance)
+	}
+	if c.LocalScore == nil || *c.LocalScore != 0.48 {
+		t.Errorf("local_score = %v, want qmd's own number unchanged", c.LocalScore)
+	}
+	if c.LocalRank != 1 {
+		t.Errorf("local_rank = %d, want qmd's order", c.LocalRank)
+	}
+	if !c.HasSignal(recall.MatchSemantic) {
+		t.Error("a vector hit must carry the semantic signal")
+	}
+	if resp.Diagnostics["relevance_basis"] != "vector_similarity" {
+		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	}
+
+	// The default relevance floor is 0.10. The whole point of the change is that
+	// this candidate now clears it on its own rather than surviving only because
+	// a floor may not abstain.
+	if *c.Relevance <= 0.10 {
+		t.Errorf("relevance %v does not clear the default floor", *c.Relevance)
+	}
+	// And the same fixture under the lexical basis really does measure zero,
+	// which is what made the floor withhold it. Asserted by running the same
+	// recording through a hybrid instance, because the claim is about what the
+	// two configurations return rather than about an internal function.
+	lexicalSettings := baseSettings()
+	lexicalSettings["mode"] = "hybrid"
+	b := newAdapter(t, root, lexicalSettings, healthyRunner(root, results))
+	got, err := searchOnce(t, b, "who can clean my teeth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Candidates) != 1 {
+		t.Fatalf("hybrid returned %d candidates", len(got.Candidates))
+	}
+	if rel := got.Candidates[0].Relevance; rel == nil || *rel != 0 {
+		t.Errorf("the lexical basis measured %v on this span; the case has drifted", *rel)
+	}
+	if got.Diagnostics["relevance_basis"] != "lexical_span" {
+		t.Errorf("relevance_basis = %v", got.Diagnostics["relevance_basis"])
+	}
+}
+
+// The admission floor for vector mode lives in qmd, not here: a noise query does
+// not clear its cosine threshold and comes back as an empty array. That is the
+// one empty list this adapter may call success, and it must not become an
+// unavailable source or a confident answer about nothing.
+func TestVectorModeNoiseQueryIsAnHonestEmptySuccess(t *testing.T) {
+	root := corpus(t)
+	settings := baseSettings()
+	settings["mode"] = "vector"
+	a := newAdapter(t, root, settings, healthyRunner(root, "[]"))
+
+	resp, err := searchOnce(t, a, "kodachrome zxqv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.SearchSuccess {
+		t.Fatalf("outcome = %q, want success over a complete boundary", resp.Outcome)
+	}
+	if len(resp.Candidates) != 0 {
+		t.Fatalf("a noise query returned %d candidates", len(resp.Candidates))
+	}
+	if resp.Diagnostics["relevance_basis"] != "vector_similarity" {
+		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	}
+}
+
+// hybrid and full keep the lexical recompute, and this is why: their scores are
+// rank-normalized, so rank 1 is 1.0 whatever matched. A garbage query returns
+// 1.0, 0.5, 0.33 down an unrelated list, and carrying those numbers into the one
+// cross-source comparable field would turn an abstention into a confident answer.
+func TestHybridScoresAreNotAdmissionEvidence(t *testing.T) {
+	root := corpus(t)
+	results := "[" +
+		hit("0593a8", "qmd://fixture/guides/sourdough.md", "Sourdough starter", 1, 1, 2, 1, semanticExplain) + "," +
+		hit("43f92c", "qmd://fixture/notes/tooth-care.md", "Tooth care", 5, 5, 2, 0.5, semanticExplain) +
+		"]"
+	a := newAdapter(t, root, baseSettings(), healthyRunner(root, results)) // hybrid
+
+	resp, err := searchOnce(t, a, "kodachrome zxqv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Diagnostics["relevance_basis"] != "lexical_span" {
+		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	}
+	for i, c := range resp.Candidates {
+		if c.Relevance == nil {
+			t.Fatalf("candidate %d omitted relevance", i)
+		}
+		if *c.Relevance != 0 {
+			t.Errorf("candidate %d measured %v against a query it shares no term with",
+				i, *c.Relevance)
+		}
+		if c.LocalScore == nil || *c.LocalScore == *c.Relevance {
+			t.Errorf("candidate %d let a rank-normalized score become relevance", i)
 		}
 	}
 }

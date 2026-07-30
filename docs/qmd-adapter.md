@@ -20,13 +20,16 @@ never replaces it. That is the whole shape of the integration:
 ## What it does not fix
 
 The dentist ranking defect is a relevance-definition problem, and this adapter
-does not address it. Neither does it make paraphrase results *rank*: relevance is
-recomputed lexically here (see below), so a hit that shares no term with the
+does not address it.
+
+Paraphrase results do surface, but only in `vector` mode, and only because that
+mode measures relevance on qmd's cosine similarity rather than lexically. In
+`hybrid` and `full` the lexical measure stands, so a hit sharing no term with the
 query measures 0 and is withheld by a non-zero `relevance_floor` unless nothing
-else clears it. Making paraphrase aboutness comparable across sources is a
-separate piece of work; a local cross-encoder reranker in the core is the
-candidate, and this adapter exists partly to produce the data that decides
-whether it is worth building.
+else clears it — and worse, those two modes carry no admission floor of their own.
+Making paraphrase aboutness comparable across sources in general is separate work;
+a local cross-encoder reranker in the core is the candidate, and this adapter
+exists partly to produce the data that decides whether it is worth building.
 
 ## Install qmd and its models
 
@@ -125,14 +128,37 @@ compared by accident.
 | `hybrid` (default) | `qmd query --no-rerank` | expansion + RRF fusion | embedding, expansion |
 | `full` | `qmd query` | expansion + fusion + rerank | all three |
 
-Two things to know about the table. `bm25` needs no model at all and is the only
-mode whose empty result is trustworthy: the reranked modes score an off-corpus
-query's nearest document at the same value a genuinely relevant one earns, which
-is why relevance is recomputed here rather than taken from qmd. And
-`--no-rerank` disables the *reranker* only — qmd applies LLM query expansion to
-any single-line query — so `hybrid` and `full` differ by the reranker, and the
-expansion layer is attributed by comparing them against `bm25` and `vector`,
-which run no model over the query.
+### Which mode to run
+
+**`vector` is the recommended mode beside a lexical source, and `hybrid`/`full`
+are not.** Three measured reasons:
+
+- **Only `bm25` and `vector` have an admission floor.** `vector` returns an
+  empty list for a query the corpus has nothing about — a noise query does not
+  clear qmd's own cosine threshold — and its cosine separates: a true paraphrase
+  of a document in the corpus scores 0.42–0.48. `hybrid` and `full` have **no
+  admission floor at all**. Their scores are rank-normalized, so rank 1 is 1.0
+  whatever matched: a nonsense query returns 1.0, 0.5, 0.33 down a list of
+  unrelated documents. Configuring one of them beside a lexical source can flip
+  an honest abstention into a confident answer, and nothing in the candidate list
+  shows it.
+- **Recall's own fusion is the hybrid layer.** Running the lexical adapter and a
+  `vector` qmd source in one profile fuses a full-text list and an embedding list
+  with priors, lineage, and corroboration the core owns and can explain. Asking
+  qmd to fuse them first buys a second, opaque blend of the same two signals.
+- **Latency.** Measured on the home corpus: `full` takes 10.65s against the 5s
+  `DefaultQueryBudget`, so it times out before it answers. `vector` takes about
+  2.4s.
+
+`hybrid` and `full` remain configurable because they are what the mode setting is
+for: they are how a layer's contribution is measured. They are evaluation
+instruments, not a recommended production configuration.
+
+Two more things about the table. `bm25` needs no model at all. And `--no-rerank`
+disables the *reranker* only — qmd applies LLM query expansion to any single-line
+query — so `hybrid` and `full` differ by the reranker, and the expansion layer is
+attributed by comparing them against `bm25` and `vector`, which run no model over
+the query.
 
 The declared `query_modes` follow the mode, so a `bm25` instance does not
 advertise `semantic` and is not eligible for a request it would answer as a
@@ -149,13 +175,36 @@ individual win or loss attributable per query rather than only per run.
 
 ## Relevance, coverage, and freshness
 
-**Relevance is recomputed**, on Recall's one shared definition, over the text qmd
-returned — never taken from qmd's score, which is ordinal, differs in scale per
-mode, and saturates under reranking. It is never omitted: an omitted relevance
-reads as 1.0, the maximum, which would let this source outrank every source that
-reports honestly. It is measured over the returned span rather than the whole
-chunk qmd ranked, because the span is the only text the adapter has; against the
-lexical adapter over one corpus this runs slightly high on long sections.
+**Relevance has two bases, and the mode chooses.** Every search names which one
+produced its numbers in `diagnostics.relevance_basis`, because one source can be
+configured either way and a caller comparing two qmd instances has to know.
+Relevance is never omitted under either: an omitted relevance reads as 1.0, the
+maximum, which would let this source outrank every source that reports honestly.
+
+`vector` mode uses **qmd's cosine similarity**, quantized to four fixed decimals
+and clamped to [0,1] — `relevance_basis: vector_similarity`. This is the one
+place a native score becomes the cross-source comparable field, and it is
+defensible for exactly this one: cosine similarity over a normalized embedding is
+bounded, is the same quantity for every query, and separates, with a noise query
+falling below qmd's own floor rather than arriving with a misleading number.
+Quantization puts sub-grid differences back into the deterministic tie-break chain
+instead of letting a model's eighth decimal decide an order.
+
+Every other mode **recomputes lexically** on Recall's shared definition, over the
+text qmd returned — `relevance_basis: lexical_span`. It is measured over the
+returned span rather than the whole chunk qmd ranked, because the span is the only
+text the adapter has; against the lexical adapter over one corpus this runs
+slightly high on long sections.
+
+The split was forced by a live rollout, and the cost of not having it is worth
+stating. A lexical measure cannot see paraphrase aboutness: coverage times
+concentration over shared query terms is 0 when the question and the answer share
+no words. Recomputing lexically in `vector` mode therefore measured 0 for every
+true paraphrase, and the core's relevance floor withheld precisely the results a
+semantic source exists to surface — the corpus held the answer, qmd found it, and
+it was suppressed for not repeating the question's words. In `hybrid` and `full`
+that measure stays, because there is no admission information in a
+rank-normalized score to replace it with.
 
 **Coverage** is derived from `qmd status`, and the same snapshot answers both a
 search and a health probe:

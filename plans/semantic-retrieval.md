@@ -327,11 +327,50 @@ qwen3-reranker-0.6b-q8_0 + 1.3G qmd-query-expansion-1.7B-q4_k_m ≈ 2.1G).
    ANSI scrub, replay runner via the `replay` settings key). Built-in
    rejected: td's built-in criterion (shared across installs) does not hold;
    external gets `recall doctor --conformance qmd`.
-2. **Relevance: recomputed lexically** over qmd-returned text via
-   `recall.RelevanceOverCounts` — never nil (nil reads as 1.0). This is the
-   admission floor that keeps abstention honest (finding 5). qmd's score
-   goes to `LocalScore`; qmd's ordering to `LocalRank`; `--explain`
-   components into diagnostics.
+2. **Relevance: basis depends on the mode** — never nil either way (nil reads
+   as 1.0). qmd's score still goes to `LocalScore` and qmd's ordering to
+   `LocalRank`; `--explain` components go into diagnostics.
+
+   - `hybrid` and `full`: **recomputed lexically** over qmd-returned text via
+     `recall.RelevanceOverCounts`, as originally decided.
+   - `vector`: **qmd's cosine similarity**, quantized to four fixed decimals
+     and clamped to [0,1], reported as `relevance_basis =
+     "vector_similarity"` in the search diagnostics.
+
+   **Amended 2026-07-29 after the live rollout (td-09f45f, td-74110d).** The
+   original decision was right about `hybrid`/`full` and wrong about
+   `vector`, and both halves were settled by measurement on the clara-home
+   corpus rather than by argument.
+
+   The plan's objection — "QMD returns an RRF score, which is ordinal and
+   uncalibrated" — holds exactly for `query`/`query --no-rerank`. Those
+   scores are RANK-NORMALIZED: rank 1 is 1.0 whatever matched, and the noise
+   queries `kodachrome` and `zxqv` come back at 1.0 / 0.5 / 0.33 down a list
+   of unrelated documents. There is no admission information in them, so
+   those modes keep the lexical recompute. It also follows that `hybrid` and
+   `full` have NO admission floor of their own and can flip an abstention
+   into a confident answer — which is why `vector` is now the recommended
+   mode beside a lexical source, reinforced by latency (`full` 10.65s against
+   the 5s `DefaultQueryBudget`; `vector` ~2.4s) and by the observation that
+   Recall's own fusion already IS the hybrid layer.
+
+   `vsearch` cosine is a different quantity and the objection does not
+   transfer. It is bounded, it means the same thing for every query, and it
+   separates: true paraphrases score 0.42–0.45, while `kodachrome` and `zxqv`
+   do not clear qmd's own floor and return an empty list — so the honest
+   empty result arrives before any number is reported. "Who takes care of my
+   teeth" returns exactly the dentist record at 0.45.
+
+   What forced the amendment is that finding 5's conclusion, applied to
+   `vector`, inverted the epic's purpose. A lexical measure cannot see
+   paraphrase aboutness — coverage times concentration over shared query terms
+   is 0 when the question and the answer share no words — so the recomputed
+   relevance was ~0 on every true paraphrase and the core's relevance floor
+   withheld the dentist candidate with `below_relevance_floor`, verified on
+   the live profile. The corpus held the answer, qmd found it, and it was
+   suppressed for not repeating the question's words. Noise-robustness, which
+   is what the lexical recompute was protecting, is already guaranteed
+   upstream by qmd's own cosine floor.
 3. **Identity:** `source_record_id` = collection-relative path (docs-adapter
    parity); `content_fingerprint` from qmd `docid` where present.
 4. **Locator/expand:** `<relpath>#La-Lb` from `line` + span; `expand` reads

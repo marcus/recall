@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "run_id": "qmd-modes-1785369065898947000",
+  "run_id": "qmd-modes-1785370666088114000",
   "status": "pass",
-  "started_at": "2026-07-29T16:51:05.898947-07:00",
-  "finished_at": "2026-07-29T16:51:05.96319-07:00",
+  "started_at": "2026-07-29T17:17:46.088114-07:00",
+  "finished_at": "2026-07-29T17:17:46.150987-07:00",
   "pack": {
     "pack_id": "qmd-modes",
     "version": "0.1.0",
-    "content_hash": "sha256:dce0d172b19d87ada419dfa66f3895c410eb9a06ddf0294883f48d8b49d4c2e4"
+    "content_hash": "sha256:f150251d6cf316165481e8cf2a78e2e06a02ef489ad0ce167cd9a2e82a2fac2b"
   },
   "environment": {
-    "recall_commit": "73a5e9e",
+    "recall_commit": "f90aa61",
     "dirty": true,
     "profile_hash": "",
     "os": "darwin",
@@ -19,7 +19,7 @@
     "warm": true
   },
   "metrics": {
-    "cases": 8,
+    "cases": 9,
     "overall": {
       "ndcg_at_10": {
         "value": 0.6655544010973397,
@@ -47,11 +47,11 @@
       },
       "abstention_accuracy": {
         "value": 1,
-        "n": 8
+        "n": 9
       },
       "coverage_accuracy": {
         "value": 1,
-        "n": 8
+        "n": 9
       },
       "locator_success": {
         "value": 1,
@@ -63,9 +63,9 @@
       },
       "source_outcome_accuracy": {
         "value": 1,
-        "n": 8
+        "n": 9
       },
-      "cases": 8,
+      "cases": 9,
       "latency": {
         "cold": {
           "n": 0,
@@ -73,9 +73,9 @@
           "p95_ns": 0
         },
         "warm": {
-          "n": 8,
-          "p50_ns": 8346333,
-          "p95_ns": 20335500
+          "n": 9,
+          "p50_ns": 8294584,
+          "p95_ns": 17485875
         }
       }
     },
@@ -108,11 +108,11 @@
           },
           "abstention_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
           "coverage_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
           "locator_success": {
             "value": 0,
@@ -124,9 +124,9 @@
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
-          "cases": 1,
+          "cases": 2,
           "latency": {
             "cold": {
               "n": 0,
@@ -134,9 +134,9 @@
               "p95_ns": 0
             },
             "warm": {
-              "n": 1,
-              "p50_ns": 218125,
-              "p95_ns": 218125
+              "n": 2,
+              "p50_ns": 342542,
+              "p95_ns": 441625
             }
           }
         },
@@ -194,8 +194,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 689542,
-              "p95_ns": 20335500
+              "p50_ns": 1179000,
+              "p95_ns": 17485875
             }
           }
         },
@@ -253,8 +253,8 @@
             },
             "warm": {
               "n": 2,
-              "p50_ns": 591250,
-              "p95_ns": 689542
+              "p50_ns": 754416,
+              "p95_ns": 1179000
             }
           }
         },
@@ -312,8 +312,8 @@
             },
             "warm": {
               "n": 3,
-              "p50_ns": 591250,
-              "p95_ns": 8673750
+              "p50_ns": 754416,
+              "p95_ns": 11495959
             }
           }
         },
@@ -371,8 +371,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 8790333,
-              "p95_ns": 8790333
+              "p50_ns": 8972292,
+              "p95_ns": 8972292
             }
           }
         },
@@ -430,8 +430,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 12284500,
-              "p95_ns": 12284500
+              "p50_ns": 9395084,
+              "p95_ns": 9395084
             }
           }
         },
@@ -462,11 +462,11 @@
           },
           "abstention_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
           "coverage_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
           "locator_success": {
             "value": 1,
@@ -478,9 +478,9 @@
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 1
+            "n": 2
           },
-          "cases": 1,
+          "cases": 2,
           "latency": {
             "cold": {
               "n": 0,
@@ -488,9 +488,9 @@
               "p95_ns": 0
             },
             "warm": {
-              "n": 1,
-              "p50_ns": 8346333,
-              "p95_ns": 8346333
+              "n": 2,
+              "p50_ns": 441625,
+              "p95_ns": 8294584
             }
           }
         },
@@ -548,8 +548,8 @@
             },
             "warm": {
               "n": 5,
-              "p50_ns": 8790333,
-              "p95_ns": 20335500
+              "p50_ns": 9395084,
+              "p95_ns": 17485875
             }
           }
         },
@@ -580,11 +580,11 @@
           },
           "abstention_accuracy": {
             "value": 1,
-            "n": 6
+            "n": 7
           },
           "coverage_accuracy": {
             "value": 1,
-            "n": 6
+            "n": 7
           },
           "locator_success": {
             "value": 1,
@@ -596,9 +596,9 @@
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 6
+            "n": 7
           },
-          "cases": 6,
+          "cases": 7,
           "latency": {
             "cold": {
               "n": 0,
@@ -606,9 +606,9 @@
               "p95_ns": 0
             },
             "warm": {
-              "n": 6,
-              "p50_ns": 8346333,
-              "p95_ns": 12284500
+              "n": 7,
+              "p50_ns": 8294584,
+              "p95_ns": 11495959
             }
           }
         },
@@ -639,11 +639,11 @@
           },
           "abstention_accuracy": {
             "value": 1,
-            "n": 8
+            "n": 9
           },
           "coverage_accuracy": {
             "value": 1,
-            "n": 8
+            "n": 9
           },
           "locator_success": {
             "value": 1,
@@ -655,9 +655,9 @@
           },
           "source_outcome_accuracy": {
             "value": 1,
-            "n": 8
+            "n": 9
           },
-          "cases": 8,
+          "cases": 9,
           "latency": {
             "cold": {
               "n": 0,
@@ -665,9 +665,9 @@
               "p95_ns": 0
             },
             "warm": {
-              "n": 8,
-              "p50_ns": 8346333,
-              "p95_ns": 20335500
+              "n": 9,
+              "p50_ns": 8294584,
+              "p95_ns": 17485875
             }
           }
         }
@@ -776,8 +776,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 689542,
-              "p95_ns": 689542
+              "p50_ns": 1179000,
+              "p95_ns": 1179000
             }
           }
         },
@@ -835,8 +835,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 591250,
-              "p95_ns": 591250
+              "p50_ns": 754416,
+              "p95_ns": 754416
             }
           }
         },
@@ -894,8 +894,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 8790333,
-              "p95_ns": 8790333
+              "p50_ns": 8972292,
+              "p95_ns": 8972292
             }
           }
         },
@@ -953,8 +953,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 12284500,
-              "p95_ns": 12284500
+              "p50_ns": 9395084,
+              "p95_ns": 9395084
             }
           }
         },
@@ -1012,8 +1012,8 @@
             },
             "warm": {
               "n": 1,
-              "p50_ns": 8346333,
-              "p95_ns": 8346333
+              "p50_ns": 8294584,
+              "p95_ns": 8294584
             }
           }
         }
@@ -1113,7 +1113,7 @@
       "name": "p95_latency",
       "status": "pass",
       "threshold": 1500,
-      "observed": 20.3355
+      "observed": 17.485875
     },
     {
       "name": "declared_assertions",

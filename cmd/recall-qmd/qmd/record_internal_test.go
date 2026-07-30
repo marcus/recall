@@ -1,6 +1,7 @@
 package qmd
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -184,6 +185,67 @@ func TestExpandedQueriesDeduplicateAndExcludeTheOriginal(t *testing.T) {
 	for _, entry := range got {
 		if entry["query"] == "who can clean my teeth" {
 			t.Error("the original query was reported as an expansion")
+		}
+	}
+}
+
+// Vector mode carries qmd's cosine similarity as relevance, quantized and
+// clamped. It is the one mode where a native score may become the comparable
+// field, and the reason is that cosine similarity over a normalized embedding is
+// bounded, is the same quantity for every query, and separates: a paraphrase of
+// a document in the corpus scores 0.42-0.48 and a noise query does not clear
+// qmd's own floor at all.
+func TestVectorRelevanceIsQuantizedAndClamped(t *testing.T) {
+	cases := map[float64]float64{
+		0.45:         0.45,
+		0.4499999999: 0.45,
+		0.123456789:  0.1235, // four fixed decimals, rounded
+		0.12344:      0.1234,
+		0:            0,
+		-0.3:         0, // an opposed pair is not negative relevance
+		1:            1,
+		1.4:          1, // clamped rather than trusted
+		math.NaN():   0,
+		math.Inf(1):  1,
+		math.Inf(-1): 0,
+	}
+	for in, want := range cases {
+		if got := vectorRelevance(in); got != want {
+			t.Errorf("vectorRelevance(%v) = %v, want %v", in, got, want)
+		}
+	}
+	// Two scores that differ below the grid must land on one value: letting the
+	// eighth decimal of a model's output decide an order makes a ranking no
+	// fixture can reproduce.
+	if vectorRelevance(0.450001) != vectorRelevance(0.4500049) {
+		t.Error("quantization did not collapse a sub-grid difference")
+	}
+}
+
+// The mode decides the basis, and the basis is named in the search's
+// diagnostics. A source can be configured either way, so a caller comparing two
+// qmd instances is told rather than left to infer it.
+func TestRelevanceBasisFollowsTheMode(t *testing.T) {
+	hit := searchHit{Score: 0.45}
+	terms := queryTerms("dental hygienist")
+	title, body := "Tooth care", "Find a dental hygienist who takes the plan."
+
+	if got := relevanceOf(hit, ModeVector, terms, title, body); got != 0.45 {
+		t.Errorf("vector relevance = %v, want the quantized cosine", got)
+	}
+	if relevanceBasis(ModeVector) != "vector_similarity" {
+		t.Errorf("vector basis = %q", relevanceBasis(ModeVector))
+	}
+	for _, mode := range []Mode{ModeBM25, ModeHybrid, ModeFull} {
+		got := relevanceOf(hit, mode, terms, title, body)
+		if got == 0.45 {
+			t.Errorf("mode %s carried qmd's score into relevance", mode)
+		}
+		if got != spanRelevance(terms, title, body) {
+			t.Errorf("mode %s did not measure lexically: %v", mode, got)
+		}
+		if relevanceBasis(mode) != "lexical_span" {
+			t.Errorf("mode %s basis = %q", mode, relevanceBasis(mode))
 		}
 	}
 }

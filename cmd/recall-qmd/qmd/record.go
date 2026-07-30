@@ -3,6 +3,7 @@ package qmd
 import (
 	"errors"
 	"fmt"
+	"math"
 	"path"
 	"regexp"
 	"strconv"
@@ -212,7 +213,7 @@ func candidateOf(hit searchHit, got span, title, body string, sourceID string,
 	rank int, set Settings, terms []string, revision string) recall.Candidate {
 
 	score := hit.Score
-	relevance := spanRelevance(terms, title, body)
+	relevance := relevanceOf(hit, set.Mode, terms, title, body)
 	docID := strings.TrimPrefix(strings.TrimSpace(hit.DocID), "#")
 
 	candidate := recall.Candidate{
@@ -268,6 +269,80 @@ func contentFingerprint(docID string) string {
 		return ""
 	}
 	return "qmd-docid:" + docID
+}
+
+// relevanceOf is [recall.Candidate.Relevance] for one hit, and which basis it
+// is measured on depends on the mode.
+//
+// This is the one place the modes disagree about something other than speed, so
+// the reasoning is here rather than split across two functions. Both bases are
+// reported in the search's diagnostics as `relevance_basis`, because a caller
+// comparing two qmd sources has to know which number they got.
+//
+// VECTOR MODE uses qmd's cosine similarity, quantized. It is not a native score
+// smuggled into a comparable field: cosine similarity over a normalized
+// embedding is bounded in [0,1], it is the same quantity for every query, and —
+// measured on the live home corpus and reproduced on this package's fixture
+// corpus — it separates. A true paraphrase of a document in the corpus scores
+// 0.42–0.48; a noise query ("kodachrome zxqv") does not clear qmd's own floor at
+// all and returns an empty list, so the honest empty result arrives before this
+// function is ever called. That makes the cosine an admission floor rather than
+// an ordering, which is exactly what [recall.Candidate.Relevance] has to be.
+//
+// EVERY OTHER MODE recomputes lexically, and the plan's objection is the reason:
+// an RRF score is rank-normalized, so rank 1 is 1.0 whatever matched, and a
+// garbage query returns 1.0/0.5/0.33 down an unrelated list. There is no
+// admission information in it to carry.
+//
+// What forced the split was a live rollout, not a preference. Recomputing
+// lexically in vector mode measures 0 for every true paraphrase — coverage times
+// concentration over shared query terms, and a paraphrase shares none — so the
+// core's relevance floor withheld precisely the results this source exists to
+// surface, with the corpus containing the answer and the source having found it.
+// A lexical measure cannot see paraphrase aboutness; using it as the admission
+// floor for a semantic mode was measuring the wrong thing with the right formula.
+func relevanceOf(hit searchHit, mode Mode, terms []string, title, body string) float64 {
+	if mode == ModeVector {
+		return vectorRelevance(hit.Score)
+	}
+	return spanRelevance(terms, title, body)
+}
+
+// relevanceQuantum is the grid recomputed scores are snapped to: four fixed
+// decimals.
+//
+// Quantization is not cosmetic. Two candidates whose similarity differs in the
+// eighth decimal are the same answer, and letting that difference decide an
+// order makes a ranking that no fixture can reproduce and no evaluation can
+// compare — a float that arrives from a model, through JSON, on two machines is
+// not the same float. Snapping to a grid coarser than the noise puts the
+// decision back in the tie-break chain, which is deterministic.
+const relevanceQuantum = 10000
+
+// vectorRelevance turns qmd's cosine similarity into a relevance value.
+//
+// Clamped rather than trusted: the field is specified as [0,1], an embedding
+// backend may report a negative cosine for an opposed pair, and a NaN from a
+// malformed recording must not travel into a ranking comparison.
+func vectorRelevance(cosine float64) float64 {
+	switch {
+	case math.IsNaN(cosine), cosine <= 0:
+		return 0
+	case cosine >= 1:
+		return 1
+	}
+	return math.Round(cosine*relevanceQuantum) / relevanceQuantum
+}
+
+// relevanceBasis names which of the two measures a search used, for diagnostics.
+// The docs adapter states its own basis the same way when it discounts quoted
+// occurrences: it is the difference between a result a source withheld and one
+// it does not hold.
+func relevanceBasis(mode Mode) string {
+	if mode == ModeVector {
+		return "vector_similarity"
+	}
+	return "lexical_span"
 }
 
 // spanRelevance is [recall.Candidate.Relevance] for one hit, recomputed here

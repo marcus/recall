@@ -127,10 +127,15 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	a.noteSuccess(observed)
 
 	diag := map[string]any{
-		"transport":       runner.Kind(),
-		"mode":            string(set.Mode),
-		"collection":      set.Collection,
-		"query_mode":      string(queryModeOf(set.Mode)),
+		"transport":  runner.Kind(),
+		"mode":       string(set.Mode),
+		"collection": set.Collection,
+		"query_mode": string(queryModeOf(set.Mode)),
+		// Which measure the relevance values in this response were produced on.
+		// The two are not interchangeable and one source can be configured
+		// either way, so a caller comparing two qmd instances is told rather
+		// than left to infer it from the mode.
+		"relevance_basis": relevanceBasis(set.Mode),
 		"terms":           len(terms),
 		"results":         len(hits),
 		"index_documents": report.Documents,

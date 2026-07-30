@@ -26,7 +26,7 @@ var record = flag.Bool("record", false, "rewrite recorded conformance responses"
 
 // cases is asserted rather than counted from the directory so that deleting a
 // case fails the test instead of silently shrinking the suite.
-const cases = 14
+const cases = 16
 
 var binPath string
 

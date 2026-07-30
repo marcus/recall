@@ -98,6 +98,11 @@ qmd query --json --explain --no-rerank -n 10 -c fixture -- \
 	"who can clean my teeth" >"$rec/search-hybrid.json" 2>"$rec/progress.txt"
 qmd query --json --explain --no-rerank -n 1 -c fixture -- \
 	"recall adapter model warm up" >"$rec/warm.json" 2>/dev/null
+# Vector mode is the one mode whose own score becomes Recall's relevance, so both
+# ends of its admission floor are recorded: a paraphrase that clears it, and a
+# noise query that does not clear qmd's cosine threshold and comes back as `[]`.
+qmd vsearch --json -n 25 -c fixture -- "who can clean my teeth" >"$rec/vector-paraphrase.json" 2>/dev/null
+qmd vsearch --json -n 25 -c fixture -- "kodachrome zxqv" >"$rec/vector-noise.json" 2>/dev/null
 
 echo "== recording a collection that indexes somewhere else"
 cd "$stage/other-corpus"
@@ -188,6 +193,12 @@ base_rules search-full search-full.json 0
 
 cases_with search-bm25-abstains version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-empty.json:search-empty.json
 base_rules search-bm25-abstains search-empty.json 0
+
+cases_with search-vector-similarity version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt vector-paraphrase.json:vector-paraphrase.json
+base_rules search-vector-similarity vector-paraphrase.json 0
+
+cases_with search-vector-noise version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt vector-noise.json:vector-noise.json
+base_rules search-vector-noise vector-noise.json 0
 
 cases_with search-invalid-response version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt progress.txt:progress.txt
 base_rules search-invalid-response progress.txt 0
