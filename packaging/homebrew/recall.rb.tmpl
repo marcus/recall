@@ -17,14 +17,18 @@ class Recall < Formula
     ].join(" ")
     system "go", "build", *std_go_args(output: bin/"recall", ldflags:), "./cmd/recall"
     system "go", "build", *std_go_args(output: bin/"recall-gmail", ldflags:), "./cmd/recall-gmail"
+    system "go", "build", *std_go_args(output: bin/"recall-qmd", ldflags:), "./cmd/recall-qmd"
     system "go", "build", *std_go_args(output: bin/"recall-stream", ldflags:), "./cmd/recall-stream"
     (share/"recall").install "cmd/recall-gmail/conformance" => "gmail-conformance"
+    (share/"recall").install "cmd/recall-qmd/conformance" => "qmd-conformance"
   end
 
   test do
     assert_match "recall @VERSION@ (homebrew)", shell_output("#{bin}/recall version")
     assert_match "recall-gmail/1 @VERSION@", shell_output("#{bin}/recall-gmail -version")
+    assert_match "recall-qmd/1 @VERSION@", shell_output("#{bin}/recall-qmd -version")
     assert_match "recall-stream/1 @VERSION@", shell_output("#{bin}/recall-stream -version")
     assert_predicate share/"recall/gmail-conformance/handshake/manifest.json", :exist?
+    assert_predicate share/"recall/qmd-conformance/handshake/manifest.json", :exist?
   end
 end
