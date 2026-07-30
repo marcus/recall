@@ -128,6 +128,16 @@ func DegradedReports(reports []recall.SourceReport) []string {
 		if reason == "" {
 			reason = string(r.Outcome)
 		}
+		if r.Timeout != nil {
+			switch r.Timeout.Budget {
+			case recall.TimeoutRequestLatency:
+				reason += fmt.Sprintf(": request latency budget %s", r.Timeout.Limit)
+			case recall.TimeoutSourceLimit:
+				reason += fmt.Sprintf(": source timeout %s", r.Timeout.Limit)
+			case recall.TimeoutAdapterInternal:
+				reason += ": adapter-internal deadline"
+			}
+		}
 		out = append(out, r.SourceID+" ("+reason+")")
 	}
 	return out
@@ -146,7 +156,12 @@ type Target struct {
 	Instance *config.SourceInstance
 	Manifest recall.Manifest
 	Deadline time.Time
-	Limit    int
+	// TimeoutBudget names the configured budget that supplied Deadline.
+	TimeoutBudget recall.TimeoutBudget
+	// TimeoutLimit is that budget's configured duration before the fusion
+	// reserve is applied.
+	TimeoutLimit time.Duration
+	Limit        int
 
 	// Health is what the source reported when eligibility was decided, carried
 	// so that the probe deciding eligibility is the only health probe a request
@@ -236,16 +251,15 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	}
 
 	start := now()
+	queryBudget := time.Duration(req.Budget.LatencyMS) * time.Millisecond
+	if queryBudget <= 0 {
+		queryBudget = DefaultQueryBudget
+	}
 	plan := Plan{
 		Profile:  profile.Name,
 		Reserve:  reserve,
-		Deadline: start.Add(time.Duration(req.Budget.LatencyMS) * time.Millisecond),
+		Deadline: start.Add(queryBudget),
 		Excluded: outside,
-	}
-	if req.Budget.LatencyMS <= 0 {
-		// No stated budget is not the same as no budget: an unbounded query
-		// would make a hung source indistinguishable from a slow one.
-		plan.Deadline = start.Add(DefaultQueryBudget)
 	}
 
 	// Every source is handshaken and probed at once, because a handshake and a
@@ -269,7 +283,8 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			verdicts[i] = r.consider(ctx, req, inst, plan.Deadline, reserve, perSource, now)
+			verdicts[i] = r.consider(
+				ctx, req, inst, plan.Deadline, queryBudget, reserve, perSource, now)
 		}()
 	}
 	wg.Wait()
@@ -483,6 +498,7 @@ func (r *Registry) consider(
 	req recall.QueryRequest,
 	inst *config.SourceInstance,
 	budget time.Time,
+	queryBudget time.Duration,
 	reserve time.Duration,
 	perSource int,
 	now func() time.Time,
@@ -498,7 +514,8 @@ func (r *Registry) consider(
 	if err != nil {
 		return excludeAfterHandshake(ReasonAdapterUnavailable)
 	}
-	deadline := sourceDeadline(now(), budget, reserve, inst.Timeout)
+	deadline, timeoutBudget, timeoutLimit := sourceDeadline(
+		now(), budget, queryBudget, reserve, inst.Timeout)
 	searchReq := recall.SearchRequest{
 		Query:    req.Query,
 		AsOf:     req.AsOf,
@@ -551,13 +568,15 @@ func (r *Registry) consider(
 	return verdict{
 		relevanceBasis: manifest.RelevanceBasis,
 		target: Target{
-			Instance:    inst,
-			Manifest:    manifest,
-			Deadline:    deadline,
-			Limit:       perSource,
-			Health:      health,
-			Request:     searchReq,
-			Preparation: preparation,
+			Instance:      inst,
+			Manifest:      manifest,
+			Deadline:      deadline,
+			TimeoutBudget: timeoutBudget,
+			TimeoutLimit:  timeoutLimit,
+			Limit:         perSource,
+			Health:        health,
+			Request:       searchReq,
+			Preparation:   preparation,
 		},
 	}
 }
@@ -607,14 +626,17 @@ func typesOverlap(req recall.QueryRequest, inst *config.SourceInstance, m recall
 
 // sourceDeadline is the earlier of the source's own timeout and what remains of
 // the request budget once fusion's reserve is held back.
-func sourceDeadline(now, deadline time.Time, reserve, timeout time.Duration) time.Time {
+func sourceDeadline(
+	now, deadline time.Time,
+	queryBudget, reserve, timeout time.Duration,
+) (time.Time, recall.TimeoutBudget, time.Duration) {
 	usable := deadline.Add(-reserve)
 	if timeout > 0 {
 		if own := now.Add(timeout); own.Before(usable) {
-			return own
+			return own, recall.TimeoutSourceLimit, timeout
 		}
 	}
-	return usable
+	return usable, recall.TimeoutRequestLatency, queryBudget
 }
 
 func exclude(inst *config.SourceInstance, reason string, diagnostics map[string]any) recall.SourceReport {

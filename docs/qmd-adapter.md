@@ -107,6 +107,10 @@ collection = "notes"
 mode = "hybrid"
 ```
 
+The adapter manifest declares the effective `settings.binary` value as its
+`qmd` executable requirement. `recall sources` shows it and `recall doctor`
+preflights it; replay mode declares no qmd requirement because it spawns none.
+
 `location` is the corpus directory, and it is checked against the directory the
 named collection actually indexes on **every** operation. A collection
 re-pointed with `qmd collection add` makes the source unavailable and says so,

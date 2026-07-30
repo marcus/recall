@@ -130,7 +130,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	a.lastSuccess = nil
 	a.lastRefresh = ""
 
-	return recall.Manifest{
+	manifest := recall.Manifest{
 		ProtocolVersion: version,
 		AdapterID:       AdapterID,
 		DisplayName:     DisplayName,
@@ -159,7 +159,15 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		FreshnessPolicy: freshnessPolicy(set.Mode),
 		Sensitivity:     recall.SensitivityInternal,
 		SettingsSchema:  settingsSchema(),
-	}, nil
+	}
+	if set.Replay == "" && a.opts.Runner == nil {
+		manifest.ExecutableRequirements = []recall.ExecutableRequirement{{
+			Name:    "qmd",
+			Command: set.Binary,
+			Purpose: "search and refresh the configured qmd collection",
+		}}
+	}
+	return manifest, nil
 }
 
 func queryModes(mode Mode) []recall.QueryMode {
@@ -407,7 +415,7 @@ func (a *Adapter) version(ctx context.Context) string {
 // still answering. The error return is reserved for a refresh that could not be
 // attempted at all.
 func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
-	set, _, _, _, err := a.session()
+	set, _, location, _, err := a.session()
 	if err != nil {
 		if errors.Is(err, adapter.ErrClosed) {
 			return recall.Health{}, err
@@ -426,6 +434,13 @@ func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall
 	if err := ctx.Err(); err != nil {
 		return recall.Health{}, err
 	}
+
+	// Capture the boundary before maintenance. Count watermarks are weak, but
+	// their direction is still useful: a corpus changing during a pass can
+	// leave the post-refresh health partial even though every comparable count
+	// moved forward. That is successful maintenance progress, not healthy query
+	// coverage; the two are reported separately.
+	before, _, beforeErr := a.probeIndex(ctx, location)
 
 	failure := ""
 	for _, step := range a.refreshSteps(set) {
@@ -463,7 +478,47 @@ func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall
 		// healthy would hide a build that is not progressing.
 		health.Status = recall.HealthDegraded
 	}
+	if failure == "" && beforeErr == nil {
+		health.CheckpointProgress = checkpointProgress(before, health)
+		if health.CheckpointProgress == recall.CheckpointRegressed {
+			health.Status = recall.HealthDegraded
+			if health.Diagnostics == nil {
+				health.Diagnostics = map[string]any{}
+			}
+			health.Diagnostics["checkpoint_regression"] =
+				"one or more comparable qmd counts moved backward during refresh"
+		}
+	}
 	return health, nil
+}
+
+// checkpointProgress compares only values qmd reported on both sides. Missing
+// parse data is incomparable and returns the zero value; no caller is allowed
+// to turn unknown counters into progress.
+func checkpointProgress(before indexReport, after recall.Health) recall.CheckpointProgress {
+	if !before.HasCounts || !before.Collection.HasFiles ||
+		after.IndexWatermark == "" ||
+		strings.Contains(after.SourceWatermark, "files=?") {
+		return ""
+	}
+	docs, docsOK := after.Diagnostics["index_documents"].(int)
+	vectors, vectorsOK := after.Diagnostics["index_vectors"].(int)
+	if !docsOK || !vectorsOK {
+		return ""
+	}
+	files := int(after.RecordCount)
+	regressed := files < before.Collection.Files ||
+		docs < before.Documents ||
+		vectors < before.Vectors
+	if regressed {
+		return recall.CheckpointRegressed
+	}
+	if files > before.Collection.Files ||
+		docs > before.Documents ||
+		vectors > before.Vectors {
+		return recall.CheckpointAdvanced
+	}
+	return recall.CheckpointUnchanged
 }
 
 type refreshStep struct {

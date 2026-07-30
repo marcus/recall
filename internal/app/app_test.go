@@ -548,6 +548,57 @@ func TestRefreshAllReportsMixedSourceOutcomesAndKeepsProfileOrder(t *testing.T) 
 	}
 }
 
+func TestRefreshForwardProgressDoesNotRelabelPartialHealth(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].manifest = checkpointManifest()
+		f["fakedocs"].refreshHealth = recall.Health{
+			Status:             recall.HealthDegraded,
+			Coverage:           recall.IndexPartial,
+			CheckpointProgress: recall.CheckpointAdvanced,
+			Diagnostics:        map[string]any{"detail": "one new document arrived during refresh"},
+		}
+	})
+	resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := resp.Sources[0]
+	if got.Status != recall.RefreshSourceRefreshed || resp.Outcome != recall.RefreshSucceeded {
+		t.Fatalf("refresh response = %+v", resp)
+	}
+	if got.Health == nil || got.Health.Status != recall.HealthDegraded ||
+		got.Health.Coverage != recall.IndexPartial {
+		t.Fatalf("attached health = %+v, want degraded partial", got.Health)
+	}
+	if got.DiagnosticDetail != "one new document arrived during refresh" {
+		t.Fatalf("diagnostic detail = %q", got.DiagnosticDetail)
+	}
+}
+
+func TestRefreshDoesNotAcceptNonAdvancingPartialHealth(t *testing.T) {
+	for _, progress := range []recall.CheckpointProgress{
+		"", recall.CheckpointUnchanged, recall.CheckpointRegressed,
+	} {
+		t.Run(string(progress), func(t *testing.T) {
+			h := newHarness(t, func(f map[string]*fake) {
+				f["fakedocs"].manifest = checkpointManifest()
+				f["fakedocs"].refreshHealth = recall.Health{
+					Status: recall.HealthDegraded, Coverage: recall.IndexPartial,
+					CheckpointProgress: progress,
+				}
+			})
+			resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: "docs"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.Sources[0].Status != recall.RefreshSourceDegraded ||
+				resp.Outcome != recall.RefreshDegraded {
+				t.Fatalf("progress %q response = %+v", progress, resp)
+			}
+		})
+	}
+}
+
 func TestRefreshTargetRejectsUnsupportedAndUnknownSourcesSemantically(t *testing.T) {
 	h := newHarness(t, nil)
 	for _, sourceID := range []string{"tasks", "missing"} {
@@ -850,11 +901,59 @@ func TestSlowSourceTimesOutWithoutHoldingTheRequest(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Errorf("query took %v against a 200ms budget", elapsed)
 	}
-	if rep := reportFor(t, resp, "tasks"); rep.Outcome.Searched() {
+	rep := reportFor(t, resp, "tasks")
+	if rep.Outcome.Searched() {
 		t.Errorf("tasks outcome = %s, want a failure", rep.Outcome)
+	}
+	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutRequestLatency ||
+		rep.Timeout.Limit != 200*time.Millisecond {
+		t.Fatalf("timeout detail = %+v, want the 200ms request latency budget", rep.Timeout)
+	}
+	if got := source.DegradedReports(resp.SourceOutcomes); len(got) == 0 ||
+		!strings.Contains(got[0], "request latency budget 200ms") {
+		t.Fatalf("degraded reports = %v", got)
 	}
 	if resp.Coverage != recall.CoverageDegraded {
 		t.Errorf("coverage = %s, want degraded", resp.Coverage)
+	}
+}
+
+func TestTimeoutNamesTheConfiguredSourceBudgetWhenItIsEarlier(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].delay = time.Second
+	})
+	inst, ok := h.config.Source("tasks")
+	if !ok {
+		t.Fatal("tasks source missing")
+	}
+	inst.Timeout = 40 * time.Millisecond
+
+	req := query("anything")
+	req.Budget.LatencyMS = 1000
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutSourceLimit ||
+		rep.Timeout.Limit != 40*time.Millisecond {
+		t.Fatalf("timeout detail = %+v, want the 40ms source timeout", rep.Timeout)
+	}
+}
+
+func TestTimeoutDoesNotBlameCoreBudgetsForAnEarlierAdapterDeadline(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].searchErr = context.DeadlineExceeded
+	})
+	req := query("anything")
+	req.Budget.LatencyMS = 1000
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutAdapterInternal {
+		t.Fatalf("timeout detail = %+v, want adapter_internal", rep.Timeout)
 	}
 }
 

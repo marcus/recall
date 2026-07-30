@@ -79,6 +79,41 @@ func TestSchemaAndParserAgree(t *testing.T) {
 	}
 }
 
+func TestManifestDeclaresTheEffectiveExecutable(t *testing.T) {
+	root := corpus(t)
+	a := qmd.New(qmd.Options{})
+	manifest, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1, Workdir: t.TempDir(),
+		SourceID: "qmd", Location: root,
+		Settings: map[string]any{"collection": "fixture", "binary": "/opt/tools/qmd"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if got := manifest.ExecutableRequirements; len(got) != 1 ||
+		got[0].Name != "qmd" || got[0].Command != "/opt/tools/qmd" {
+		t.Fatalf("executable requirements = %+v", got)
+	}
+}
+
+func TestReplayManifestDeclaresNoExecutable(t *testing.T) {
+	dir := replayPack(t, "[]")
+	a := qmd.New(qmd.Options{})
+	manifest, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1, Workdir: t.TempDir(),
+		SourceID: "qmd", Location: filepath.Join(dir, qmd.ReplayCorpusDir),
+		Settings: map[string]any{"collection": "fixture", "replay": dir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if len(manifest.ExecutableRequirements) != 0 {
+		t.Fatalf("replay requirements = %+v, want none", manifest.ExecutableRequirements)
+	}
+}
+
 // The collection is required and never guessed from the location's base name: a
 // guessed name would search whichever corpus happened to carry it.
 func TestCollectionIsRequired(t *testing.T) {

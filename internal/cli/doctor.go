@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
 
@@ -25,6 +26,7 @@ Check everything that has to be true before a query means anything:
                    may declare
   identity         every source has a source_uid, and no two share one
   access           every eligible filesystem location can be read
+  requirements     every adapter-declared executable is available
   health           every eligible source can be reached and is usable
   serving          every source that answered is serving its whole corpus,
                    rather than a stale or partial one
@@ -103,6 +105,7 @@ const (
 	checkTrust         = "trust_boundary"
 	checkIdentity      = "identity"
 	checkAccess        = "access"
+	checkRequirements  = "requirements"
 	checkHealth        = "health"
 	checkServing       = "serving"
 	checkIsolation     = "store_isolation"
@@ -200,7 +203,7 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 	cfg, err := env.load()
 	if err != nil {
 		d.add(loadFailure(err)...)
-		for _, name := range []string{checkAccess, checkHealth, checkFreshness, checkLineage} {
+		for _, name := range []string{checkAccess, checkRequirements, checkHealth, checkFreshness, checkLineage} {
 			d.add(Check{
 				Name:   name,
 				Status: CheckSkipped,
@@ -220,7 +223,7 @@ func diagnose(ctx context.Context, env Env, profileName string) Diagnosis {
 			Status:   CheckFail,
 			Problems: []Problem{{Message: err.Error()}},
 		})
-		for _, name := range []string{checkHealth, checkFreshness, checkLineage} {
+		for _, name := range []string{checkRequirements, checkHealth, checkFreshness, checkLineage} {
 			d.add(Check{Name: name, Status: CheckSkipped, Detail: "ranking configuration is invalid"})
 		}
 		return d.finish()
@@ -245,7 +248,7 @@ func diagnoseRuntime(ctx context.Context, cfg *config.Config, rt *runtime) Diagn
 			Status:   CheckFail,
 			Problems: []Problem{{Message: err.Error()}},
 		})
-		for _, name := range []string{checkHealth, checkFreshness, checkLineage} {
+		for _, name := range []string{checkRequirements, checkHealth, checkFreshness, checkLineage} {
 			d.add(Check{Name: name, Status: CheckSkipped, Detail: "no active profile"})
 		}
 		return d.finish()
@@ -255,7 +258,8 @@ func diagnoseRuntime(ctx context.Context, cfg *config.Config, rt *runtime) Diagn
 	d.add(accessCheck(eligible))
 
 	health, manifests, healths := healthCheck(ctx, rt, eligible)
-	d.add(health, servingCheck(eligible, manifests, healths), isolationCheck(eligible, healths),
+	d.add(requirementsCheck(eligible, manifests), health,
+		servingCheck(eligible, manifests, healths), isolationCheck(eligible, healths),
 		freshnessCheck(cfg, eligible, manifests), lineageCheck(cfg, manifests),
 		abstentionCheck(ctx, rt.app, rt.profile, cfg.Evaluation.MustAbstain))
 	return d.finish()
@@ -545,6 +549,37 @@ func accessCheck(sources []*config.SourceInstance) Check {
 		fmt.Sprintf("%d of %d eligible sources name a local path", checked, len(sources)), problems)
 }
 
+// requirementsCheck preflights programs declared by adapter manifests. The
+// core does not know that qmd uses qmd or Gmail uses gog; it knows only the
+// generic executable contract each configured adapter instance returned.
+func requirementsCheck(
+	sources []*config.SourceInstance,
+	manifests map[string]recall.Manifest,
+) Check {
+	var problems []Problem
+	checked := 0
+	for _, s := range sources {
+		manifest, ok := manifests[s.ID]
+		if !ok {
+			continue
+		}
+		for _, req := range manifest.ExecutableRequirements {
+			checked++
+			if _, err := exec.LookPath(req.Command); err != nil {
+				problems = append(problems, Problem{
+					SourceID: s.ID,
+					Key:      "executable_requirements",
+					Message: fmt.Sprintf(
+						"adapter %s needs %s executable %q, but it is unavailable: %v",
+						s.Adapter, req.Name, req.Command, err),
+				})
+			}
+		}
+	}
+	return finishCheck(checkRequirements,
+		fmt.Sprintf("%d executable requirements declared by eligible sources", checked), problems)
+}
+
 // healthCheck contacts every eligible source. An unreachable source is a
 // failure here so that it is a failure before a query, not a degraded answer
 // during one.
@@ -563,6 +598,9 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 
 	for _, s := range sources {
 		manifest, health, err := rt.probe(ctx, s)
+		if manifest.AdapterID != "" {
+			manifests[s.ID] = manifest
+		}
 		switch {
 		case err != nil:
 			problems = append(problems, Problem{
@@ -577,11 +615,10 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 			})
 			continue
 		}
-		manifests[s.ID] = manifest
 		healths[s.ID] = health
 	}
 	return finishCheck(checkHealth,
-		fmt.Sprintf("%d of %d eligible sources answered a health probe", len(manifests), len(sources)),
+		fmt.Sprintf("%d of %d eligible sources answered a health probe", len(healths), len(sources)),
 		problems), manifests, healths
 }
 

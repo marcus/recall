@@ -121,6 +121,9 @@ max_concurrency      optional, default unbounded
 freshness_policy     expected refresh or verification behavior
 sensitivity          default classification floor
 settings_schema      JSON Schema for the instance's settings block
+executable_requirements
+                     optional external programs this configured instance
+                     invokes: stable name, effective command, optional purpose
 ```
 
 `settings_schema` arrives in the initialize *result*, after the core has
@@ -131,6 +134,9 @@ validates against the schema it already holds on every later handshake, and
 
 The manifest describes the adapter's capabilities. Identity, priors, and
 policy come from configuration; an adapter never names its own `source_uid`.
+`recall sources` exposes executable requirements and `recall doctor` checks
+each effective command before a query needs it. Replay-backed adapters omit
+requirements they do not actually invoke.
 
 ## Health
 
@@ -153,12 +159,15 @@ indexed_count        records represented by the current index
 failed_count         records rejected or not indexed
 coverage             complete | partial | unknown
 diagnostics          safe operational detail
+checkpoint_progress  advanced | unchanged | regressed, only on refresh when
+                     the adapter compared both boundaries
 ```
 
 An unavailable source never looks like a successful search with zero matches.
 A partial source or index reports `healthy` only when its declared freshness
 policy permits that exact partial boundary. A recent index timestamp alone is
-not health.
+not health. Checkpoint progress is deliberately separate: a refresh can move a
+partial index forward without making that index complete enough for a query.
 
 ### `store_identity`
 

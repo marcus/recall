@@ -139,6 +139,23 @@ func TestInitializeDeclaresFirstPartyGmailContract(t *testing.T) {
 	}
 }
 
+func TestManifestDeclaresTheEffectiveGogExecutable(t *testing.T) {
+	a := New(Options{})
+	manifest, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1,
+		SourceID: "mail", Location: "owner@example.test",
+		Settings: map[string]any{"gog_binary": "/opt/tools/gog"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if got := manifest.ExecutableRequirements; len(got) != 1 ||
+		got[0].Name != "gog" || got[0].Command != "/opt/tools/gog" {
+		t.Fatalf("executable requirements = %+v", got)
+	}
+}
+
 func TestInitializeAcceptsLegacyGoogleURIAndRejectsAmbiguousInput(t *testing.T) {
 	for _, location := range []string{"owner@example.test", "google://owner@example.test"} {
 		a := New(Options{Runner: &fakeRunner{}})

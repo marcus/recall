@@ -57,6 +57,9 @@ func TestGoTypesSatisfyTheirSchemas(t *testing.T) {
 				Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 				MaxConcurrency:  1,
 				Sensitivity:     recall.SensitivityInternal,
+				ExecutableRequirements: []recall.ExecutableRequirement{{
+					Name: "td", Command: "/opt/tools/td", Purpose: "read the task store",
+				}},
 			},
 		},
 		{
@@ -117,10 +120,11 @@ func TestGoTypesSatisfyTheirSchemas(t *testing.T) {
 		{
 			name: "health result", method: protocol.MethodHealth, result: true,
 			value: recall.Health{
-				Status:    recall.HealthHealthy,
-				CheckedAt: now,
-				Coverage:  recall.IndexComplete,
-				ColdStart: 42 * time.Millisecond,
+				Status:             recall.HealthHealthy,
+				CheckedAt:          now,
+				Coverage:           recall.IndexComplete,
+				CheckpointProgress: recall.CheckpointAdvanced,
+				ColdStart:          42 * time.Millisecond,
 			},
 		},
 		{

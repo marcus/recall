@@ -43,8 +43,7 @@ const (
 )
 
 // RefreshReason is the closed, machine-actionable reason a source did not
-// refresh. Adapter error prose is intentionally not exposed through a host
-// surface.
+// refresh. Safe adapter diagnostic detail is carried separately.
 type RefreshReason string
 
 const (
@@ -83,6 +82,9 @@ type RefreshSourceOutcome struct {
 	Reason RefreshReason `json:"reason,omitempty"`
 	// Health is the post-refresh health when the adapter produced one.
 	Health *Health `json:"health,omitempty"`
+	// DiagnosticDetail is the adapter's safe, actionable health detail when it
+	// supplied one.
+	DiagnosticDetail string `json:"diagnostic_detail,omitempty"`
 	// Elapsed is this source's refresh duration.
 	Elapsed time.Duration `json:"elapsed_ns,omitempty"`
 }

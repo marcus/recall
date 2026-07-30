@@ -108,7 +108,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	a.runner = runner
 	a.lastSuccess = nil
 
-	return recall.Manifest{
+	manifest := recall.Manifest{
 		ProtocolVersion: version,
 		AdapterID:       AdapterID,
 		DisplayName:     DisplayName,
@@ -128,7 +128,15 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 			"mail corpus, while browse, recency, and pagination boundaries report partial coverage",
 		Sensitivity:    recall.SensitivityConfidential,
 		SettingsSchema: settingsSchema(),
-	}, nil
+	}
+	if set.Replay == "" && a.opts.Runner == nil {
+		manifest.ExecutableRequirements = []recall.ExecutableRequirement{{
+			Name:    "gog",
+			Command: set.GogBinary,
+			Purpose: "read the configured Gmail account",
+		}}
+	}
+	return manifest, nil
 }
 
 func (a *Adapter) Close() error {

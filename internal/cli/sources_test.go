@@ -14,8 +14,12 @@ import (
 // evidence. A healthy index can still be stale, which is why the generation and
 // the watermarks travel with the status rather than a single "ok".
 func TestSourcesHumanAndJSONCarryTheSameFacts(t *testing.T) {
+	m := manifest()
+	m.ExecutableRequirements = []recall.ExecutableRequirement{{
+		Name: "qmd", Command: "/opt/tools/qmd",
+	}}
 	docs := &fake{
-		manifest: manifest(),
+		manifest: m,
 		health: recall.Health{
 			Status:          recall.HealthHealthy,
 			Coverage:        recall.IndexComplete,
@@ -45,6 +49,10 @@ func TestSourcesHumanAndJSONCarryTheSameFacts(t *testing.T) {
 		t.Fatalf("listed %d sources, want 2", len(listing.Sources))
 	}
 	got := listing.Sources[0]
+	if len(got.ExecutableRequirements) != 1 ||
+		got.ExecutableRequirements[0].Command != "/opt/tools/qmd" {
+		t.Fatalf("JSON executable requirements = %+v", got.ExecutableRequirements)
+	}
 	facts := map[string]string{
 		"profile":          listing.Profile,
 		"source id":        got.SourceID,
@@ -58,6 +66,7 @@ func TestSourcesHumanAndJSONCarryTheSameFacts(t *testing.T) {
 		"index model":      got.Health.IndexModel,
 		"index config":     got.Health.IndexConfig,
 		"watermark":        got.Health.SourceWatermark,
+		"requirement":      "/opt/tools/qmd",
 	}
 	for what, want := range facts {
 		if want == "" {

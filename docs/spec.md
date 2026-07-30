@@ -375,7 +375,11 @@ source_deadline = min(source.timeout_ms, deadline - fusion_reserve - now)
 
 A source whose deadline has already elapsed is skipped and reported; coverage
 becomes degraded. Late results are discarded, never attached to a later
-request. Timed-out sources report `timeout`, never empty success.
+request. Timed-out sources report `timeout`, never empty success, and the
+source report names whether the effective deadline came from the request
+latency budget or `source.timeout_ms`. If an adapter returns a timeout before
+that effective deadline fires, the report says `adapter_internal` instead of
+blaming either core budget.
 
 ### Response Budget
 
@@ -846,6 +850,12 @@ serves `recall/refresh`, which is the contract's only entry point for building
 one outside the handshake. It also reports `index_config`, identifying the
 retrieval configuration a generation was built under, so a scoring change
 cannot alter results with nothing recording it.
+
+A refresh may report monotonic checkpoint progress separately from health.
+Successful comparable counters that advance with none regressing make the
+maintenance operation successful even when a source changed during the pass;
+the attached health and coverage remain partial until the index converges.
+Unknown, unchanged, regressed, or failed boundaries never qualify as progress.
 
 Adapters receive a writable `workdir` at handshake for index storage. Recall
 never resurfaces a record its source no longer contains, except through a

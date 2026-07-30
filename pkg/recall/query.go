@@ -305,6 +305,28 @@ type SourceReport struct {
 
 	// Diagnostics carries safe source-specific detail.
 	Diagnostics map[string]any `json:"diagnostics,omitempty"`
+
+	// Timeout identifies the budget whose deadline ended this source search.
+	Timeout *TimeoutDetail `json:"timeout,omitempty"`
+}
+
+// TimeoutBudget names the budget that supplied a search's effective deadline.
+type TimeoutBudget string
+
+const (
+	TimeoutRequestLatency TimeoutBudget = "request_latency"
+	TimeoutSourceLimit    TimeoutBudget = "source_timeout"
+	// TimeoutAdapterInternal means the adapter ended its work on a private
+	// inner deadline before the core's effective source deadline fired.
+	TimeoutAdapterInternal TimeoutBudget = "adapter_internal"
+)
+
+// TimeoutDetail makes a timeout attributable without requiring callers to
+// infer which configured budget was smaller.
+type TimeoutDetail struct {
+	Budget   TimeoutBudget `json:"budget"`
+	Limit    time.Duration `json:"limit_ns,omitempty"`
+	Deadline *time.Time    `json:"deadline,omitempty"`
 }
 
 // Plan is the resolved retrieval plan that produced a response. It is returned

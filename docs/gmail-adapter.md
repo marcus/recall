@@ -99,6 +99,10 @@ recall sources --profile personal
 recall query "dentist referral" --profile personal
 ```
 
+The adapter manifest declares the effective `gog_binary` value as its `gog`
+executable requirement. `recall sources` shows it and `recall doctor`
+preflights it; replay mode declares no gog requirement because it spawns none.
+
 ## Default corpus and precision escape hatch
 
 The default `scope_query` is:

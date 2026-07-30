@@ -91,6 +91,37 @@ freshness_modes = ["live"]
 	}
 }
 
+func TestDoctorPreflightsAdapterDeclaredExecutables(t *testing.T) {
+	m := manifest()
+	m.ExecutableRequirements = []recall.ExecutableRequirement{{
+		Name: "qmd", Command: "recall-test-definitely-missing-qmd",
+	}}
+	h := newHarness(t, harnessOptions{
+		userTOML: twoSourceTOML,
+		adapters: fakeAdapters(map[string]*fake{
+			"fakedocs":  {manifest: m},
+			"faketasks": {manifest: manifest()},
+		}),
+	})
+
+	code, stdout, _ := h.run("doctor")
+	if code != cli.ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, cli.ExitError, stdout)
+	}
+	contains(t, stdout, "requirements", "the failing preflight is a named check")
+	contains(t, stdout, `adapter fakedocs needs qmd executable "recall-test-definitely-missing-qmd"`,
+		"doctor reports the manifest-declared dependency without hardcoding qmd")
+
+	_, stdout, _ = h.run("doctor", "--json")
+	var d cli.Diagnosis
+	if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkStatus(t, d, "requirements"); got != cli.CheckFail {
+		t.Fatalf("requirements check = %q, want fail\n%s", got, stdout)
+	}
+}
+
 // A sound installation passes every check, and says which ones it ran. A
 // doctor that reported nothing would be indistinguishable from one that
 // checked nothing.
@@ -111,7 +142,7 @@ func TestDoctorPassesAndNamesEveryCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"configuration", "trust_boundary", "identity", "access", "health",
+		"configuration", "trust_boundary", "identity", "access", "requirements", "health",
 		"serving", "store_isolation", "freshness", "lineage",
 	} {
 		if got := checkStatus(t, d, want); got != cli.CheckPass {

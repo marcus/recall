@@ -117,6 +117,10 @@ func (a *App) initializeAndRefreshOne(
 	out.Elapsed = a.now().Sub(started)
 	if health.Status != "" {
 		out.Health = &health
+		out.DiagnosticDetail, _ = health.Diagnostics["detail"].(string)
+		if out.DiagnosticDetail == "" {
+			out.DiagnosticDetail, _ = health.Diagnostics["last_refresh_error"].(string)
+		}
 	}
 	if err != nil {
 		out.Status = recall.RefreshSourceFailed
@@ -127,8 +131,16 @@ func (a *App) initializeAndRefreshOne(
 	case recall.HealthHealthy:
 		out.Status = recall.RefreshSourceRefreshed
 	case recall.HealthDegraded:
-		out.Status = recall.RefreshSourceDegraded
-		out.Reason = recall.RefreshUnhealthy
+		if health.CheckpointProgress == recall.CheckpointAdvanced {
+			// The maintenance operation moved comparable checkpoint counters
+			// forward without regression. Keep the attached partial health
+			// honest for queries, but do not call successful progress a failed
+			// scheduler pass.
+			out.Status = recall.RefreshSourceRefreshed
+		} else {
+			out.Status = recall.RefreshSourceDegraded
+			out.Reason = recall.RefreshUnhealthy
+		}
 	default:
 		out.Status = recall.RefreshSourceFailed
 		out.Reason = recall.RefreshUnhealthy

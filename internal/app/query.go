@@ -203,6 +203,7 @@ type searchResult struct {
 	elapsed  time.Duration
 	health   recall.Health
 	err      error
+	timeout  *recall.TimeoutDetail
 }
 
 // fanOut asks every eligible source concurrently, each under its own deadline.
@@ -246,6 +247,16 @@ func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 	} else {
 		res.response, res.err = adp.Search(ctx, t.Request)
 		res.elapsed = a.now().Sub(started)
+	}
+	if res.response.Outcome == recall.SearchTimeout || timeoutError(res.err) {
+		if ctx.Err() == nil {
+			res.timeout = &recall.TimeoutDetail{Budget: recall.TimeoutAdapterInternal}
+		} else {
+			deadline := t.Deadline
+			res.timeout = &recall.TimeoutDetail{
+				Budget: t.TimeoutBudget, Limit: t.TimeoutLimit, Deadline: &deadline,
+			}
+		}
 	}
 	if res.response.Outcome == recall.SearchSkipped {
 		// Skipping means the adapter did not answer this constrained question.
@@ -385,6 +396,7 @@ func reports(plan source.Plan, results []searchResult) []recall.SourceReport {
 		if r.err != nil && rep.Reason == "" {
 			rep.Reason = classify(r.err)
 		}
+		rep.Timeout = r.timeout
 		out = append(out, rep)
 	}
 	return append(out, plan.Excluded...)
@@ -484,6 +496,16 @@ func classify(err error) string {
 	default:
 		return "failed"
 	}
+}
+
+func timeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var call *protocol.CallTimeout
+	return errors.As(err, &call) ||
+		errors.Is(err, protocol.ErrDeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded)
 }
 
 var _ lineage.Resolver = (*config.Config)(nil)

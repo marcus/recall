@@ -6,6 +6,30 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- Adapter manifests can declare effective external executable requirements.
+  `recall sources` exposes them in both output tiers, and `recall doctor`
+  preflights the declared command without hardcoding adapter-specific tools.
+  The first-party qmd and Gmail adapters declare their configured `qmd` and
+  `gog` commands respectively; replay-backed instances declare none.
+- Timed-out source reports now identify whether the end-to-end request latency
+  budget or the configured per-source timeout supplied the deadline, and say
+  `adapter_internal` when an adapter's own earlier deadline fired.
+
+### Fixed
+
+- `recall refresh` now prints the actionable health diagnostic detail it
+  already returned in structured health, and exposes the same detail as the
+  typed `diagnostic_detail` field.
+- A successful qmd refresh whose comparable file, document, and vector counts
+  move only forward is reported as refreshed even if a concurrently changing
+  corpus leaves its attached health partial. The health remains degraded for
+  query honesty; unchanged, regressed, failed, and incomparable checkpoints
+  still degrade the refresh.
+
 ## [0.3.1] - 2026-07-30
 
 ### Fixed

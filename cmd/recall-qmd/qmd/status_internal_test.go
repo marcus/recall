@@ -3,6 +3,8 @@ package qmd
 import (
 	"strings"
 	"testing"
+
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // qmd 2.5.3 accepts `--format json` on `status`, `collection show`, and
@@ -166,6 +168,68 @@ func TestWatermarksCarryNothingMachineLocal(t *testing.T) {
 	}
 	if indexGeneration("2.5.3", first, set) == indexGeneration("2.6.0", first, set) {
 		t.Error("a qmd upgrade did not start a new generation")
+	}
+}
+
+func TestCheckpointProgressRequiresMonotonicComparableCounts(t *testing.T) {
+	before := indexReport{
+		Documents: 135, Vectors: 210, HasCounts: true,
+		Collection: collectionStatus{Files: 135, HasFiles: true},
+	}
+	cases := []struct {
+		name  string
+		after recall.Health
+		want  recall.CheckpointProgress
+	}{
+		{
+			name: "advanced while still partial",
+			after: recall.Health{
+				RecordCount: 136, SourceWatermark: "collection=fixture files=136",
+				IndexWatermark: "docs=136 vectors=210",
+				Diagnostics:    map[string]any{"index_documents": 136, "index_vectors": 210},
+			},
+			want: recall.CheckpointAdvanced,
+		},
+		{
+			name: "unchanged",
+			after: recall.Health{
+				RecordCount: 135, SourceWatermark: "collection=fixture files=135",
+				IndexWatermark: "docs=135 vectors=210",
+				Diagnostics:    map[string]any{"index_documents": 135, "index_vectors": 210},
+			},
+			want: recall.CheckpointUnchanged,
+		},
+		{
+			name: "regressed",
+			after: recall.Health{
+				RecordCount: 135, SourceWatermark: "collection=fixture files=135",
+				IndexWatermark: "docs=134 vectors=210",
+				Diagnostics:    map[string]any{"index_documents": 134, "index_vectors": 210},
+			},
+			want: recall.CheckpointRegressed,
+		},
+		{
+			name: "unknown parse",
+			after: recall.Health{
+				RecordCount: 136, SourceWatermark: "collection=fixture files=136",
+				IndexWatermark: "docs=136 vectors=210",
+				Diagnostics:    map[string]any{"index_documents": 136},
+			},
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := checkpointProgress(before, tc.after); got != tc.want {
+				t.Fatalf("progress = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	incomparable := before
+	incomparable.HasCounts = false
+	if got := checkpointProgress(incomparable, cases[0].after); got != "" {
+		t.Fatalf("incomparable progress = %q, want omitted", got)
 	}
 }
 
