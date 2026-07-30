@@ -1,9 +1,23 @@
 package recall
 
-// Relevance is the one definition of [Candidate.Relevance], kept here rather
-// than in each adapter because a number is only comparable across sources if
-// every source computes it the same way. An adapter that needs a different
-// rule needs a different field, not a different formula behind this one.
+// Relevance is the baseline definition of [Candidate.Relevance], kept here
+// rather than in each adapter because a number is only comparable across sources
+// if every source computes it the same way.
+//
+// A source may nevertheless report a different basis, and one first-party adapter
+// does: recall-qmd in vector mode reports a quantized embedding cosine, because
+// this definition measures 0 for every true paraphrase and a semantic source
+// scored that way is withheld by the relevance floor on exactly the questions it
+// exists to answer. Such a source must declare its basis.
+//
+// A declared basis is admissible against the floor and orders that source's own
+// candidates correctly. It is NOT comparable with a number computed here, and
+// that is measured rather than feared: over one corpus and one passage this
+// definition put the answering passage at 0.9288 and a merely adjacent one at
+// 0.5114, while a cosine put the same answering passage at 0.5600. Anything that
+// reads two such numbers as commensurable will be wrong in a direction that
+// always favours the lexical source. See docs/adapter-protocol.md, "A declared
+// basis, and what it does not promise".
 
 // ConcentrationReference is the term density at which concentration reaches
 // one half: one matched occurrence in fifty terms.

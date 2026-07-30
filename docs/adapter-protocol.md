@@ -313,8 +313,9 @@ compared across sources.
 
 ### relevance
 
-`relevance` IS compared across sources, and that is possible only because what
-is fixed is the definition rather than the scale:
+`relevance` is the one relevance signal fusion compares across sources, and the
+lexical definition below is the baseline that makes the comparison mean
+something: what is fixed is the definition rather than the scale.
 
 ```text
 relevance = coverage * concentration
@@ -342,6 +343,35 @@ breaks them reports a number that is no longer comparable:
   about it.
 - a source that cannot measure its own length omits the field rather than
   guessing.
+
+#### A declared basis, and what it does not promise
+
+A source may compute `relevance` on a different basis, and one first-party
+adapter does: `recall-qmd` in `mode = vector` reports a quantized embedding
+cosine, because a lexical measure is 0 for every true paraphrase and a semantic
+source measured that way is withheld by the floor on exactly the questions it
+exists to answer. A source doing this must DECLARE the basis — `recall-qmd`
+reports `relevance_basis` in its search diagnostics — because a number whose
+basis is unstated cannot be reasoned about at all.
+
+What a declared basis buys, and what it does not:
+
+- **Admissible.** The value is a number in [0,1] and the relevance floor applies
+  to it unchanged, so the source can be admitted or withheld like any other.
+- **Usable for ordering within the source.** Fusion multiplies it in, so it
+  orders that source's own candidates against each other correctly.
+- **NOT comparable with a lexical score.** This is measured, not theoretical.
+  Over one corpus and one passage, the lexical basis put the answering passage at
+  0.9288 and a merely adjacent passage at 0.5114, while the cosine basis put the
+  SAME answering passage at 0.5600. The two bases occupy different ranges, so in
+  a mixed profile the declared-basis source is systematically discounted — here
+  by roughly 40% for the same document. Nothing in the core detects or corrects
+  this.
+
+So a declared basis is a local improvement bought at the cost of the property
+this section opens with. Prefer the lexical definition. Depart from it only when
+the lexical number is provably wrong for the source's retrieval — and say so in
+the adapter's documentation, not only in a diagnostic.
 
 Omitting it is allowed, and the core reads a silent source as **1.0, the
 maximum**. That keeps an existing adapter working unchanged across this

@@ -1014,6 +1014,18 @@ expressed in `relevance` because that is the only cross-source-comparable
 relevance signal fusion may read (§2); a floor on a fused score is forbidden
 for the reason abstention is, since those scores are ordinal and uncalibrated.
 
+One floor, two bases. A source may declare that it computes `relevance` on a
+basis other than the lexical definition, and the floor still applies to it
+unchanged — the value is a number in [0,1] and the rule is a comparison. What the
+floor stops meaning is the same thing for every source in the profile: the
+declared-basis source's numbers occupy a different range, measured at roughly a
+40% discount against lexical scores for one identical passage, so one configured
+threshold is simultaneously strict for it and lenient for the others. A profile
+mixing bases should expect the semantic source to be withheld first, and a floor
+tuned on a lexical profile is not tuned for a mixed one. The core neither detects
+nor corrects the difference; the honest reading of a mixed profile's floor is
+that it is per-source policy expressed as one number.
+
 It is a selection policy over clusters and not an admission rule over
 candidates, and the distinction is load-bearing: a record the caller will not
 see still carries information about the records they will — its view of a
