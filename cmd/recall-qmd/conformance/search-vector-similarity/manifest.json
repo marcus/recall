@@ -1,6 +1,6 @@
 {
   "case": "search-vector-similarity",
-  "description": "mode=vector carries qmd's cosine similarity into relevance, quantized to four fixed decimals, while local_score keeps the raw number and local_rank keeps qmd's order. The query is a paraphrase sharing not one term with the document that answers it: the lexical basis measures 0 for it and the core's relevance floor withholds it, which is why this one mode measures relevance on the embedding instead. diagnostics.relevance_basis names which measure produced the number.",
+  "description": "mode=vector carries qmd's cosine similarity into relevance, quantized to four fixed decimals, while local_score keeps the raw number and local_rank keeps qmd's order. The query is a paraphrase sharing not one term with the document that answers it: the lexical basis measures 0 for it and the core's relevance floor withholds it, which is why this one mode measures relevance on the embedding instead. The initialize manifest's relevance_basis names which measure this configured source uses.",
   "flow": "lockstep",
   "placeholders": {
     "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",

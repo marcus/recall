@@ -24,6 +24,9 @@ func TestPlanRefusesEveryInstanceReadingOneStore(t *testing.T) {
 		if got.reason != ReasonStoreConflict || got.target.Instance != nil {
 			t.Errorf("verdict %d = %+v, want store conflict refusal", i, got)
 		}
+		if got.relevanceBasis != recall.RelevanceLexicalSpan {
+			t.Errorf("verdict %d relevance basis = %q, want preserved lexical_span", i, got.relevanceBasis)
+		}
 		if root := got.diagnostics[protocol.DiagStoreIdentity]; root != "td:abcd1234" {
 			t.Errorf("verdict %d store identity = %v, want opaque conflicting identity", i, root)
 		}
@@ -69,13 +72,16 @@ func TestPlanComparesStoreIdentityOnlyWithinOneAdapter(t *testing.T) {
 }
 
 func storeVerdict(inst *config.SourceInstance, identity string) verdict {
-	return verdict{target: Target{
-		Instance: inst,
-		Health: recall.Health{
-			Status: recall.HealthHealthy,
-			Diagnostics: map[string]any{
-				protocol.DiagStoreIdentity: identity,
+	return verdict{
+		relevanceBasis: recall.RelevanceLexicalSpan,
+		target: Target{
+			Instance: inst,
+			Health: recall.Health{
+				Status: recall.HealthHealthy,
+				Diagnostics: map[string]any{
+					protocol.DiagStoreIdentity: identity,
+				},
 			},
 		},
-	}}
+	}
 }

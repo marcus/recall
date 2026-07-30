@@ -434,6 +434,24 @@ func TestAsOfReachesEligibility(t *testing.T) {
 		t.Errorf("exit = %d, want degraded\n%s", code, stdout)
 	}
 	contains(t, stdout, "as_of_unsupported", "the excluded source and its reason are reported")
+
+	_, explained, _ := h.run(
+		"query", "--explain", "--as-of", "2026-01-01T00:00:00Z", "anything")
+	contains(t, explained,
+		"tasks (01UIDTASKS)  ineligible  relevance basis lexical_span  reason as_of_unsupported",
+		"human explain keeps the manifest basis for a post-handshake exclusion")
+
+	_, raw, _ := h.run(
+		"query", "--json", "--explain", "--as-of", "2026-01-01T00:00:00Z", "anything")
+	var machine recall.QueryResponse
+	if err := json.Unmarshal([]byte(raw), &machine); err != nil {
+		t.Fatal(err)
+	}
+	for _, planned := range machine.Plan.Sources {
+		if planned.SourceID == "tasks" && planned.RelevanceBasis != recall.RelevanceLexicalSpan {
+			t.Errorf("JSON excluded tasks relevance basis = %q, want lexical_span", planned.RelevanceBasis)
+		}
+	}
 }
 
 // --scope source= narrows the plan, and a source left out because the caller

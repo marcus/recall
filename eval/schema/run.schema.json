@@ -330,7 +330,7 @@
         }
       }
     },
-    "metrics": {
+    "metrics_shape": {
       "$ref": "#/$defs/rates",
       "$comment": "Rates plus the population they were measured over. Composed by reference rather than repeated so the rate vocabulary has one definition.",
       "required": ["cases", "latency"],
@@ -341,7 +341,16 @@
         },
         "latency": {
           "$ref": "#/$defs/latency"
-        },
+        }
+      }
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics_shape",
+      "unevaluatedProperties": false
+    },
+    "source_family_metrics": {
+      "$ref": "#/$defs/metrics_shape",
+      "properties": {
         "relevance_basis": {
           "description": "The relevance definition declared by this source family. Present on by_source_family groups in new runs; optional so older baselines remain readable.",
           "type": "string",
@@ -378,6 +387,22 @@
         }
       }
     },
+    "source_family_group_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["groups", "macro"],
+      "properties": {
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_family_metrics"
+          }
+        },
+        "macro": {
+          "$ref": "#/$defs/macro"
+        }
+      }
+    },
     "report": {
       "type": "object",
       "additionalProperties": false,
@@ -394,7 +419,7 @@
           "$ref": "#/$defs/group_report"
         },
         "by_source_family": {
-          "$ref": "#/$defs/group_report"
+          "$ref": "#/$defs/source_family_group_report"
         }
       }
     }

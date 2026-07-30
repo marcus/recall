@@ -179,6 +179,14 @@ type Plan struct {
 	Profile  string
 	Targets  []Target
 	Excluded []recall.SourceReport
+
+	// ExcludedRelevanceBases preserves declarations from sources that
+	// initialized successfully and were excluded by a later eligibility check.
+	// A source excluded before its handshake has no entry: permission and
+	// static routing boundaries must not start an adapter merely to decorate a
+	// plan.
+	ExcludedRelevanceBases map[recall.SourceUID]recall.RelevanceBasis
+
 	Deadline time.Time
 	Reserve  time.Duration
 }
@@ -270,6 +278,12 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	for i, inst := range instances {
 		if v := verdicts[i]; v.reason != "" {
 			plan.Excluded = append(plan.Excluded, exclude(inst, v.reason, v.diagnostics))
+			if v.relevanceBasis != "" {
+				if plan.ExcludedRelevanceBases == nil {
+					plan.ExcludedRelevanceBases = make(map[recall.SourceUID]recall.RelevanceBasis)
+				}
+				plan.ExcludedRelevanceBases[inst.UID] = v.relevanceBasis
+			}
 		} else {
 			plan.Targets = append(plan.Targets, v.target)
 		}
@@ -431,7 +445,8 @@ func refuseDuplicateStores(instances []*config.SourceInstance, verdicts []verdic
 		for _, i := range indexes {
 			identity, _ := verdicts[i].target.Health.Diagnostics[protocol.DiagStoreIdentity].(string)
 			verdicts[i] = verdict{
-				reason: ReasonStoreConflict,
+				reason:         ReasonStoreConflict,
+				relevanceBasis: verdicts[i].relevanceBasis,
 				diagnostics: map[string]any{
 					protocol.DiagStoreIdentity: identity,
 					"conflicting_sources":      ids,
@@ -443,9 +458,10 @@ func refuseDuplicateStores(instances []*config.SourceInstance, verdicts []verdic
 
 // verdict is one source's eligibility: a target, or the reason there is none.
 type verdict struct {
-	target      Target
-	reason      string
-	diagnostics map[string]any
+	target         Target
+	reason         string
+	relevanceBasis recall.RelevanceBasis
+	diagnostics    map[string]any
 }
 
 // consider handshakes one source, probes it, and decides whether it may answer.
@@ -475,9 +491,12 @@ func (r *Registry) consider(
 	if err != nil {
 		return verdict{reason: ReasonAdapterUnavailable}
 	}
+	excludeAfterHandshake := func(reason string) verdict {
+		return verdict{reason: reason, relevanceBasis: manifest.RelevanceBasis}
+	}
 	a, err := r.Adapter(inst)
 	if err != nil {
-		return verdict{reason: ReasonAdapterUnavailable}
+		return excludeAfterHandshake(ReasonAdapterUnavailable)
 	}
 	deadline := sourceDeadline(now(), budget, reserve, inst.Timeout)
 	searchReq := recall.SearchRequest{
@@ -510,34 +529,37 @@ func (r *Registry) consider(
 	}
 	switch {
 	case err != nil && health.Status == recall.HealthDenied:
-		return verdict{reason: ReasonDenied}
+		return excludeAfterHandshake(ReasonDenied)
 	case err != nil || !health.Usable():
-		return verdict{reason: ReasonUnhealthy}
+		return excludeAfterHandshake(ReasonUnhealthy)
 	}
 	// A source that cannot honor a historical boundary is excluded and said so.
 	// Letting it answer from current state would be a wrong answer wearing the
 	// shape of a right one.
 	if !canSearchCurrent {
-		return verdict{reason: ReasonAsOfUnsupported}
+		return excludeAfterHandshake(ReasonAsOfUnsupported)
 	}
 	if !canSearchTypes {
-		return verdict{reason: ReasonRecordTypeMismatch}
+		return excludeAfterHandshake(ReasonRecordTypeMismatch)
 	}
 
 	if !deadline.After(now()) {
 		// The budget is already spent. Asking anyway would guarantee a timeout
 		// and charge the caller for it.
-		return verdict{reason: ReasonBudgetExhausted}
+		return excludeAfterHandshake(ReasonBudgetExhausted)
 	}
-	return verdict{target: Target{
-		Instance:    inst,
-		Manifest:    manifest,
-		Deadline:    deadline,
-		Limit:       perSource,
-		Health:      health,
-		Request:     searchReq,
-		Preparation: preparation,
-	}}
+	return verdict{
+		relevanceBasis: manifest.RelevanceBasis,
+		target: Target{
+			Instance:    inst,
+			Manifest:    manifest,
+			Deadline:    deadline,
+			Limit:       perSource,
+			Health:      health,
+			Request:     searchReq,
+			Preparation: preparation,
+		},
+	}
 }
 
 // DefaultQueryBudget bounds a request whose caller stated none.
@@ -633,11 +655,12 @@ func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 	}
 	for _, e := range p.Excluded {
 		out.Sources = append(out.Sources, recall.PlanSource{
-			SourceUID:   e.SourceUID,
-			SourceID:    e.SourceID,
-			Eligible:    false,
-			Reason:      e.Reason,
-			Diagnostics: e.Diagnostics,
+			SourceUID:      e.SourceUID,
+			SourceID:       e.SourceID,
+			RelevanceBasis: p.ExcludedRelevanceBases[e.SourceUID],
+			Eligible:       false,
+			Reason:         e.Reason,
+			Diagnostics:    e.Diagnostics,
 		})
 	}
 	return out

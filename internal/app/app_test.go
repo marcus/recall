@@ -752,6 +752,19 @@ func TestAsOfExcludesSourcesThatCannotHonorIt(t *testing.T) {
 	if rep := reportFor(t, resp, "tasks"); rep.Reason != source.ReasonAsOfUnsupported {
 		t.Errorf("tasks reason = %q, want %q", rep.Reason, source.ReasonAsOfUnsupported)
 	}
+	var excluded *recall.PlanSource
+	for i := range resp.Plan.Sources {
+		if resp.Plan.Sources[i].SourceID == "tasks" {
+			excluded = &resp.Plan.Sources[i]
+			break
+		}
+	}
+	if excluded == nil {
+		t.Fatal("tasks is missing from the resolved plan")
+	}
+	if excluded.Eligible || excluded.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Errorf("excluded tasks plan = %+v, want ineligible with known lexical_span basis", *excluded)
+	}
 	if resp.Coverage != recall.CoverageDegraded {
 		t.Errorf("coverage = %s, want degraded", resp.Coverage)
 	}

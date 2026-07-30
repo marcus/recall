@@ -222,8 +222,8 @@ func TestVectorRelevanceIsQuantizedAndClamped(t *testing.T) {
 	}
 }
 
-// The mode decides the basis, and the basis is named in the search's
-// diagnostics. A source can be configured either way, so a caller comparing two
+// The mode decides the basis, and the basis is named in the initialize
+// manifest. A source can be configured either way, so a caller comparing two
 // qmd instances is told rather than left to infer it.
 func TestRelevanceBasisFollowsTheMode(t *testing.T) {
 	hit := searchHit{Score: 0.45}

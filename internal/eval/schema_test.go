@@ -180,6 +180,40 @@ func TestRunSchemaKeepsOlderSourceFamilyMetricsReadable(t *testing.T) {
 	}
 }
 
+func TestRunSchemaAllowsRelevanceBasisOnlyOnSourceFamilyMetrics(t *testing.T) {
+	valid, err := json.Marshal(fullRun())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eval.ValidateBytes(eval.KindRun, valid); err != nil {
+		t.Fatalf("source-family relevance basis was rejected: %v", err)
+	}
+
+	for _, path := range []string{"overall", "by_tag"} {
+		t.Run(path, func(t *testing.T) {
+			var doc map[string]any
+			if err := json.Unmarshal(valid, &doc); err != nil {
+				t.Fatal(err)
+			}
+			metrics := doc["metrics"].(map[string]any)
+			switch path {
+			case "overall":
+				metrics["overall"].(map[string]any)["relevance_basis"] = "vector_similarity"
+			case "by_tag":
+				groups := metrics["by_tag"].(map[string]any)["groups"].(map[string]any)
+				groups["exact"].(map[string]any)["relevance_basis"] = "lexical_span"
+			}
+			injected, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := eval.ValidateBytes(eval.KindRun, injected); err == nil {
+				t.Fatal("schema accepted relevance_basis outside by_source_family")
+			}
+		})
+	}
+}
+
 func fullPack() eval.Pack {
 	ceiling := recall.SensitivityInternal
 	return eval.Pack{
