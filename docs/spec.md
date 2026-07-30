@@ -379,7 +379,9 @@ request. Timed-out sources report `timeout`, never empty success, and the
 source report names whether the effective deadline came from the request
 latency budget or `source.timeout_ms`. If an adapter returns a timeout before
 that effective deadline fires, the report says `adapter_internal` instead of
-blaming either core budget.
+blaming either core budget. Caller cancellation is reported as `cancelled`
+without a timeout budget because neither deadline fired; an earlier outer
+context deadline is attributed as `caller_deadline`.
 
 ### Response Budget
 

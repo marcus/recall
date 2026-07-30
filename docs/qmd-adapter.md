@@ -110,6 +110,9 @@ mode = "hybrid"
 The adapter manifest declares the effective `settings.binary` value as its
 `qmd` executable requirement. `recall sources` shows it and `recall doctor`
 preflights it; replay mode declares no qmd requirement because it spawns none.
+A slash-containing relative binary such as `./bin/qmd` resolves against the
+configured corpus directory, which is also qmd's process working directory;
+the manifest reports that resolved absolute command.
 
 `location` is the corpus directory, and it is checked against the directory the
 named collection actually indexes on **every** operation. A collection

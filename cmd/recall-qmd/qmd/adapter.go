@@ -105,6 +105,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		return recall.Manifest{}, protocol.Errorf(protocol.CodeSourceUnavailable,
 			"qmd: corpus location %q is not a readable directory", labelOf(location))
 	}
+	set.Binary = effectiveBinary(set.Binary, location)
 
 	runner := a.opts.Runner
 	if runner == nil {
@@ -168,6 +169,20 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		}}
 	}
 	return manifest, nil
+}
+
+// effectiveBinary resolves slash-containing relative commands against the
+// corpus working directory used by ExecRunner. A bare name intentionally stays
+// bare for PATH lookup. Returning this same value in the manifest makes doctor
+// preflight the exact command execution will use.
+func effectiveBinary(binary, location string) string {
+	if filepath.IsAbs(binary) {
+		return filepath.Clean(binary)
+	}
+	if strings.ContainsRune(binary, filepath.Separator) {
+		return filepath.Clean(filepath.Join(location, binary))
+	}
+	return binary
 }
 
 func queryModes(mode Mode) []recall.QueryMode {

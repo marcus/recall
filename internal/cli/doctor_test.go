@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	qmdadapter "github.com/marcus/recall/cmd/recall-qmd/qmd"
 	"github.com/marcus/recall/internal/cli"
 	"github.com/marcus/recall/pkg/adapter"
 	"github.com/marcus/recall/pkg/protocol"
@@ -119,6 +122,89 @@ func TestDoctorPreflightsAdapterDeclaredExecutables(t *testing.T) {
 	}
 	if got := checkStatus(t, d, "requirements"); got != cli.CheckFail {
 		t.Fatalf("requirements check = %q, want fail\n%s", got, stdout)
+	}
+}
+
+func TestDoctorUsesQmdsCorpusRelativeEffectiveExecutable(t *testing.T) {
+	const configText = `
+[defaults]
+profile = "work"
+timeout_ms = 2000
+
+[[sources]]
+source_uid = "01UIDQMD"
+source_id = "semantic"
+adapter = "qmd-test"
+location = "corpus"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[sources.settings]
+collection = "fixture"
+binary = "./bin/qmd"
+mode = "hybrid"
+
+[profiles.work]
+sources = ["semantic"]
+max_sensitivity = "internal"
+`
+	h := newHarness(t, harnessOptions{
+		userTOML: configText,
+		adapters: []cli.Adapter{{
+			Name: "qmd-test", FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
+			New: func() adapter.Adapter { return qmdadapter.New(qmdadapter.Options{}) },
+		}},
+	})
+	corpus := filepath.Join(h.root, "config", "recall", "corpus")
+	binary := filepath.Join(corpus, "bin", "qmd")
+	if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+case "$1" in
+  status)
+    printf 'QMD Status\nIndex: %s/.qmd/index.sqlite\nTotal: 1 files indexed\nVectors: 1 embedded\nfixture (qmd://fixture/)\nPattern: **/*.md\nFiles: 1\n' "$PWD"
+    ;;
+  collection)
+    printf 'Collection: fixture\nPath: %s\nPattern: **/*.md\nInclude: yes (default)\n' "$PWD"
+    ;;
+  --version)
+    printf 'qmd test\n'
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+`
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, _ := h.run("doctor", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("doctor exit = %d\n%s", code, stdout)
+	}
+	var diagnosis cli.Diagnosis
+	if err := json.Unmarshal([]byte(stdout), &diagnosis); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkStatus(t, diagnosis, "requirements"); got != cli.CheckPass {
+		t.Fatalf("requirements check = %q\n%s", got, stdout)
+	}
+
+	code, stdout, _ = h.run("sources", "--json")
+	if code != cli.ExitOK {
+		t.Fatalf("sources exit = %d\n%s", code, stdout)
+	}
+	var listing cli.SourceListing
+	if err := json.Unmarshal([]byte(stdout), &listing); err != nil {
+		t.Fatal(err)
+	}
+	got := listing.Sources[0].ExecutableRequirements
+	if len(got) != 1 || got[0].Command != binary {
+		t.Fatalf("declared executable = %+v, want %q", got, binary)
 	}
 }
 

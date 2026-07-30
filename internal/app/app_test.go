@@ -36,6 +36,7 @@ type fake struct {
 	outcome          recall.SearchOutcome
 	searchErr        error
 	delay            time.Duration
+	delayAfterCancel time.Duration
 	evidence         recall.ExpandResponse
 	expandErr        error
 	initializeErr    error
@@ -86,6 +87,9 @@ func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.Sea
 		select {
 		case <-time.After(f.delay):
 		case <-ctx.Done():
+			if f.delayAfterCancel > 0 {
+				time.Sleep(f.delayAfterCancel)
+			}
 			return recall.SearchResponse{Outcome: recall.SearchTimeout}, ctx.Err()
 		}
 	}
@@ -954,6 +958,85 @@ func TestTimeoutDoesNotBlameCoreBudgetsForAnEarlierAdapterDeadline(t *testing.T)
 	rep := reportFor(t, resp, "tasks")
 	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutAdapterInternal {
 		t.Fatalf("timeout detail = %+v, want adapter_internal", rep.Timeout)
+	}
+}
+
+func TestCallerCancellationIsNotAttributedToATimeoutBudget(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].delay = time.Second
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := h.app.Query(ctx, query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Outcome != recall.SearchFailed || rep.Reason != "cancelled" {
+		t.Fatalf("cancelled source report = %+v", rep)
+	}
+	if rep.Timeout != nil {
+		t.Fatalf("caller cancellation was attributed to timeout budget %+v", rep.Timeout)
+	}
+	got := source.DegradedReports(resp.SourceOutcomes)
+	named := false
+	for _, report := range got {
+		named = named || strings.Contains(report, "cancelled")
+	}
+	if !named {
+		t.Fatalf("degraded reports = %v, want cancellation named", got)
+	}
+}
+
+func TestEarlierCallerDeadlineIsAttributedToTheCaller(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].delay = time.Second
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	parentDeadline, _ := ctx.Deadline()
+	req := query("anything")
+	req.Budget.LatencyMS = 1000
+
+	resp, err := h.app.Query(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Outcome != recall.SearchTimeout || rep.Reason != "timeout" ||
+		rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutCallerDeadline {
+		t.Fatalf("caller-deadline source report = %+v", rep)
+	}
+	if rep.Timeout.Deadline == nil || !rep.Timeout.Deadline.Equal(parentDeadline) {
+		t.Fatalf("reported deadline = %v, want caller deadline %s",
+			rep.Timeout.Deadline, parentDeadline)
+	}
+}
+
+func TestLaterCallerDeadlineCannotStealSourceTimeoutAttribution(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].delay = time.Second
+		f["faketasks"].delayAfterCancel = 80 * time.Millisecond
+	})
+	inst, ok := h.config.Source("tasks")
+	if !ok {
+		t.Fatal("tasks source missing")
+	}
+	inst.Timeout = 20 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	req := query("anything")
+	req.Budget.LatencyMS = 1000
+
+	resp, err := h.app.Query(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutSourceLimit ||
+		rep.Timeout.Limit != 20*time.Millisecond {
+		t.Fatalf("timeout after later caller expiry = %+v, want source timeout", rep.Timeout)
 	}
 }
 

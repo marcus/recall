@@ -17,7 +17,9 @@ migration guidance.
   `gog` commands respectively; replay-backed instances declare none.
 - Timed-out source reports now identify whether the end-to-end request latency
   budget or the configured per-source timeout supplied the deadline, and say
-  `adapter_internal` when an adapter's own earlier deadline fired.
+  `adapter_internal` when an adapter's own earlier deadline fired. Caller
+  cancellation is reported separately and never blamed on either timeout, and
+  an earlier outer context deadline is attributed as `caller_deadline`.
 
 ### Fixed
 
@@ -29,6 +31,9 @@ migration guidance.
   corpus leaves its attached health partial. The health remains degraded for
   query honesty; unchanged, regressed, failed, and incomparable checkpoints
   still degrade the refresh.
+- qmd slash-containing relative binary settings now resolve against the corpus
+  working directory before both execution and manifest declaration, so
+  `recall doctor` preflights the same command qmd will run.
 
 ## [0.3.1] - 2026-07-30
 

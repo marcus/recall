@@ -134,6 +134,8 @@ func DegradedReports(reports []recall.SourceReport) []string {
 				reason += fmt.Sprintf(": request latency budget %s", r.Timeout.Limit)
 			case recall.TimeoutSourceLimit:
 				reason += fmt.Sprintf(": source timeout %s", r.Timeout.Limit)
+			case recall.TimeoutCallerDeadline:
+				reason += ": caller deadline"
 			case recall.TimeoutAdapterInternal:
 				reason += ": adapter-internal deadline"
 			}

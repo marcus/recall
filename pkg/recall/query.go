@@ -316,6 +316,9 @@ type TimeoutBudget string
 const (
 	TimeoutRequestLatency TimeoutBudget = "request_latency"
 	TimeoutSourceLimit    TimeoutBudget = "source_timeout"
+	// TimeoutCallerDeadline means an outer caller context deadline fired
+	// before the source deadline Recall derived from configured budgets.
+	TimeoutCallerDeadline TimeoutBudget = "caller_deadline"
 	// TimeoutAdapterInternal means the adapter ended its work on a private
 	// inner deadline before the core's effective source deadline fired.
 	TimeoutAdapterInternal TimeoutBudget = "adapter_internal"

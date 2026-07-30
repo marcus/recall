@@ -156,6 +156,22 @@ func TestManifestDeclaresTheEffectiveGogExecutable(t *testing.T) {
 	}
 }
 
+func TestRelativeGogExecutableKeepsProcessWorkingDirectorySemantics(t *testing.T) {
+	a := New(Options{})
+	manifest, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1,
+		SourceID: "mail", Location: "owner@example.test",
+		Settings: map[string]any{"gog_binary": "./tools/gog"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if got := manifest.ExecutableRequirements[0].Command; got != "./tools/gog" {
+		t.Fatalf("declared command = %q, want process-relative command unchanged", got)
+	}
+}
+
 func TestInitializeAcceptsLegacyGoogleURIAndRejectsAmbiguousInput(t *testing.T) {
 	for _, location := range []string{"owner@example.test", "google://owner@example.test"} {
 		a := New(Options{Runner: &fakeRunner{}})

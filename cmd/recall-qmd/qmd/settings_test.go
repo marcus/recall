@@ -2,6 +2,7 @@ package qmd_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,6 +95,30 @@ func TestManifestDeclaresTheEffectiveExecutable(t *testing.T) {
 	if got := manifest.ExecutableRequirements; len(got) != 1 ||
 		got[0].Name != "qmd" || got[0].Command != "/opt/tools/qmd" {
 		t.Fatalf("executable requirements = %+v", got)
+	}
+}
+
+func TestRelativeExecutableIsResolvedAgainstTheCorpus(t *testing.T) {
+	root := corpus(t)
+	bin := filepath.Join(root, "bin", "qmd")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := qmd.New(qmd.Options{})
+	manifest, err := a.Initialize(t.Context(), adapter.Config{
+		ProtocolVersionMin: 1, ProtocolVersionMax: 1, Workdir: t.TempDir(),
+		SourceID: "qmd", Location: root,
+		Settings: map[string]any{"collection": "fixture", "binary": "./bin/qmd"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if got := manifest.ExecutableRequirements[0].Command; got != bin {
+		t.Fatalf("declared command = %q, want %q", got, bin)
 	}
 }
 

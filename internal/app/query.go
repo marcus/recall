@@ -238,7 +238,10 @@ func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 		return res
 	}
 
-	ctx, cancel := context.WithDeadline(ctx, t.Deadline)
+	parent := ctx
+	parentDeadline, parentHasDeadline := parent.Deadline()
+	callerDeadlineEarlier := parentHasDeadline && parentDeadline.Before(t.Deadline)
+	ctx, cancel := context.WithDeadline(parent, t.Deadline)
 	defer cancel()
 
 	if prepared, ok := adp.(adapter.PreparedSearcher); ok {
@@ -248,14 +251,30 @@ func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 		res.response, res.err = adp.Search(ctx, t.Request)
 		res.elapsed = a.now().Sub(started)
 	}
-	if res.response.Outcome == recall.SearchTimeout || timeoutError(res.err) {
+	reportedTimeout := res.response.Outcome == recall.SearchTimeout || timeoutError(res.err)
+	endedByContext := reportedTimeout || errors.Is(res.err, context.Canceled)
+	switch {
+	case endedByContext && errors.Is(ctx.Err(), context.Canceled):
+		// A caller abandoning the query is not evidence that either configured
+		// timeout expired. Keep it out of TimeoutDetail and report cancellation
+		// as a failed source operation rather than a timed-out one.
+		res.response.Outcome = recall.SearchFailed
+	case endedByContext && errors.Is(ctx.Err(), context.DeadlineExceeded) &&
+		callerDeadlineEarlier:
+		// A transport or library caller may impose a tighter outer deadline
+		// than either configured budget. Attribute that deadline directly.
+		res.response.Outcome = recall.SearchTimeout
+		res.timeout = &recall.TimeoutDetail{
+			Budget: recall.TimeoutCallerDeadline, Deadline: &parentDeadline,
+		}
+	case endedByContext && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		deadline := t.Deadline
+		res.timeout = &recall.TimeoutDetail{
+			Budget: t.TimeoutBudget, Limit: t.TimeoutLimit, Deadline: &deadline,
+		}
+	case reportedTimeout:
 		if ctx.Err() == nil {
 			res.timeout = &recall.TimeoutDetail{Budget: recall.TimeoutAdapterInternal}
-		} else {
-			deadline := t.Deadline
-			res.timeout = &recall.TimeoutDetail{
-				Budget: t.TimeoutBudget, Limit: t.TimeoutLimit, Deadline: &deadline,
-			}
 		}
 	}
 	if res.response.Outcome == recall.SearchSkipped {
@@ -485,6 +504,8 @@ func classify(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
 	case errors.Is(err, protocol.ErrSourceDenied):
 		return "denied"
 	case errors.Is(err, protocol.ErrSourceUnavailable):
