@@ -19,8 +19,8 @@ class Recall < Formula
     system "go", "build", *std_go_args(output: bin/"recall-gmail", ldflags:), "./cmd/recall-gmail"
     system "go", "build", *std_go_args(output: bin/"recall-qmd", ldflags:), "./cmd/recall-qmd"
     system "go", "build", *std_go_args(output: bin/"recall-stream", ldflags:), "./cmd/recall-stream"
-    (share/"recall").install "cmd/recall-gmail/conformance" => "gmail-conformance"
-    (share/"recall").install "cmd/recall-qmd/conformance" => "qmd-conformance"
+    pkgshare.install "cmd/recall-gmail/conformance" => "gmail-conformance"
+    pkgshare.install "cmd/recall-qmd/conformance" => "qmd-conformance"
   end
 
   test do
@@ -28,7 +28,7 @@ class Recall < Formula
     assert_match "recall-gmail/1 @VERSION@", shell_output("#{bin}/recall-gmail -version")
     assert_match "recall-qmd/1 @VERSION@", shell_output("#{bin}/recall-qmd -version")
     assert_match "recall-stream/1 @VERSION@", shell_output("#{bin}/recall-stream -version")
-    assert_path_exists share/"recall/gmail-conformance/handshake/manifest.json"
-    assert_path_exists share/"recall/qmd-conformance/handshake/manifest.json"
+    assert_path_exists pkgshare/"gmail-conformance/handshake/manifest.json"
+    assert_path_exists pkgshare/"qmd-conformance/handshake/manifest.json"
   end
 end
