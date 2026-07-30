@@ -91,7 +91,7 @@ type unit struct {
 // identifier, then the same record seen again, then a conservative full-name
 // match, then an advisory content fingerprint. Every rule compares whole
 // values; none compares a substring of one against another.
-func (r *Ranker) clusterGroups(groups []*group) []*cluster {
+func (r *Ranker) clusterGroups(groups []*group, req Request) []*cluster {
 	dup := newDisjoint(len(groups))  // same record, seen again
 	same := newDisjoint(len(groups)) // same subject
 	view := newDisjoint(len(groups)) // same record through two source instances
@@ -115,6 +115,13 @@ func (r *Ranker) clusterGroups(groups []*group) []*cluster {
 		}
 		for _, key := range g.fingerprintKeys() {
 			// Advisory only: it collapses corroboration, never display.
+			link(i, key, dup)
+		}
+		for _, key := range g.locationRecordKeys(req.SourceLocations) {
+			// Corroboration only, for the same reason the fingerprint rule is:
+			// two sources over one store are one piece of evidence, and saying
+			// so must lower a score rather than decide which of them a caller
+			// is shown.
 			link(i, key, dup)
 		}
 		for _, key := range g.viewKeys() {
@@ -382,6 +389,60 @@ func (g *group) duplicateKeys() []string {
 		if c.SourceRecordID != "" && c.SourceUID != "" {
 			keys = append(keys, key("record", string(c.SourceUID), c.SourceRecordID))
 		}
+	}
+	return dedupe(keys)
+}
+
+// locationRecordKeys identify one record reached through two sources that opened
+// the SAME store.
+//
+// It exists because the two rules either side of it cannot see the case, and the
+// case is common. [group.duplicateKeys] is scoped by source, correctly: a record
+// identifier is only unique inside its own source. [group.fingerprintKeys] is
+// not scoped by source but requires the two sources to hash the same text, and
+// two document backends chunk differently by design — the built-in adapter
+// fingerprints tokenized chunk text on purpose, and a second backend's chunk
+// boundaries and hash namespace are its own. So a lexical source and a semantic
+// source configured over ONE directory, which is the whole point of running them
+// together, corroborated each other on every document they both returned. That
+// landed a doubled score on precisely the documents both sources agreed on — the
+// best answers — and presented it to the caller as "corroborated 2", a claim of
+// independent evidence that was false.
+//
+// The agreement this rule needs is configuration's, not content's. Two sources
+// whose resolved locations match are looking at one store; if they also report
+// the same record identity for the same record type, they are one piece of
+// evidence, whatever either of them hashed. No adapter has to change and no
+// future backend has to coordinate.
+//
+// Corroboration ONLY, and never display: it is linked into the duplicate
+// relation and not into the view relation, for the reason
+// [group.fingerprintKeys] records below. A source is free to put local_rank 1 on
+// anything, so a rule that reached display would let the echoing source capture
+// the cluster and demote the honest evidence to a member of it. Display dedup
+// already works for this case through the entity relation; the defect was the
+// score, and only the score is fixed.
+//
+// Record type scopes the key exactly as it scopes a fingerprint. Two sources
+// over one directory serving different record types — a document view and an
+// event view of the same tree — are not restating each other.
+func (g *group) locationRecordKeys(locations map[recall.SourceUID]string) []string {
+	if len(locations) == 0 {
+		return nil
+	}
+	var keys []string
+	for _, c := range g.candidates {
+		if c.SourceRecordID == "" {
+			continue
+		}
+		location := locations[c.SourceUID]
+		if location == "" {
+			// A source with no location makes no claim about a store, so it
+			// cannot be found sharing one. Structured sources land here.
+			continue
+		}
+		keys = append(keys, key("location-record", location,
+			string(c.RecordType), c.SourceRecordID))
 	}
 	return dedupe(keys)
 }

@@ -108,6 +108,7 @@ func (a *App) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryR
 		Candidates:        pool,
 		Resolver:          resolver,
 		SourceDerivations: a.derivations(plan),
+		SourceLocations:   sourceLocations(plan),
 		Limit:             req.Limit,
 		QueryClass:        ranking.ClassifyQuery(req.Query),
 		StableIdentifiers: ranking.StableIdentifiers(req.Query),
@@ -294,6 +295,33 @@ func (a *App) admit(results []searchResult, ceiling recall.Sensitivity) ([]recal
 }
 
 // derivations collects manifest-declared whole-source projections.
+// sourceLocations is the resolved location each planned source opened, keyed by
+// source identity.
+//
+// It exists so that fusion can refuse to let two sources over ONE store
+// corroborate each other for holding the same record. A location is the one
+// thing about a source that the source itself cannot establish — an adapter
+// names its own store at most, and two adapters' spellings of a path are not
+// comparable — so it comes from here, where configuration has already resolved
+// it, rather than from anything a candidate carries.
+//
+// The resolved value, not the declared one: a relative path and the absolute
+// path it resolves to are one directory, and the declared spellings of the two
+// sources need not agree for the store to be the same.
+//
+// Sources with no location are simply absent from the map. Every structured
+// source is one, so a profile of them behaves exactly as it did before this
+// existed.
+func sourceLocations(plan source.Plan) map[recall.SourceUID]string {
+	out := make(map[recall.SourceUID]string, len(plan.Targets))
+	for _, t := range plan.Targets {
+		if location := t.Instance.Location; location != "" {
+			out[t.Instance.UID] = location
+		}
+	}
+	return out
+}
+
 func (a *App) derivations(plan source.Plan) map[recall.SourceUID]recall.SourceUID {
 	out := map[recall.SourceUID]recall.SourceUID{}
 	for _, t := range plan.Targets {

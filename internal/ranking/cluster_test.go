@@ -343,3 +343,142 @@ func TestDuplicateViewWinnerIsIndependentOfArrivalOrder(t *testing.T) {
 			first.Primary.CandidateID, second.Primary.CandidateID, a.CandidateID)
 	}
 }
+
+// Two sources over ONE store are one piece of evidence, whatever either of them
+// hashed.
+//
+// This is the live defect it was written for: a lexical document source and a
+// semantic one configured over the same directory reported "corroborated 2" on
+// every document they both returned — a doubled score on precisely the best
+// answers, presented to the caller as independent evidence. Neither existing
+// rule can see it. duplicateKeys is scoped by source, correctly. fingerprintKeys
+// needs both sides to hash the same text, and two document backends chunk
+// differently by design, so their fingerprints and revisions are structurally
+// unable to match.
+//
+// The titles AGREE here, and that is load-bearing rather than incidental: the
+// name relation is the only thing that puts the two groups in one cluster at
+// all, so a version of this test whose titles differ passes while the defect
+// stands. In the live case the two adapters agreed because the retrieved chunk
+// was the document's own H1.
+func TestTwoSourcesOverOneLocationDoNotCorroborate(t *testing.T) {
+	r := newRanker(t, nil)
+	// Same record, same title, deliberately different content hashes and source
+	// revisions — which is what two chunkers over one file really produce.
+	pair := []recall.Candidate{
+		cand("docs", "notes/tooth-care.md#L1-L7", 1,
+			title("Tooth care appointment"), recordID("notes/tooth-care.md"),
+			fingerprint("sha256:docs-chunk"), revision("git:abc+fs:def")),
+		cand("mail", "notes/tooth-care.md#L1-L4", 1,
+			title("Tooth care appointment"), recordID("notes/tooth-care.md"),
+			fingerprint("qmd-docid:43f92c"), revision("collection=x files=5")),
+	}
+
+	// Without the location map nothing links them: this is the defect, and it is
+	// asserted so that the fix cannot be mistaken for something the other rules
+	// were already doing.
+	inflated := single(t, fuse(t, r, request(pair...)))
+	if n := inflated.Explanation.Corroboration.IndependentUnits; n != 2 {
+		t.Fatalf("independent units = %d without locations; the case no longer "+
+			"reproduces the defect and proves nothing", n)
+	}
+
+	req := request(pair...)
+	req.SourceLocations = map[recall.SourceUID]string{
+		"uid-docs": "/store/corpus",
+		"uid-mail": "/store/corpus",
+	}
+	got := single(t, fuse(t, r, req))
+	if n := got.Explanation.Corroboration.IndependentUnits; n != 1 {
+		t.Errorf("independent units = %d, want 1: two views of one file are one "+
+			"piece of evidence", n)
+	}
+	if got.Score >= inflated.Score {
+		t.Errorf("score = %v, want below the inflated %v", got.Score, inflated.Score)
+	}
+	// Both records stay addressable. The rule lowers a score; it does not decide
+	// which source a caller is shown.
+	if len(got.Members) != 2 {
+		t.Errorf("members = %d, want both records expandable", len(got.Members))
+	}
+}
+
+// The rule is corroboration-only and must never reach display. A source is free
+// to put local_rank 1 on anything, so a rule that merged for display would let
+// the echoing source capture the cluster and demote the honest evidence to a
+// member of it.
+func TestOneLocationDoesNotMergeForDisplay(t *testing.T) {
+	r := newRanker(t, nil)
+	// No title agreement, so nothing else can cluster them either.
+	req := request(
+		cand("docs", "a.md#L1-L3", 1, title("Quartz handbook"), recordID("a.md")),
+		cand("mail", "a.md#L1-L9", 1, title("Something else entirely"), recordID("a.md")),
+	)
+	req.SourceLocations = map[recall.SourceUID]string{
+		"uid-docs": "/store/corpus",
+		"uid-mail": "/store/corpus",
+	}
+	got := fuse(t, r, req)
+	if len(got.Results) != 2 {
+		t.Fatalf("results = %v, want both records shown and addressable", order(got))
+	}
+	for _, res := range got.Results {
+		if n := res.Explanation.Corroboration.IndependentUnits; n != 1 {
+			t.Errorf("independent units = %d, want 1", n)
+		}
+	}
+}
+
+// Two sources over one location serving different record types are not
+// restating each other, so the key is scoped by record type exactly as a
+// fingerprint is.
+func TestOneLocationScopesByRecordType(t *testing.T) {
+	r := newRanker(t, nil)
+	// Clustered by a declared entity so the two really do meet inside one
+	// cluster: without that they would be two clusters for an unrelated reason
+	// and the record-type scoping would go untested.
+	req := request(
+		cand("docs", "a.md#L1-L3", 1, recordID("a.md"),
+			meta(ranking.MetaEntityID, "e-1"), meta(ranking.MetaEntityType, "shared")),
+		cand("mail", "a.md#L1-L3", 1, recordID("a.md"),
+			meta(ranking.MetaEntityID, "e-1"), meta(ranking.MetaEntityType, "shared"),
+			func(c *recall.Candidate) { c.RecordType = recall.RecordEvent }),
+	)
+	req.SourceLocations = map[recall.SourceUID]string{
+		"uid-docs": "/store/corpus",
+		"uid-mail": "/store/corpus",
+	}
+	got := single(t, fuse(t, r, req))
+	if n := got.Explanation.Corroboration.IndependentUnits; n != 2 {
+		t.Errorf("independent units = %d, want 2: a document and an event are "+
+			"not two views of one record", n)
+	}
+}
+
+// Different locations are different stores, and a source with no location makes
+// no claim about one. Both must leave every existing profile exactly as it was.
+func TestLocationKeyIsEmptySafe(t *testing.T) {
+	r := newRanker(t, nil)
+	pair := []recall.Candidate{
+		cand("docs", "a.md#L1-L3", 1, title("Weekly review"), recordID("a.md")),
+		cand("mail", "a.md#L1-L4", 1, title("Weekly review"), recordID("a.md")),
+	}
+	for name, locations := range map[string]map[recall.SourceUID]string{
+		"no map":         nil,
+		"empty map":      {},
+		"one absent":     {"uid-docs": "/store/corpus"},
+		"both absent":    {"uid-tasks": "/elsewhere"},
+		"different dirs": {"uid-docs": "/store/corpus", "uid-mail": "/store/other"},
+		"empty strings":  {"uid-docs": "", "uid-mail": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := request(pair...)
+			req.SourceLocations = locations
+			got := single(t, fuse(t, r, req))
+			if n := got.Explanation.Corroboration.IndependentUnits; n != 2 {
+				t.Errorf("independent units = %d, want 2: nothing established a "+
+					"shared store", n)
+			}
+		})
+	}
+}

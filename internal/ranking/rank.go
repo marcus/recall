@@ -30,6 +30,21 @@ type Request struct {
 	// lineage root: a source-level edge cannot say which record it projects.
 	SourceDerivations map[recall.SourceUID]recall.SourceUID
 
+	// SourceLocations are the resolved locations configuration opened each
+	// source at, keyed by source. They exist so that two sources over ONE store
+	// cannot corroborate each other for holding the same record — see
+	// [group.locationRecordKeys], which is the only thing that reads them.
+	//
+	// It has to come from configuration rather than from the candidates,
+	// because a location is the one thing about a source that a source cannot
+	// tell the truth about on its own: an adapter names its own store identity
+	// at most, and comparing two adapters' spellings of a path is exactly the
+	// string guessing this rule replaces.
+	//
+	// A source with no location contributes nothing, so a profile of purely
+	// structured sources behaves exactly as before.
+	SourceLocations map[recall.SourceUID]string
+
 	// Limit caps the results emitted, overriding [Config.Limit]. Zero means the
 	// configured default applies.
 	Limit int
@@ -114,7 +129,7 @@ func (r *Ranker) Fuse(req Request) (Fusion, error) {
 	if err != nil {
 		return Fusion{}, err
 	}
-	clusters := r.clusterGroups(groups)
+	clusters := r.clusterGroups(groups, req)
 	promote(clusters, req)
 	return r.selectResults(clusters, req), nil
 }
