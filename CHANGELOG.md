@@ -6,6 +6,41 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [0.3.0] - 2026-07-29
+
+### Breaking
+
+- Every adapter's manifest must now declare `relevance_basis` — the quantity it
+  places in `Candidate.Relevance`, either `lexical_span` or
+  `vector_similarity`. The wire schema requires the field, so an external
+  adapter that does not send it fails its handshake with
+  `recall/initialize result: at / (/required)` and its source is reported
+  unavailable. Migration: Go adapters set
+  `Manifest.RelevanceBasis: recall.RelevanceLexicalSpan` (the right value for
+  any lexical source) and rebuild against the current `pkg/recall`; other
+  adapters add `"relevance_basis": "lexical_span"` to the manifest in their
+  `recall/initialize` result. Recorded conformance transcripts embed the
+  manifest, so re-record them with your adapter's recorder afterward. The
+  declaration exists because relevance values on different bases are admissible
+  against the floor but not comparable across sources, and that difference was
+  previously invisible to configuration, evaluation, and `--explain`.
+
+### Added
+
+- Evaluation reports group source families by their declared relevance basis,
+  and `by_source_family` metrics name it, so a comparison across bases is
+  visibly a comparison across bases.
+
+### Fixed
+
+- The declared relevance basis survives report round-trips and budget
+  compression rather than being dropped with diagnostics.
+- The Homebrew formula template builds and tests `recall-qmd` and installs its
+  conformance transcripts; `brew audit --strict` passes.
+- `docs/qmd-adapter.md` reads without project context: the relevance-definition
+  problem it references is explained in place, and measured numbers are scoped
+  to the corpus they came from.
+
 ## [0.2.0] - 2026-07-29
 
 ### Added
@@ -58,6 +93,7 @@ migration guidance.
 - Query results preserve source sensitivity ceilings and distinguish complete
   abstention from degraded or failed coverage.
 
-[Unreleased]: https://github.com/marcus/recall/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/marcus/recall/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/marcus/recall/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/marcus/recall/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marcus/recall/releases/tag/v0.1.0
