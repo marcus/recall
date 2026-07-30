@@ -88,7 +88,7 @@ mail access an explicit caller decision:
 ```toml
 [profiles.personal]
 sources = ["docs", "tasks", "mail"]
-sensitivity_ceiling = "confidential"
+max_sensitivity = "confidential"
 ```
 
 Check the resolved trust boundary and credential before querying:
