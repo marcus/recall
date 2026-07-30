@@ -28,7 +28,7 @@ class Recall < Formula
     assert_match "recall-gmail/1 @VERSION@", shell_output("#{bin}/recall-gmail -version")
     assert_match "recall-qmd/1 @VERSION@", shell_output("#{bin}/recall-qmd -version")
     assert_match "recall-stream/1 @VERSION@", shell_output("#{bin}/recall-stream -version")
-    assert_predicate share/"recall/gmail-conformance/handshake/manifest.json", :exist?
-    assert_predicate share/"recall/qmd-conformance/handshake/manifest.json", :exist?
+    assert_path_exists share/"recall/gmail-conformance/handshake/manifest.json"
+    assert_path_exists share/"recall/qmd-conformance/handshake/manifest.json"
   end
 end
