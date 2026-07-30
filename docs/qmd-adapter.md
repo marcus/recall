@@ -14,30 +14,38 @@ never replaces it. That is the whole shape of the integration:
   reported unavailable and the query exits 3 with the source named. Document
   search keeps working.
 - Both sources derive the same `source_record_id` for the same file — the
-  collection-relative path. Be precise about what that buys, because an earlier
-  version of this document was not. A lineage root is `<source_uid>:<local>`, so
-  two sources can never share one, and the record-identity corroboration key is
-  scoped by source on purpose — a record identifier is unique only inside the
-  source that issued it. What the parity buys is the *location-scoped* rule:
-  fusion treats two sources whose resolved location and `source_record_id` agree
-  as two views of one record, so they no longer corroborate each other for
-  holding the same file. Display deduplication is separate and older: the two
-  results cluster into one when they also agree on a title, and both stay
-  expandable.
+  collection-relative path. To be precise about what that buys: a lineage root
+  is `<source_uid>:<local>`, so two sources can never share one, and the
+  record-identity corroboration key is scoped by source on purpose — a record
+  identifier is unique only inside the source that issued it. What the parity
+  buys is the *location-scoped* rule: fusion treats two sources whose resolved
+  location and `source_record_id` agree as two views of one record, so they do
+  not corroborate each other for holding the same file — two indexes over one
+  document are one piece of evidence, not two. Display deduplication is
+  separate: the two results cluster into one when they also agree on a title,
+  and both stay expandable.
 
 ## What it does not fix
 
-The dentist ranking defect is a relevance-definition problem, and this adapter
-does not address it.
+Semantic retrieval fixes **vocabulary mismatch** — a question phrased in words
+its answer never uses. It does not fix **relevance definition**: the problem of
+saying how much a record is *about* a query once it has been found. Recall's
+shared relevance measure is built from term coverage and density, and a measure
+like that cannot tell a four-word task title that *is* the errand you asked
+about from a four-hundred-word document that mentions the errand once — except
+by accident of length. Adding a second retrieval path does not change how
+candidates are measured against each other once retrieved, so if a wrong-but-
+wordy document outranks a short right one today, this adapter will not reorder
+them.
 
 Paraphrase results do surface, but only in `vector` mode, and only because that
 mode measures relevance on qmd's cosine similarity rather than lexically. In
 `hybrid` and `full` the lexical measure stands, so a hit sharing no term with the
 query measures 0 and is withheld by a non-zero `relevance_floor` unless nothing
 else clears it — and worse, those two modes carry no admission floor of their own.
-Making paraphrase aboutness comparable across sources in general is separate work;
-a local cross-encoder reranker in the core is the candidate, and this adapter
-exists partly to produce the data that decides whether it is worth building.
+Making aboutness comparable across sources in general is separate work; a local
+cross-encoder reranker in the core is the candidate, and this adapter exists
+partly to produce the data that decides whether it is worth building.
 
 ## Install qmd and its models
 
@@ -143,8 +151,9 @@ are not.** Three measured reasons:
 
 - **Only `bm25` and `vector` have an admission floor.** `vector` returns an
   empty list for a query the corpus has nothing about — a noise query does not
-  clear qmd's own cosine threshold — and its cosine separates: a true paraphrase
-  of a document in the corpus scores 0.42–0.48. `hybrid` and `full` have **no
+  clear qmd's own cosine threshold — and its cosine separates: on the corpus
+  this was measured against, true paraphrases scored 0.42–0.48 while noise fell
+  below the floor entirely. `hybrid` and `full` have **no
   admission floor at all**. Their scores are rank-normalized, so rank 1 is 1.0
   whatever matched: a nonsense query returns 1.0, 0.5, 0.33 down a list of
   unrelated documents. Configuring one of them beside a lexical source can flip
@@ -154,9 +163,10 @@ are not.** Three measured reasons:
   `vector` qmd source in one profile fuses a full-text list and an embedding list
   with priors, lineage, and corroboration the core owns and can explain. Asking
   qmd to fuse them first buys a second, opaque blend of the same two signals.
-- **Latency.** Measured on the home corpus: `full` takes 10.65s against the 5s
-  `DefaultQueryBudget`, so it times out before it answers. `vector` takes about
-  2.4s.
+- **Latency.** Measured on a ~60-document Markdown corpus with warm model
+  caches: `full` takes over 10s against Recall's default 5s query budget, so it
+  times out before it answers. `vector` takes about 2.4s. Your numbers will
+  vary with corpus size and hardware; the budget will not.
 
 `hybrid` and `full` remain configurable because they are what the mode setting is
 for: they are how a layer's contribution is measured. They are evaluation
