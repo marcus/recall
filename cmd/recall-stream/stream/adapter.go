@@ -169,7 +169,8 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		// filtered for. Reconstructing the file's contents at a past instant
 		// cannot be done from an event time, so snapshot is refused. See the
 		// package doc.
-		AsOfSupport: recall.AsOfFilter,
+		AsOfSupport:    recall.AsOfFilter,
+		RelevanceBasis: recall.RelevanceLexicalSpan,
 
 		Capabilities: []recall.Capability{
 			recall.CapSearch, recall.CapExpand, recall.CapCheckpoint,

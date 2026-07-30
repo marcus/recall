@@ -3,6 +3,7 @@ package eval_test
 import (
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,7 +80,10 @@ func TestACaseJoinsEveryGroupItDeclares(t *testing.T) {
 		CaseID:         "multi",
 		Tags:           []string{"exact", "temporal"},
 		SourceFamilies: []string{"tasks", "documents"},
-		NDCG10:         eval.Value{V: 0.5, OK: true},
+		SourceFamilyBases: map[string]recall.RelevanceBasis{
+			"tasks": recall.RelevanceLexicalSpan, "documents": recall.RelevanceVectorSimilarity,
+		},
+		NDCG10: eval.Value{V: 0.5, OK: true},
 	}
 	r := eval.ReportOf([]eval.CaseScore{s})
 
@@ -93,8 +97,54 @@ func TestACaseJoinsEveryGroupItDeclares(t *testing.T) {
 			t.Errorf("family %q covered %d cases, want 1", family, got)
 		}
 	}
+	if got := r.BySourceFamily.Groups["tasks"].RelevanceBasis; got != recall.RelevanceLexicalSpan {
+		t.Errorf("tasks relevance basis = %q, want lexical_span", got)
+	}
+	if got := r.BySourceFamily.Groups["documents"].RelevanceBasis; got != recall.RelevanceVectorSimilarity {
+		t.Errorf("documents relevance basis = %q, want vector_similarity", got)
+	}
 	if r.Cases != 1 {
 		t.Errorf("cases = %d, want 1: grouping must not multiply the run", r.Cases)
+	}
+}
+
+func TestHumanSummaryNamesSourceFamilyRelevanceBases(t *testing.T) {
+	score := eval.CaseScore{
+		CaseID: "one", SourceFamilies: []string{"documents"},
+		SourceFamilyBases: map[string]recall.RelevanceBasis{
+			"documents": recall.RelevanceVectorSimilarity,
+		},
+		NDCG10: eval.Value{V: 1, OK: true},
+	}
+	run := eval.Run{
+		Pack:    eval.PackRef{PackID: "basis"},
+		Metrics: eval.ReportOf([]eval.CaseScore{score}),
+	}
+	got := eval.Summarize(run, []eval.CaseScore{score})
+	for _, want := range []string{"### By source family", "documents [vector_similarity]"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestConflictingSourceFamilyBasesAreNotReportedAsEitherBasis(t *testing.T) {
+	scores := []eval.CaseScore{
+		{
+			CaseID: "lexical", SourceFamilies: []string{"documents"},
+			SourceFamilyBases: map[string]recall.RelevanceBasis{
+				"documents": recall.RelevanceLexicalSpan,
+			},
+		},
+		{
+			CaseID: "vector", SourceFamilies: []string{"documents"},
+			SourceFamilyBases: map[string]recall.RelevanceBasis{
+				"documents": recall.RelevanceVectorSimilarity,
+			},
+		},
+	}
+	if got := eval.ReportOf(scores).BySourceFamily.Groups["documents"].RelevanceBasis; got != "" {
+		t.Errorf("conflicting source-family bases reported %q, want no false claim", got)
 	}
 }
 

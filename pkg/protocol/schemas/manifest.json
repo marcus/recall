@@ -12,6 +12,7 @@
     "query_modes",
     "freshness_modes",
     "as_of_support",
+    "relevance_basis",
     "capabilities",
     "sensitivity"
   ],
@@ -33,6 +34,11 @@
       "items": { "$ref": "common.json#/$defs/freshness_mode" }
     },
     "as_of_support": { "$ref": "common.json#/$defs/as_of_support" },
+    "relevance_basis": {
+      "description": "The quantity placed in candidate relevance. Both values are admissible on [0,1], but values on different bases are not necessarily comparable across sources.",
+      "type": "string",
+      "enum": ["lexical_span", "vector_similarity"]
+    },
     "derives_from": {
       "description": "source_id this source projects wholesale. A name, not an identity: an adapter cannot know another instance's generated source_uid. The core resolves it and drops the edge when the named source is not configured. The fallback lineage edge, used when record-level references are unavailable.",
       "type": "string"

@@ -193,6 +193,7 @@ func (r *Runner) runCase(ctx context.Context, c Case) (CaseResult, error) {
 		}
 	}
 	result.SourceFamilies = familiesOf(resp)
+	result.SourceFamilyBases = familyBasesOf(resp, result.SourceFamilies)
 	result.ReturnedSources = returnedSourcesOf(resp)
 	result.Suppressions = append([]recall.Suppression(nil), resp.Suppressed...)
 	result.SensitivityViolations = ceilingViolations(c, resp)
@@ -333,6 +334,29 @@ func familiesOf(resp recall.QueryResponse) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// familyBasesOf joins the source families that contributed results to their
+// manifest declarations in the resolved plan. Candidates cannot declare this
+// themselves: the basis belongs to the configured source instance.
+func familyBasesOf(resp recall.QueryResponse, families []string) map[string]recall.RelevanceBasis {
+	if len(families) == 0 {
+		return nil
+	}
+	wanted := make(map[string]bool, len(families))
+	for _, family := range families {
+		wanted[family] = true
+	}
+	out := make(map[string]recall.RelevanceBasis, len(families))
+	for _, source := range resp.Plan.Sources {
+		if wanted[source.SourceID] && source.RelevanceBasis != "" {
+			out[source.SourceID] = source.RelevanceBasis
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }
 

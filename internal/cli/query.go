@@ -538,6 +538,7 @@ func renderPlan(o *out, resp recall.QueryResponse) {
 	for _, s := range plan.Sources {
 		var f fields
 		f.raw(eligibility(s.Eligible))
+		f.text("relevance basis", string(s.RelevanceBasis))
 		f.text("reason", s.Reason)
 		f.count("limit", s.Limit)
 		f.dur("timeout", s.Timeout)

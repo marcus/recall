@@ -164,6 +164,7 @@ func (a *Adapter) Initialize(ctx context.Context, cfg adapter.Config) (recall.Ma
 		// from the filesystem, and pretending otherwise would answer a
 		// historical question from current state.
 		AsOfSupport:     recall.AsOfFilter,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand, recall.CapCheckpoint},
 		FreshnessPolicy: freshnessPolicy,
 		Sensitivity:     recall.SensitivityInternal,
@@ -294,7 +295,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	}
 	return recall.SearchResponse{
 		Candidates:      found,
-		Diagnostics:     searchDiagnostics(gen, req, query, allowed, settings, len(hits), unreadable, time.Since(start)),
+		Diagnostics:     searchDiagnostics(gen, req, query, allowed, len(hits), unreadable, time.Since(start)),
 		SourceWatermark: gen.header.Watermark,
 		Outcome:         outcome,
 	}, nil

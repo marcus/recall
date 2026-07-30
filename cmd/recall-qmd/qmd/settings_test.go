@@ -8,6 +8,7 @@ import (
 
 	"github.com/marcus/recall/cmd/recall-qmd/qmd"
 	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // initialize is the raw handshake, so a settings test can assert the error text
@@ -51,6 +52,9 @@ func TestSchemaAndParserAgree(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if manifest.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Errorf("default relevance_basis = %q, want lexical_span", manifest.RelevanceBasis)
 	}
 	t.Cleanup(func() { _ = a.Close() })
 	props, ok := manifest.SettingsSchema["properties"].(map[string]any)

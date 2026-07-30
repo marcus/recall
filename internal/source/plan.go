@@ -622,12 +622,13 @@ func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 	}
 	for _, t := range p.Targets {
 		out.Sources = append(out.Sources, recall.PlanSource{
-			SourceUID: t.Instance.UID,
-			SourceID:  t.Instance.ID,
-			Eligible:  true,
-			Limit:     t.Limit,
-			Timeout:   time.Until(t.Deadline),
-			Prior:     t.Instance.BasePrior,
+			SourceUID:      t.Instance.UID,
+			SourceID:       t.Instance.ID,
+			RelevanceBasis: t.Manifest.RelevanceBasis,
+			Eligible:       true,
+			Limit:          t.Limit,
+			Timeout:        time.Until(t.Deadline),
+			Prior:          t.Instance.BasePrior,
 		})
 	}
 	for _, e := range p.Excluded {

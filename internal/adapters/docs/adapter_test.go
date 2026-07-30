@@ -230,6 +230,9 @@ func TestManifestDeclaresOnlyWhatItCanServe(t *testing.T) {
 		t.Errorf("as_of_support = %q, want %q: a filesystem cannot reconstruct a document's earlier text",
 			manifest.AsOfSupport, recall.AsOfFilter)
 	}
+	if manifest.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Errorf("relevance_basis = %q, want lexical_span", manifest.RelevanceBasis)
+	}
 	if slices.Contains(manifest.QueryModes, recall.QuerySemantic) {
 		t.Error("query_modes claims semantic; this adapter is lexical only")
 	}

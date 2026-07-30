@@ -645,7 +645,6 @@ func searchDiagnostics(
 	req recall.SearchRequest,
 	query queryAnalysis,
 	allowed func(indexedChunk) bool,
-	s Settings,
 	pool int,
 	unreadable int,
 	elapsed time.Duration,
@@ -667,12 +666,6 @@ func searchDiagnostics(
 		// that admitted less than the caller expected is then a stated rule
 		// rather than a thin corpus.
 		diag["query_terms_required"] = coverage.required
-	}
-	if s.ExamplesQuoteQueries {
-		// A source that discounts its own citations says so on every search it
-		// answers, because it is the difference between a result this corpus
-		// withheld and one it does not hold.
-		diag["relevance_basis"] = "excludes_quoted_occurrences"
 	}
 	if n := variantCount(coverage.groups); n > 0 {
 		// How many terms this corpus answered under a different number than the

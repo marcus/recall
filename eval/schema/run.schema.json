@@ -341,6 +341,11 @@
         },
         "latency": {
           "$ref": "#/$defs/latency"
+        },
+        "relevance_basis": {
+          "description": "The relevance definition declared by this source family. Present on by_source_family groups in new runs; optional so older baselines remain readable.",
+          "type": "string",
+          "enum": ["lexical_span", "vector_similarity"]
         }
       },
       "unevaluatedProperties": false

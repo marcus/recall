@@ -36,6 +36,9 @@ func TestManifestDeclaresWhatTheCLICanDo(t *testing.T) {
 		t.Errorf("as_of_support = %q, want none: the CLI exposes no record history",
 			manifest.AsOfSupport)
 	}
+	if manifest.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Errorf("relevance_basis = %q, want lexical_span", manifest.RelevanceBasis)
+	}
 	if manifest.AsOfSupport.Honors() {
 		t.Error("as_of_support claims it can honor a historical boundary")
 	}

@@ -148,8 +148,9 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		// property of this checkout rather than of the record. Declaring filter
 		// and answering from an mtime would answer a historical question from
 		// current state.
-		AsOfSupport:  recall.AsOfNone,
-		Capabilities: []recall.Capability{recall.CapSearch, recall.CapExpand, recall.CapCheckpoint},
+		AsOfSupport:    recall.AsOfNone,
+		RelevanceBasis: relevanceBasis(set.Mode),
+		Capabilities:   []recall.Capability{recall.CapSearch, recall.CapExpand, recall.CapCheckpoint},
 		// One at a time. Every qmd invocation is a fresh process that memory-maps
 		// its GGUF models, so two concurrent searches cost two model loads on a
 		// machine that has already decided one is expensive. Declaring the limit

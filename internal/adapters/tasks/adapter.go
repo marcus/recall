@@ -228,7 +228,8 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		// so state at a past instant cannot be reconstructed or even filtered
 		// for. Declaring `filter` over deadline or scheduled would answer a
 		// historical question from current state. See the package doc.
-		AsOfSupport: recall.AsOfNone,
+		AsOfSupport:    recall.AsOfNone,
+		RelevanceBasis: recall.RelevanceLexicalSpan,
 
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 		FreshnessPolicy: "live: every search reads the store through the Tasks CLI; no index, no cache",

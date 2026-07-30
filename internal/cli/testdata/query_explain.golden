@@ -54,5 +54,5 @@ sources
   tasks (01UIDTASKS)  outcome success  candidates 1
 
 plan  profile work  limit 20  rank constant 60  corroboration cap 2  relevance floor 0.1  fusion reserve 25ms  deadline <time>
-  docs (01UIDDOCS)  eligible  limit 20  timeout <dur>  prior 1.2
-  tasks (01UIDTASKS)  eligible  limit 20  timeout <dur>  prior 1
+  docs (01UIDDOCS)  eligible  relevance basis lexical_span  limit 20  timeout <dur>  prior 1.2
+  tasks (01UIDTASKS)  eligible  relevance basis lexical_span  limit 20  timeout <dur>  prior 1

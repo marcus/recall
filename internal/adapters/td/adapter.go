@@ -255,7 +255,8 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		// issue edited after a boundary can only be reported as it is now, and
 		// answering a historical question from current state is what
 		// docs/spec.md forbids. See the package doc.
-		AsOfSupport: recall.AsOfNone,
+		AsOfSupport:    recall.AsOfNone,
+		RelevanceBasis: recall.RelevanceLexicalSpan,
 
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 		FreshnessPolicy: "live: every search reads the workspace through the td CLI; no index, no cache",

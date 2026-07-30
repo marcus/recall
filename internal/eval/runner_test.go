@@ -109,7 +109,11 @@ const minimalPack = `{
 
 func TestRunnerRecordsWhatTheEngineReturned(t *testing.T) {
 	e := newEngine()
-	e.responses["find the spec"] = answered("uid-docs:spec.md#1", "uid-docs:spec.md#2")
+	response := answered("uid-docs:spec.md#1", "uid-docs:spec.md#2")
+	response.Plan.Sources = []recall.PlanSource{{
+		SourceID: "docs", RelevanceBasis: recall.RelevanceLexicalSpan, Eligible: true,
+	}}
+	e.responses["find the spec"] = response
 
 	r := eval.NewRunner(e, packFor(t, minimalPack), eval.RunOptions{})
 	got, err := r.Run(context.Background(), []eval.Case{{
@@ -126,6 +130,13 @@ func TestRunnerRecordsWhatTheEngineReturned(t *testing.T) {
 	}
 	if len(got[0].Ranked) != 2 {
 		t.Errorf("ranked = %v, want one position per independent record", got[0].Ranked)
+	}
+	if basis := got[0].SourceFamilyBases["docs"]; basis != recall.RelevanceLexicalSpan {
+		t.Errorf("docs relevance basis = %q, want lexical_span", basis)
+	}
+	score := eval.Score(eval.Case{CaseID: "c1"}, nil, got[0])
+	if basis := score.SourceFamilyBases["docs"]; basis != recall.RelevanceLexicalSpan {
+		t.Errorf("score docs relevance basis = %q, want lexical_span", basis)
 	}
 }
 

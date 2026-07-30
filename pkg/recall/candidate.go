@@ -129,6 +129,10 @@ type Manifest struct {
 	FreshnessModes []FreshnessMode `json:"freshness_modes"`
 	// AsOfSupport declares historical-query support.
 	AsOfSupport AsOfSupport `json:"as_of_support"`
+	// RelevanceBasis declares the quantity placed in Candidate.Relevance.
+	// Values on different bases are admissible but not necessarily comparable
+	// across sources.
+	RelevanceBasis RelevanceBasis `json:"relevance_basis"`
 
 	// DerivesFrom declares that this entire source projects another. It is the
 	// fallback lineage edge, used when record-level references are unavailable.

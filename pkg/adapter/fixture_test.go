@@ -156,6 +156,7 @@ func (f *fixture) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		QueryModes:      []recall.QueryMode{recall.QueryLexical},
 		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessLive},
 		AsOfSupport:     recall.AsOfNone,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 		MaxConcurrency:  concurrency,
 		FreshnessPolicy: "read-through, no index",

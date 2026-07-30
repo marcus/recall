@@ -53,6 +53,7 @@ func TestGoTypesSatisfyTheirSchemas(t *testing.T) {
 				QueryModes:      []recall.QueryMode{recall.QueryExact, recall.QueryLexical},
 				FreshnessModes:  []recall.FreshnessMode{recall.FreshnessLive},
 				AsOfSupport:     recall.AsOfNone,
+				RelevanceBasis:  recall.RelevanceLexicalSpan,
 				Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 				MaxConcurrency:  1,
 				Sensitivity:     recall.SensitivityInternal,
@@ -212,7 +213,19 @@ func TestSchemasRejectContractBreaks(t *testing.T) {
 			name: "unknown field in a manifest", method: protocol.MethodInitialize, result: true,
 			payload: `{"protocol_version":1,"adapter_id":"a","display_name":"A","record_types":["task"],
 				"query_modes":["exact"],"freshness_modes":["live"],"as_of_support":"none",
-				"capabilities":["search"],"sensitivity":"internal","source_uid":"01J8ZK"}`,
+				"relevance_basis":"lexical_span","capabilities":["search"],"sensitivity":"internal","source_uid":"01J8ZK"}`,
+		},
+		{
+			name: "manifest without relevance basis", method: protocol.MethodInitialize, result: true,
+			payload: `{"protocol_version":1,"adapter_id":"a","display_name":"A","record_types":["task"],
+				"query_modes":["exact"],"freshness_modes":["live"],"as_of_support":"none",
+				"capabilities":["search"],"sensitivity":"internal"}`,
+		},
+		{
+			name: "manifest with unknown relevance basis", method: protocol.MethodInitialize, result: true,
+			payload: `{"protocol_version":1,"adapter_id":"a","display_name":"A","record_types":["task"],
+				"query_modes":["exact"],"freshness_modes":["live"],"as_of_support":"none",
+				"relevance_basis":"native_score","capabilities":["search"],"sensitivity":"internal"}`,
 		},
 		{
 			name: "search without a deadline", method: protocol.MethodSearch,

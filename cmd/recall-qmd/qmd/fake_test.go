@@ -717,8 +717,8 @@ func TestVectorModeCarriesTheCosineAsRelevance(t *testing.T) {
 	if !c.HasSignal(recall.MatchSemantic) {
 		t.Error("a vector hit must carry the semantic signal")
 	}
-	if resp.Diagnostics["relevance_basis"] != "vector_similarity" {
-		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	if _, ok := resp.Diagnostics["relevance_basis"]; ok {
+		t.Error("search diagnostics repeat the manifest relevance_basis")
 	}
 
 	// The default relevance floor is 0.10. The whole point of the change is that
@@ -744,8 +744,8 @@ func TestVectorModeCarriesTheCosineAsRelevance(t *testing.T) {
 	if rel := got.Candidates[0].Relevance; rel == nil || *rel != 0 {
 		t.Errorf("the lexical basis measured %v on this span; the case has drifted", *rel)
 	}
-	if got.Diagnostics["relevance_basis"] != "lexical_span" {
-		t.Errorf("relevance_basis = %v", got.Diagnostics["relevance_basis"])
+	if _, ok := got.Diagnostics["relevance_basis"]; ok {
+		t.Error("search diagnostics repeat the manifest relevance_basis")
 	}
 }
 
@@ -769,8 +769,8 @@ func TestVectorModeNoiseQueryIsAnHonestEmptySuccess(t *testing.T) {
 	if len(resp.Candidates) != 0 {
 		t.Fatalf("a noise query returned %d candidates", len(resp.Candidates))
 	}
-	if resp.Diagnostics["relevance_basis"] != "vector_similarity" {
-		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	if _, ok := resp.Diagnostics["relevance_basis"]; ok {
+		t.Error("search diagnostics repeat the manifest relevance_basis")
 	}
 }
 
@@ -790,8 +790,8 @@ func TestHybridScoresAreNotAdmissionEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Diagnostics["relevance_basis"] != "lexical_span" {
-		t.Errorf("relevance_basis = %v", resp.Diagnostics["relevance_basis"])
+	if _, ok := resp.Diagnostics["relevance_basis"]; ok {
+		t.Error("search diagnostics repeat the manifest relevance_basis")
 	}
 	for i, c := range resp.Candidates {
 		if c.Relevance == nil {

@@ -131,6 +131,19 @@ func Summarize(run Run, scores []CaseScore) string {
 		}
 		writeRates(&b, "macro", run.Metrics.ByTag.Macro.Rates)
 	}
+	if len(run.Metrics.BySourceFamily.Groups) > 0 {
+		b.WriteString("\n### By source family\n\n")
+		b.WriteString("The declared relevance basis is shown because values on different bases are not necessarily comparable.\n\n")
+		for _, name := range sortedKeys(run.Metrics.BySourceFamily.Groups) {
+			metrics := run.Metrics.BySourceFamily.Groups[name]
+			label := name
+			if metrics.RelevanceBasis != "" {
+				label += " [" + string(metrics.RelevanceBasis) + "]"
+			}
+			writeRates(&b, label, metrics.Rates)
+		}
+		writeRates(&b, "macro", run.Metrics.BySourceFamily.Macro.Rates)
+	}
 	return b.String()
 }
 

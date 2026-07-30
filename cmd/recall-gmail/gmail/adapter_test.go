@@ -131,6 +131,9 @@ func TestInitializeDeclaresFirstPartyGmailContract(t *testing.T) {
 	if !manifest.Supports(recall.FreshnessLive) || manifest.AsOfSupport != recall.AsOfNone {
 		t.Fatalf("manifest freshness = %+v", manifest)
 	}
+	if manifest.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Fatalf("relevance_basis = %q, want lexical_span", manifest.RelevanceBasis)
+	}
 	if manifest.Sensitivity != recall.SensitivityConfidential {
 		t.Fatalf("sensitivity = %s", manifest.Sensitivity)
 	}

@@ -193,14 +193,14 @@ individual win or loss attributable per query rather than only per run.
 
 ## Relevance, coverage, and freshness
 
-**Relevance has two bases, and the mode chooses.** Every search names which one
-produced its numbers in `diagnostics.relevance_basis`, because one source can be
-configured either way and a caller comparing two qmd instances has to know.
+**Relevance has two bases, and the mode chooses.** The initialize manifest
+declares which one the configured instance uses, so the resolved query plan and
+evaluation report carry it without repeating it in every search diagnostic.
 Relevance is never omitted under either: an omitted relevance reads as 1.0, the
 maximum, which would let this source outrank every source that reports honestly.
 
 `vector` mode uses **qmd's cosine similarity**, quantized to four fixed decimals
-and clamped to [0,1] — `relevance_basis: vector_similarity`. This is the one
+and clamped to [0,1] — manifest `relevance_basis: vector_similarity`. This is the one
 place a native score becomes the cross-source comparable field, and it is
 defensible for exactly this one: cosine similarity over a normalized embedding is
 bounded, is the same quantity for every query, and separates, with a noise query
@@ -209,7 +209,7 @@ Quantization puts sub-grid differences back into the deterministic tie-break cha
 instead of letting a model's eighth decimal decide an order.
 
 Every other mode **recomputes lexically** on Recall's shared definition, over the
-text qmd returned — `relevance_basis: lexical_span`. It is measured over the
+text qmd returned — manifest `relevance_basis: lexical_span`. It is measured over the
 returned span rather than the whole chunk qmd ranked, because the span is the only
 text the adapter has; against the lexical adapter over one corpus this runs
 slightly high on long sections.

@@ -14,8 +14,8 @@
 // qmd's order becomes LocalRank and its score becomes LocalScore, which is
 // diagnostic and never compared across sources.
 //
-// Owned here, and the mode decides how: Relevance. Every search names which
-// basis produced its numbers in the `relevance_basis` diagnostic.
+// Owned here, and the mode decides how: Relevance. The initialize manifest
+// names which basis this configured instance uses.
 //
 // In bm25, hybrid, and full it is recomputed on the one definition every source
 // shares, over the text qmd returned, because qmd's own number in those modes

@@ -139,6 +139,7 @@
       {
         "source_uid": "01J8ZKQ4M7",
         "source_id": "clara-signals",
+        "relevance_basis": "lexical_span",
         "eligible": true,
         "limit": 20,
         "timeout_ns": 200000000,

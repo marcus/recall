@@ -83,6 +83,12 @@ type CaseResult struct {
 	// cover every case it had a hand in.
 	SourceFamilies []string `json:"source_families,omitempty"`
 
+	// SourceFamilyBases records the relevance definition each contributing
+	// family declared in the response plan. It is kept beside SourceFamilies
+	// so per-case artifacts explain why two source-local values may not be
+	// directly comparable.
+	SourceFamilyBases map[string]recall.RelevanceBasis `json:"source_family_bases,omitempty"`
+
 	// Behavior is what Recall actually did: answered, abstained, or failed.
 	Behavior Behavior `json:"behavior"`
 
@@ -150,6 +156,9 @@ type CaseScore struct {
 	CaseID         string   `json:"case_id"`
 	Tags           []string `json:"tags,omitempty"`
 	SourceFamilies []string `json:"source_families,omitempty"`
+	// SourceFamilyBases is copied from the result so aggregation never has to
+	// recover protocol metadata from rendered candidates.
+	SourceFamilyBases map[string]recall.RelevanceBasis `json:"source_family_bases,omitempty"`
 
 	NDCG10     Value `json:"ndcg_at_10"`
 	Recall5    Value `json:"recall_at_5"`
@@ -234,6 +243,11 @@ type Metrics struct {
 	Rates
 	Cases   int          `json:"cases"`
 	Latency LatencyStats `json:"latency"`
+
+	// RelevanceBasis is populated for a by-source-family group. It is absent
+	// from overall, tag, and macro populations because those may mix bases.
+	// The JSON field is optional so older committed baselines remain readable.
+	RelevanceBasis recall.RelevanceBasis `json:"relevance_basis,omitempty"`
 }
 
 // Macro is the unweighted mean of each rate across groups: every group counts
@@ -325,6 +339,7 @@ func Score(c Case, judgments []Judgment, r CaseResult) CaseScore {
 		CaseID:                c.CaseID,
 		Tags:                  c.Tags,
 		SourceFamilies:        r.SourceFamilies,
+		SourceFamilyBases:     r.SourceFamilyBases,
 		SensitivityViolations: r.SensitivityViolations,
 		Latency:               r.Latency,
 		Cold:                  r.Cold,
@@ -769,7 +784,7 @@ func ReportOf(scores []CaseScore) Report {
 		Cases:          len(scores),
 		Overall:        Aggregate(scores),
 		ByTag:          groupReport(byTag),
-		BySourceFamily: groupReport(byFamily),
+		BySourceFamily: sourceFamilyReport(byFamily),
 	}
 }
 
@@ -779,6 +794,35 @@ func groupReport(groups map[string][]CaseScore) GroupReport {
 		out.Groups[name] = Aggregate(members)
 	}
 	out.Macro = MacroOf(out.Groups)
+	return out
+}
+
+// sourceFamilyReport aggregates each source family and annotates it with the
+// relevance basis carried from the response plan. A run uses one resolved
+// profile, so a family must not change basis between cases; if malformed input
+// does, leaving the annotation empty is safer than publishing either claim.
+func sourceFamilyReport(groups map[string][]CaseScore) GroupReport {
+	out := groupReport(groups)
+	for name, members := range groups {
+		var basis recall.RelevanceBasis
+		consistent := true
+		for _, score := range members {
+			got := score.SourceFamilyBases[name]
+			if got == "" {
+				continue
+			}
+			if basis != "" && basis != got {
+				consistent = false
+				break
+			}
+			basis = got
+		}
+		if consistent {
+			metrics := out.Groups[name]
+			metrics.RelevanceBasis = basis
+			out.Groups[name] = metrics
+		}
+	}
 	return out
 }
 

@@ -342,7 +342,7 @@ func TestJSONIsTheUnprojectedResponse(t *testing.T) {
 		Plan: recall.Plan{
 			Profile: "work", Limit: 20, RankConst: 60, Corrobor: 2, RelevanceFloor: 0.05,
 			Deadline: deadline,
-			Sources:  []recall.PlanSource{{SourceUID: "01UIDNOTES", SourceID: "notes", Eligible: true, Limit: 20, Prior: 1.2}},
+			Sources:  []recall.PlanSource{{SourceUID: "01UIDNOTES", SourceID: "notes", RelevanceBasis: recall.RelevanceLexicalSpan, Eligible: true, Limit: 20, Prior: 1.2}},
 		},
 		Suppressed: []recall.Suppression{{Reason: "above profile ceiling", Count: 1, LineageRoot: "01UIDNOTES:sealed"}},
 		Outcome:    recall.OutcomeAnswered,

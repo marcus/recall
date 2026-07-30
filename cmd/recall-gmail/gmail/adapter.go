@@ -121,6 +121,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		},
 		FreshnessModes: []recall.FreshnessMode{recall.FreshnessLive},
 		AsOfSupport:    recall.AsOfNone,
+		RelevanceBasis: recall.RelevanceLexicalSpan,
 		Capabilities:   []recall.Capability{recall.CapSearch, recall.CapExpand},
 		MaxConcurrency: 2,
 		FreshnessPolicy: "live: each search reads Gmail through gog; scope_query defines the " +

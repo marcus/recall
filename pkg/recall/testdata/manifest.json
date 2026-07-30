@@ -15,6 +15,7 @@
     "indexed"
   ],
   "as_of_support": "filter",
+  "relevance_basis": "lexical_span",
   "capabilities": [
     "search",
     "expand",

@@ -111,6 +111,7 @@ record_types         person | task | document | message | event | ...
 query_modes          exact | lexical | semantic | structured | temporal
 freshness_modes      live | indexed | hybrid  (supported set)
 as_of_support        none | filter | snapshot
+relevance_basis      lexical_span | vector_similarity
 derives_from         optional source_id this source projects wholesale. A
                      name, not an identity: an adapter cannot know another
                      instance's generated source_uid. The core resolves it and
@@ -350,9 +351,11 @@ A source may compute `relevance` on a different basis, and one first-party
 adapter does: `recall-qmd` in `mode = vector` reports a quantized embedding
 cosine, because a lexical measure is 0 for every true paraphrase and a semantic
 source measured that way is withheld by the floor on exactly the questions it
-exists to answer. A source doing this must DECLARE the basis — `recall-qmd`
-reports `relevance_basis` in its search diagnostics — because a number whose
-basis is unstated cannot be reasoned about at all.
+exists to answer. A source doing this must DECLARE the basis in its manifest,
+because a number whose basis is unstated cannot be reasoned about at all. The
+declaration is required for every adapter, including lexical ones: the resolved
+plan and evaluation reports can then name the basis without inferring it from a
+mode or scraping adapter-specific diagnostics.
 
 What a declared basis buys, and what it does not:
 

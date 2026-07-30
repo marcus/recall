@@ -281,9 +281,9 @@ func contentFingerprint(docID string) string {
 // is measured on depends on the mode.
 //
 // This is the one place the modes disagree about something other than speed, so
-// the reasoning is here rather than split across two functions. Both bases are
-// reported in the search's diagnostics as `relevance_basis`, because a caller
-// comparing two qmd sources has to know which number they got.
+// the reasoning is here rather than split across two functions. The configured
+// basis is declared in the manifest, because a caller comparing two qmd sources
+// has to know which number each one produced.
 //
 // VECTOR MODE uses qmd's cosine similarity, quantized. It is not a native score
 // smuggled into a comparable field: cosine similarity over a normalized
@@ -340,15 +340,14 @@ func vectorRelevance(cosine float64) float64 {
 	return math.Round(cosine*relevanceQuantum) / relevanceQuantum
 }
 
-// relevanceBasis names which of the two measures a search used, for diagnostics.
-// The docs adapter states its own basis the same way when it discounts quoted
-// occurrences: it is the difference between a result a source withheld and one
-// it does not hold.
-func relevanceBasis(mode Mode) string {
+// relevanceBasis names which of the two measures this configured adapter
+// instance uses. It is declared in the manifest so the resolved plan and
+// evaluation artifacts carry it without inspecting search diagnostics.
+func relevanceBasis(mode Mode) recall.RelevanceBasis {
 	if mode == ModeVector {
-		return "vector_similarity"
+		return recall.RelevanceVectorSimilarity
 	}
-	return "lexical_span"
+	return recall.RelevanceLexicalSpan
 }
 
 // spanRelevance is [recall.Candidate.Relevance] for one hit, recomputed here

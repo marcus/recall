@@ -95,6 +95,7 @@
       {
         "source_uid": "01UIDNOTES",
         "source_id": "notes",
+        "relevance_basis": "lexical_span",
         "eligible": true,
         "limit": 20,
         "timeout_ns": 0,

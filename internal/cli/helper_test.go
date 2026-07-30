@@ -89,6 +89,7 @@ func manifest() recall.Manifest {
 		QueryModes:      []recall.QueryMode{recall.QueryLexical},
 		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessIndexed},
 		AsOfSupport:     recall.AsOfFilter,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 	}
 }

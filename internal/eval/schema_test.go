@@ -158,6 +158,28 @@ func TestRunSchemaRejectsABrokenClaim(t *testing.T) {
 	}
 }
 
+func TestRunSchemaKeepsOlderSourceFamilyMetricsReadable(t *testing.T) {
+	doc, err := json.Marshal(fullRun())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var old map[string]any
+	if err := json.Unmarshal(doc, &old); err != nil {
+		t.Fatal(err)
+	}
+	groups := old["metrics"].(map[string]any)["by_source_family"].(map[string]any)["groups"].(map[string]any)
+	for _, raw := range groups {
+		delete(raw.(map[string]any), "relevance_basis")
+	}
+	withoutBasis, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eval.ValidateBytes(eval.KindRun, withoutBasis); err != nil {
+		t.Fatalf("older run without relevance_basis became unreadable: %v", err)
+	}
+}
+
 func fullPack() eval.Pack {
 	ceiling := recall.SensitivityInternal
 	return eval.Pack{
@@ -230,11 +252,17 @@ func fullRun() eval.Run {
 		{
 			CaseID: "tasks-exact-001",
 			Tags:   []string{"exact"}, SourceFamilies: []string{"tasks"},
+			SourceFamilyBases: map[string]recall.RelevanceBasis{
+				"tasks": recall.RelevanceLexicalSpan,
+			},
 			NDCG10: eval.Value{V: 1, OK: true}, Latency: 18 * time.Millisecond,
 		},
 		{
 			CaseID: "docs-lexical-002",
 			Tags:   []string{"lexical"}, SourceFamilies: []string{"documents"},
+			SourceFamilyBases: map[string]recall.RelevanceBasis{
+				"documents": recall.RelevanceLexicalSpan,
+			},
 			NDCG10: eval.Value{V: 0.8, OK: true}, Latency: 41 * time.Millisecond, Cold: true,
 		},
 	}

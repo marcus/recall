@@ -140,6 +140,7 @@ func fullManifest() recall.Manifest {
 		QueryModes:      []recall.QueryMode{recall.QueryExact, recall.QueryLexical, recall.QueryTemporal},
 		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessIndexed},
 		AsOfSupport:     recall.AsOfFilter,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		DerivesFrom:     "",
 		Capabilities: []recall.Capability{
 			recall.CapSearch, recall.CapExpand, recall.CapCheckpoint,
@@ -246,7 +247,7 @@ func fullQueryResponse() recall.QueryResponse {
 		Plan: recall.Plan{
 			Profile: "work",
 			Sources: []recall.PlanSource{
-				{SourceUID: "01J8ZKQ4M7", SourceID: "clara-signals", Eligible: true, Limit: 20, Timeout: 200 * time.Millisecond, Prior: 1.25},
+				{SourceUID: "01J8ZKQ4M7", SourceID: "clara-signals", RelevanceBasis: recall.RelevanceLexicalSpan, Eligible: true, Limit: 20, Timeout: 200 * time.Millisecond, Prior: 1.25},
 				{SourceUID: "01J8ZKQ4M8", SourceID: "clara-docs", Eligible: false, Reason: "as_of_unsupported"},
 			},
 			Deadline:       *ts("2026-07-23T12:00:00Z"),

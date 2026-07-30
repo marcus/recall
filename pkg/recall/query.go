@@ -360,6 +360,10 @@ type PlanSource struct {
 	SourceUID SourceUID `json:"source_uid"`
 	// SourceID is the configured source name.
 	SourceID string `json:"source_id"`
+	// RelevanceBasis is the quantity this source places in candidate
+	// relevance. It is empty only when the source was excluded before a
+	// manifest could be read.
+	RelevanceBasis RelevanceBasis `json:"relevance_basis,omitempty"`
 	// Eligible reports whether the source may answer this request.
 	Eligible bool `json:"eligible"`
 	// Reason explains ineligibility.

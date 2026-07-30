@@ -168,6 +168,7 @@ func manifest(types ...recall.RecordType) recall.Manifest {
 		RecordTypes:     types,
 		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessIndexed},
 		AsOfSupport:     recall.AsOfFilter,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 	}
 }

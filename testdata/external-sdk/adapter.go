@@ -26,6 +26,7 @@ func (Notes) Initialize(_ context.Context, cfg adapter.Config) (recall.Manifest,
 		QueryModes:      []recall.QueryMode{recall.QueryLexical},
 		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessLive},
 		AsOfSupport:     recall.AsOfNone,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
 		Capabilities:    []recall.Capability{recall.CapSearch, recall.CapExpand},
 		Sensitivity:     recall.SensitivityInternal,
 	}, nil

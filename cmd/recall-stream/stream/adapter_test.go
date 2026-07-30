@@ -112,6 +112,9 @@ func TestManifestDeclaresOnlyWhatItCanDo(t *testing.T) {
 	if manifest.AsOfSupport != recall.AsOfFilter {
 		t.Errorf("as_of_support = %q, want %q", manifest.AsOfSupport, recall.AsOfFilter)
 	}
+	if manifest.RelevanceBasis != recall.RelevanceLexicalSpan {
+		t.Errorf("relevance_basis = %q, want lexical_span", manifest.RelevanceBasis)
+	}
 	// checkpoint means recall/refresh is served. Declaring it without serving
 	// it would be a capability nothing can invoke.
 	if !manifest.Can(recall.CapCheckpoint) {

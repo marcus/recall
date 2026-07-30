@@ -281,6 +281,23 @@ const (
 	CapContextExpansion Capability = "context_expansion"
 )
 
+// RelevanceBasis names the quantity an adapter places in
+// [Candidate.Relevance].
+//
+// The value is declared once in the manifest because it is a property of the
+// configured adapter instance, not something that varies between results.
+// Different bases are admissible on the shared [0,1] field but are not
+// necessarily comparable across sources.
+type RelevanceBasis string
+
+const (
+	// RelevanceLexicalSpan is Recall's shared lexical aboutness measure over
+	// the text span the source searched.
+	RelevanceLexicalSpan RelevanceBasis = "lexical_span"
+	// RelevanceVectorSimilarity is a normalized embedding similarity.
+	RelevanceVectorSimilarity RelevanceBasis = "vector_similarity"
+)
+
 // Sensitivity is an ordered data classification. Comparison is total, so a
 // ceiling check is unambiguous everywhere it is applied.
 type Sensitivity int

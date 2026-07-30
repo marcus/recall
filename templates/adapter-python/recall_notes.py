@@ -1099,6 +1099,10 @@ class Adapter:
             # no revision history, so the set of notes present at a past instant
             # cannot be reconstructed from it.
             "as_of_support": "filter",
+            # The quantity placed in each candidate's relevance field. This is
+            # a manifest property, so plans and evaluation runs can compare
+            # source families without scraping per-search diagnostics.
+            "relevance_basis": "lexical_span",
             "capabilities": ["search", "expand", "checkpoint"],
             "freshness_policy": (
                 "indexed: the projection is rebuilt when the note directory changes "
