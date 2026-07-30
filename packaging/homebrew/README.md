@@ -1,26 +1,24 @@
 # Homebrew formula publication
 
 Recall's tap formula builds from source so macOS users do not receive unsigned
-prebuilt binaries that trigger Gatekeeper warnings. Formula publication is
-deliberately separate from the tag workflow: it changes another repository and
-requires its own authorization.
+prebuilt binaries that trigger Gatekeeper warnings. Formula publication uses
+the local release operator's authorization because it changes another
+repository; the tag workflow's token remains read-only.
 
-After the tag and GitHub release exist:
+The supported path is:
 
-1. Download
-   `https://github.com/marcus/recall/archive/refs/tags/vX.Y.Z.tar.gz` and
-   calculate its SHA-256.
-2. Use a clean checkout of `marcus/homebrew-tap`.
-3. Render the formula atomically:
+```sh
+make release RELEASE_VERSION=vX.Y.Z
+```
 
-   ```sh
-   ./scripts/render-homebrew-formula.sh \
-     vX.Y.Z <64-character-sha256> \
-     /path/to/homebrew-tap/Formula/recall.rb
-   ```
+It waits for and verifies the exact tag workflow and public release, downloads
+the exact public tag archive, renders and validates the formula in a temporary
+tap clone, retries a racing push by rebasing without force, and verifies the
+remote formula. If the tag exists but publication stopped, resume with:
 
-4. Review the rendered diff, run `brew style` and `brew audit`, then commit and
-   push the tap change only with explicit authorization.
+```sh
+make release-tap RELEASE_VERSION=vX.Y.Z
+```
 
-The renderer validates strict SemVer, the checksum shape, the output filename,
-all template substitutions, and Ruby syntax before replacing `recall.rb`.
+See [`docs/releasing.md`](../../docs/releasing.md) for credential prerequisites,
+the complete guarded path, and manual recovery.
