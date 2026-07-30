@@ -220,14 +220,20 @@ func candidateOf(hit searchHit, got span, title, body string, sourceID string,
 		// The hit: one span of one document. Two spans of one file are two
 		// candidates and one record.
 		CandidateID: candidateID(docID, got),
-		// The identity of the DOCUMENT, spelled as the collection-relative
-		// path — which is the same value the built-in lexical document adapter
-		// derives for the same file. That is deliberate and load-bearing: the
-		// two sources are meant to run over one corpus, and corroboration
-		// collapses on this value, so a per-span identity would let this source
-		// corroborate itself with two halves of one section and a differently
-		// spelled one would let two sources corroborate each other for
-		// agreeing about a file they both read.
+		// The identity of the DOCUMENT, spelled as the collection-relative path.
+		//
+		// Two things depend on it, and they are worth stating separately because
+		// an earlier version of this comment ran them together and claimed a
+		// property the core does not provide. Within this source, corroboration
+		// collapses on it, so a per-span identity would let this source
+		// corroborate itself with two halves of one section. Across sources it
+		// buys nothing on its own — a record identifier is unique only inside
+		// its own source, and fusion scopes the record key accordingly — but it
+		// is the value the LOCATION-scoped rule compares once two sources are
+		// known to have opened the same store, which is exactly the
+		// configuration this adapter is meant for. It is deliberately the same
+		// spelling the built-in lexical document adapter derives for the same
+		// file, so that rule can fire.
 		SourceRecordID: got.Path,
 		Locator:        recall.Locator{SourceID: sourceID, Local: got.Local()},
 		RecordType:     recall.RecordDocument,
@@ -541,13 +547,26 @@ func expandedQueries(hits []searchHit, original string) []map[string]any {
 
 // tokenize folds text into lowercase alphanumeric tokens.
 //
-// It is a copy of the rule the built-in lexical document adapter uses, and the
-// copy is deliberate rather than lazy: relevance is comparable across sources
-// only because every source measures it over the same notion of a term, so
-// these two implementations must not drift. An external adapter cannot import
-// the built-in's internal package, so the constraint is stated here instead.
-// There is no stemming and no synonym expansion: qmd owns query expansion, and
-// this side of it only has to count.
+// It is a copy of the token rule the built-in lexical document adapter uses, and
+// the copy is deliberate rather than lazy: a relevance number is only
+// comparable between two sources if they agree on what a term is, and an
+// external adapter cannot import the built-in's internal package, so the
+// constraint is stated here instead of enforced by the compiler.
+//
+// The parity is on token boundaries only, and two real differences remain — both
+// on the query side, both making this source's relevance slightly different from
+// the lexical adapter's over one corpus:
+//
+//   - The lexical adapter scans quote-aware and never drops a function word
+//     inside a quoted phrase. This does not, so a quoted-phrase query is
+//     measured against a smaller retained-term set here.
+//   - The lexical adapter resolves grammatical number against its own index's
+//     vocabulary at query time. This does not, so a singular query does not
+//     reach a plural term.
+//
+// Neither is fixable from this side: both are properties of an index this
+// adapter does not own. There is no stemming and no synonym expansion either —
+// qmd owns query expansion, and this side of it only has to count.
 func tokenize(text string) []string {
 	var out []string
 	var b strings.Builder

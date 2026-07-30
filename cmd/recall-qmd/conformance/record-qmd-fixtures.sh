@@ -158,7 +158,18 @@ rules() {
 	cat >"$here/$1/fixture/qmd.json"
 }
 
-base_rules() { # $1 = case, $2 = search stdout file, $3 = search exit code
+# base_rules writes the fixture's half of the contract: which recorded output
+# answers which invocation.
+#
+# The retrieval rule names ONE qmd command, the one the case's mode actually
+# runs, and the recording under it came from that command. An earlier version
+# mapped query, search, and vsearch to the same file so that any mode would find
+# something; every case runs exactly one of the three, so the other two rules
+# were dead — and a dead rule is still a fixture asserting that `qmd search`
+# wrote output only `qmd vsearch` ever produces. An invocation with no rule falls
+# through to the default and fails loudly, which is what a gap in a fixture
+# should do.
+base_rules() { # $1 = case, $2 = stdout file, $3 = exit code, $4 = qmd command
 	rules "$1" <<JSON
 {
   "comment": "Recorded qmd 2.5.3 output. Regenerate with conformance/record-qmd-fixtures.sh; never edit by hand.",
@@ -166,9 +177,7 @@ base_rules() { # $1 = case, $2 = search stdout file, $3 = search exit code
     {"contains": ["--version"], "stdout": "version.txt"},
     {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
     {"contains": ["status"], "stdout": "status.txt"},
-    {"contains": ["query"], "stdout": "$2", "exit_code": $3},
-    {"contains": ["search"], "stdout": "$2", "exit_code": $3},
-    {"contains": ["vsearch"], "stdout": "$2", "exit_code": $3}
+    {"contains": ["$4"], "stdout": "$2", "exit_code": $3}
   ],
   "default": {"stderr": "no recorded response", "exit_code": 1}
 }
@@ -176,32 +185,32 @@ JSON
 }
 
 cases_with handshake version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt
-base_rules handshake search-hybrid.json 0
+base_rules handshake search-hybrid.json 0 query
 cp "$rec/search-hybrid.json" "$here/handshake/fixture/search-hybrid.json"
 
 cases_with version-rejection version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-hybrid.json:search-hybrid.json
-base_rules version-rejection search-hybrid.json 0
+base_rules version-rejection search-hybrid.json 0 query
 
 cases_with search-ranked version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-hybrid.json:search-hybrid.json
-base_rules search-ranked search-hybrid.json 0
+base_rules search-ranked search-hybrid.json 0 query
 
 cases_with search-partial version.txt:version.txt collection-show.txt:collection-show.txt status-partial.txt:status.txt search-hybrid-partial.json:search-hybrid.json
-base_rules search-partial search-hybrid.json 0
+base_rules search-partial search-hybrid.json 0 query
 
 cases_with search-full version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-full.json:search-full.json
-base_rules search-full search-full.json 0
+base_rules search-full search-full.json 0 query
 
 cases_with search-bm25-abstains version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-empty.json:search-empty.json
-base_rules search-bm25-abstains search-empty.json 0
+base_rules search-bm25-abstains search-empty.json 0 search
 
 cases_with search-vector-similarity version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt vector-paraphrase.json:vector-paraphrase.json
-base_rules search-vector-similarity vector-paraphrase.json 0
+base_rules search-vector-similarity vector-paraphrase.json 0 vsearch
 
 cases_with search-vector-noise version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt vector-noise.json:vector-noise.json
-base_rules search-vector-noise vector-noise.json 0
+base_rules search-vector-noise vector-noise.json 0 vsearch
 
 cases_with search-invalid-response version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt progress.txt:progress.txt
-base_rules search-invalid-response progress.txt 0
+base_rules search-invalid-response progress.txt 0 query
 
 cases_with search-unavailable version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt
 rules search-unavailable <<'JSON'
@@ -218,14 +227,14 @@ rules search-unavailable <<'JSON'
 JSON
 
 cases_with collection-mismatch version.txt:version.txt collection-show-mismatch.txt:collection-show.txt status.txt:status.txt search-hybrid.json:search-hybrid.json
-base_rules collection-mismatch search-hybrid.json 0
+base_rules collection-mismatch search-hybrid.json 0 query
 
 cases_with expand-details collection-show.txt:collection-show.txt status.txt:status.txt version.txt:version.txt
-base_rules expand-details search-hybrid.json 0
+base_rules expand-details search-hybrid.json 0 query
 cp "$rec/search-hybrid.json" "$here/expand-details/fixture/search-hybrid.json"
 
 cases_with expand-expired collection-show.txt:collection-show.txt status.txt:status.txt version.txt:version.txt
-base_rules expand-expired search-hybrid.json 0
+base_rules expand-expired search-hybrid.json 0 query
 cp "$rec/search-hybrid.json" "$here/expand-expired/fixture/search-hybrid.json"
 
 cases_with cancel-inflight version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt search-hybrid.json:search-hybrid.json
@@ -243,7 +252,7 @@ rules cancel-inflight <<'JSON'
 JSON
 
 cases_with shutdown version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt
-base_rules shutdown search-hybrid.json 0
+base_rules shutdown search-hybrid.json 0 query
 
 cases_with refresh version.txt:version.txt collection-show.txt:collection-show.txt status.txt:status.txt update.txt:update.txt embed.txt:embed.txt warm.json:warm.json
 rules refresh <<'JSON'

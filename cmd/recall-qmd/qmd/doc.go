@@ -14,13 +14,23 @@
 // qmd's order becomes LocalRank and its score becomes LocalScore, which is
 // diagnostic and never compared across sources.
 //
-// Recomputed here, deliberately: Relevance. qmd's score cannot serve as it, and
-// the reason is measured rather than theoretical. Under the reranked modes an
-// off-corpus query returns an unrelated document at the same score a genuinely
-// relevant one earns — the cross-encoder saturates — so a threshold over that
-// number cannot express an admission floor and abstention built on it would be
-// dishonest. Relevance is therefore measured on the one definition every source
-// shares, over the text qmd returned. See [spanRelevance].
+// Owned here, and the mode decides how: Relevance. Every search names which
+// basis produced its numbers in the `relevance_basis` diagnostic.
+//
+// In bm25, hybrid, and full it is recomputed on the one definition every source
+// shares, over the text qmd returned, because qmd's own number in those modes
+// carries no admission information: a `query` score is rank-derived, so rank 1 is
+// 1.0 whatever matched and an off-corpus query returns an unrelated document at
+// the same score a genuinely relevant one earns. See [spanRelevance].
+//
+// In vector it is qmd's embedding cosine, quantized. That is a departure from the
+// shared definition and it is declared as one: a lexical measure is 0 for every
+// true paraphrase, so measuring a semantic mode that way had the relevance floor
+// withholding exactly the answers the mode exists to find. See [relevanceOf] for
+// what makes the cosine admissible where an RRF score is not, and
+// docs/adapter-protocol.md for what a declared basis does NOT promise — its
+// numbers are not comparable with a lexical source's, and in a mixed profile this
+// source is systematically discounted.
 //
 // # Declared limits
 //
@@ -28,13 +38,32 @@
 // ideal, stated here because a limit a caller cannot see is indistinguishable
 // from a bug.
 //
-//   - Relevance is measured over the RETURNED SPAN, not over the whole chunk
-//     qmd ranked, because the span is the only text this process has. A span is
+//   - Relevance in vector mode is on a DECLARED BASIS, not the shared one, so it
+//     is not comparable with a lexical source's number. Measured over one corpus
+//     and one passage: the lexical basis put the answering passage at 0.9288 and
+//     a merely adjacent one at 0.5114, while the cosine put the SAME answering
+//     passage at 0.5600. In a mixed profile this source is discounted by roughly
+//     that margin, and nothing in the core detects or corrects it.
+//
+//   - Lexically recomputed relevance is measured over the RETURNED SPAN, not over
+//     the whole chunk qmd ranked, because the span is the only text this process
+//     has. A span is
 //     denser than the section around it, so against the built-in lexical
 //     adapter over one corpus this source's relevance runs slightly high on
 //     long sections. Padding the length with unreturned text would break the
 //     definition in the other direction, and reading every file at search time
 //     would put the corpus back on the query path.
+//
+//   - hybrid and full have NO admission floor, and must not be a profile's only
+//     source. qmd's `query` score is rank-derived: rank 1 is 1.0 whatever
+//     matched, and the ladder below it is the same for an off-corpus query as for
+//     an answered one, so those modes return the corpus top-N for any question.
+//     The lexically recomputed Relevance is the only floor they have, and a floor
+//     may withhold but may never abstain — so a profile whose only source is
+//     hybrid or full turns every honest abstention into a confident wrong answer.
+//     bm25 and vector both return an empty list honestly. Run those beside a
+//     lexical source and keep hybrid and full for measuring what a layer
+//     contributes.
 //
 //   - Watermarks are counts. `collection=<name> files=<n>` for the corpus and
 //     `docs=<n> vectors=<n>` for the index are derived from the source, stable

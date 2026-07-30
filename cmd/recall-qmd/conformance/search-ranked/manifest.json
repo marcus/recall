@@ -1,6 +1,6 @@
 {
   "case": "search-ranked",
-  "description": "A paraphrase query whose words appear nowhere in the document that answers it: qmd's hybrid order becomes local_rank, its score stays diagnostic in local_score, and relevance is recomputed lexically — so the three unrelated documents qmd also returned score near zero instead of inheriting a saturated rerank score.",
+  "description": "A paraphrase query whose words appear nowhere in the document that answers it: qmd's hybrid order becomes local_rank and its score stays diagnostic in local_score. Relevance is recomputed lexically, and what that produces here is worth reading off the transcript rather than inferring: ALL FIVE candidates measure exactly 0, including the one that answers the query, because coverage times concentration over shared query terms is 0 when the question and the answer share no words. The recompute did not separate the right document from the four unrelated ones — it refused to rank any of them, which is why the zero-score tie-break falls back to the source's own ordering and why mode=vector measures relevance on the embedding instead.",
   "flow": "lockstep",
   "placeholders": {
     "FIXTURE": "absolute path of this case's fixture/ directory, which holds the recorded qmd output and the corpus evidence is read from",

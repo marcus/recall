@@ -4,8 +4,6 @@
     {"contains": ["--version"], "stdout": "version.txt"},
     {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
     {"contains": ["status"], "stdout": "status.txt"},
-    {"contains": ["query"], "stdout": "vector-noise.json", "exit_code": 0},
-    {"contains": ["search"], "stdout": "vector-noise.json", "exit_code": 0},
     {"contains": ["vsearch"], "stdout": "vector-noise.json", "exit_code": 0}
   ],
   "default": {"stderr": "no recorded response", "exit_code": 1}

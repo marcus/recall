@@ -14,8 +14,16 @@ never replaces it. That is the whole shape of the integration:
   reported unavailable and the query exits 3 with the source named. Document
   search keeps working.
 - Both sources derive the same `source_record_id` for the same file — the
-  collection-relative path — so one document reaching Recall through both
-  collapses into one lineage root instead of corroborating itself.
+  collection-relative path. Be precise about what that buys, because an earlier
+  version of this document was not. A lineage root is `<source_uid>:<local>`, so
+  two sources can never share one, and the record-identity corroboration key is
+  scoped by source on purpose — a record identifier is unique only inside the
+  source that issued it. What the parity buys is the *location-scoped* rule:
+  fusion treats two sources whose resolved location and `source_record_id` agree
+  as two views of one record, so they no longer corroborate each other for
+  holding the same file. Display deduplication is separate and older: the two
+  results cluster into one when they also agree on a title, and both stay
+  expandable.
 
 ## What it does not fix
 
