@@ -1,0 +1,18 @@
+[
+  {
+    "docid": "#7d53e3",
+    "score": 0.37,
+    "file": "qmd://notes/house/heating.md",
+    "line": 10,
+    "title": "Heating",
+    "snippet": "@@ -9,4 @@ (8 before, 0 after)\n\nProp the loft hatch open once the forecast falls under freezing, so the pipes\nabove both bedrooms do not burst while nobody is awake.\n"
+  },
+  {
+    "docid": "#ba1e65",
+    "score": 0.35,
+    "file": "qmd://notes/house/car.md",
+    "line": 5,
+    "title": "Car",
+    "snippet": "@@ -4,4 @@ (3 before, 5 after)\n\nThe garage services the estate once a year and posts a reminder card three\nweeks beforehand. Ask them to look at the wipers while it is in.\n"
+  }
+]

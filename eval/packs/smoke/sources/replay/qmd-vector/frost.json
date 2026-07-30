@@ -1,0 +1,26 @@
+[
+  {
+    "docid": "#f02b58",
+    "score": 0.38,
+    "file": "qmd://notes/house/garden.md",
+    "line": 3,
+    "title": "Garden",
+    "snippet": "@@ -2,4 @@ (1 before, 7 after)\n\n## Clippings\n\nTake the sacks out to the tip on the last Sunday, and go early because the"
+  },
+  {
+    "docid": "#ba1e65",
+    "score": 0.36,
+    "file": "qmd://notes/house/car.md",
+    "line": 10,
+    "title": "Car",
+    "snippet": "@@ -9,4 @@ (8 before, 0 after)\n\nPressures live on a sticker inside the driver's door. Keep the winter set in\nthe shed until the clocks change.\n"
+  },
+  {
+    "docid": "#7d53e3",
+    "score": 0.36,
+    "file": "qmd://notes/house/heating.md",
+    "line": 5,
+    "title": "Heating",
+    "snippet": "@@ -4,4 @@ (3 before, 5 after)\n\nThe engineer arrives in early October, bleeds every radiator, tops the\npressure back up to one bar and leaves the paperwork on the hall shelf.\n"
+  }
+]

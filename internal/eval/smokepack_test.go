@@ -2,6 +2,7 @@ package eval_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -361,9 +362,14 @@ func TestSmokePackParaphraseSemanticOverlap(t *testing.T) {
 	t.Parallel()
 	_, cases, judgments := smokeLoad(t)
 
+	// The semantic source's judgments name spans in its own locator space — qmd
+	// chooses its own snippet window, so its spans are not the chunker's — but
+	// they are spans of the same files, and the overlap bound has to hold for
+	// them too or the head-to-head is grading two different questions.
 	corpora := map[recall.SourceUID]string{
 		"01SMOKENOTES":    "notes",
 		"01SMOKEHANDBOOK": "handbook",
+		"01SMOKEQMD":      filepath.Join("replay", "qmd-vector", "corpus"),
 	}
 	requiredRoots := map[string][]recall.LineageRoot{}
 	judged := map[string]int{}
@@ -457,6 +463,106 @@ func TestSmokePackParaphraseSemanticOverlap(t *testing.T) {
 	if abstaining == 0 {
 		t.Errorf("no must-abstain %s case: a semantic source would be measured on recall "+
 			"and never on honesty", smokeSemanticTag)
+	}
+}
+
+// smokeSemanticReplay is the recorded qmd output the semantic source answers
+// from, relative to the pack's sources directory.
+var smokeSemanticReplay = filepath.Join("replay", "qmd-vector")
+
+// smokeMarkdownDigests maps every .md file under root to a digest of its bytes.
+func smokeMarkdownDigests(t *testing.T, root string) map[string][32]byte {
+	t.Helper()
+	out := map[string][32]byte{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		out[filepath.ToSlash(rel)] = sha256.Sum256(body)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	return out
+}
+
+// TestSmokePackSemanticReplayMirrorsTheCorpus holds the claim the head-to-head
+// rests on: that the semantic source and the lexical one read the same corpus.
+//
+// The replay directory has to carry its own copy — the adapter checks the
+// directory its collection indexes against the configured location on every
+// operation, and expansion reads evidence from the file rather than through qmd —
+// so "the same corpus" is a duplicate that can drift. A fixture added to the
+// notes tree and not re-recorded would silently make the two sources answer
+// different questions, and every delta between the two families would then be
+// measuring the drift. record-qmd.sh writes the copy; this is what makes
+// forgetting to run it a failure rather than a slow surprise.
+func TestSmokePackSemanticReplayMirrorsTheCorpus(t *testing.T) {
+	t.Parallel()
+	sources := filepath.Join(smokePackDir(t), "sources")
+	replay := filepath.Join(sources, smokeSemanticReplay)
+
+	corpus := smokeMarkdownDigests(t, filepath.Join(sources, "notes"))
+	mirror := smokeMarkdownDigests(t, filepath.Join(replay, "corpus"))
+
+	for rel, want := range corpus {
+		got, ok := mirror[rel]
+		switch {
+		case !ok:
+			t.Errorf("%s is in the notes corpus but not in the replay copy; the semantic "+
+				"source cannot be compared with the lexical one over a corpus it does not "+
+				"hold — re-run eval/packs/smoke/record-qmd.sh", rel)
+		case got != want:
+			t.Errorf("%s differs between the notes corpus and the replay copy; the recorded "+
+				"qmd output was produced from other bytes — re-run "+
+				"eval/packs/smoke/record-qmd.sh", rel)
+		}
+	}
+	for rel := range mirror {
+		if _, ok := corpus[rel]; !ok {
+			t.Errorf("%s is in the replay copy but not in the notes corpus; the semantic "+
+				"source would answer from a document the lexical one cannot see", rel)
+		}
+	}
+
+	// A recording is only replayable if it also carries what the adapter probes
+	// before it searches: the collection's indexed directory, the index counts
+	// coverage is derived from, and the version the numbers belong to.
+	for _, name := range []string{"qmd.json", "clock.json", "collection-show.txt",
+		"status.txt", "version.txt"} {
+		if _, err := os.Stat(filepath.Join(replay, name)); err != nil {
+			t.Errorf("the replay directory is missing %s: %v", name, err)
+		}
+	}
+
+	show, err := os.ReadFile(filepath.Join(replay, "collection-show.txt"))
+	if err != nil {
+		t.Fatalf("read recorded collection: %v", err)
+	}
+	if !strings.Contains(string(show), "${REPLAY_DIR}/corpus") {
+		t.Error("the recorded collection does not name its corpus through ${REPLAY_DIR}; " +
+			"the adapter's location check would compare against a machine path, which is " +
+			"either a leak or a failure everywhere but the recording machine")
+	}
+	version, err := os.ReadFile(filepath.Join(replay, "version.txt"))
+	if err != nil {
+		t.Fatalf("read recorded version: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(version)), "qmd ") {
+		t.Errorf("the recording states no qmd version (%q); a model or tool bump has to be "+
+			"a new baseline rather than a silent drift", strings.TrimSpace(string(version)))
 	}
 }
 

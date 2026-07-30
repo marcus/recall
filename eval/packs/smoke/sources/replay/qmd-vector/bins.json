@@ -1,0 +1,18 @@
+[
+  {
+    "docid": "#3fde04",
+    "score": 0.43,
+    "file": "qmd://notes/house/kitchen.md",
+    "line": 5,
+    "title": "Kitchen",
+    "snippet": "@@ -4,4 @@ (3 before, 5 after)\n\nTwist the mesh basket out at the bottom, rinse the grease off it under the hot\ntap every month and push it back until it clicks.\n"
+  },
+  {
+    "docid": "#f02b58",
+    "score": 0.36,
+    "file": "qmd://notes/house/garden.md",
+    "line": 5,
+    "title": "Garden",
+    "snippet": "@@ -4,4 @@ (3 before, 5 after)\n\nTake the sacks out to the tip on the last Sunday, and go early because the\ngate there shuts at four.\n"
+  }
+]
