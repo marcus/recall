@@ -113,9 +113,33 @@ collection = "modes"
 mode = "full"
 replay = "${PACK}/sources/replay/full"
 
-# One profile per mode, and one for the lexical baseline. Each case names the
-# profile it is asked under, so `recall eval compare` reports the same query
-# against one layer at a time.
+# The two-views pair: the built-in lexical adapter and the qmd vector source over
+# ONE directory. It is deliberately the replay directory's corpus rather than
+# sources/corpus, because a replay pack carries its own copy and the sources have
+# to resolve to the SAME location for the rule under test to fire at all.
+#
+# This is the configuration the epic recommends — a semantic source beside the
+# lexical one over one tree — and the configuration that produced a live defect:
+# both sources returned the same document and the answer claimed "corroborated 2",
+# a doubled score presented as independent evidence.
+[[sources]]
+source_uid = "01QMDVIEWSDOCS"
+source_id = "views-lexical"
+adapter = "documents"
+location = "${PACK}/sources/replay/vector/corpus"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+timeout_ms = 2000
+freshness_policy = "indexed: rebuilt from the synthetic fixture tree at handshake"
+
+[sources.settings]
+extensions = [".md"]
+
+# One profile per mode, one for the lexical baseline, and one pairing a lexical
+# source with a semantic one over a single tree. Each case names the profile it is
+# asked under, so `recall eval compare` reports the same query against one layer
+# at a time.
 
 [profiles.docs-lexical]
 sources = ["docs-lexical"]
@@ -135,4 +159,8 @@ max_sensitivity = "internal"
 
 [profiles.qmd-full]
 sources = ["qmd-full"]
+max_sensitivity = "internal"
+
+[profiles.qmd-views]
+sources = ["views-lexical", "qmd-vector"]
 max_sensitivity = "internal"

@@ -10,9 +10,9 @@
       "ftsScores": [],
       "vectorScores": [
         0.4836561679840088,
-        0.429973840713501,
-        0.4289162755012512,
-        0.4698798656463623
+        0.4710330367088318,
+        0.46567559242248535,
+        0.45143359899520874
       ],
       "rrf": {
         "rank": 1,
@@ -36,30 +36,30 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
+            "query": "dental cleaning options",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.429973840713501,
+            "backendScore": 0.4710330367088318,
             "rrfContribution": 0.01639344262295082
           },
           {
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
+            "query": "dental professionals for teeth cleaning",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.4289162755012512,
+            "backendScore": 0.46567559242248535,
             "rrfContribution": 0.01639344262295082
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
+            "query": "Who can clean my teeth is an important concept that relates to dental professionals for teeth cleaning.изации",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.4698798656463623,
+            "backendScore": 0.45143359899520874,
             "rrfContribution": 0.01639344262295082
           }
         ]
@@ -79,17 +79,17 @@
       "ftsScores": [],
       "vectorScores": [
         0.06644374132156372,
-        0.05249285697937012,
-        -0.025601625442504883,
-        0.07517963647842407
+        0.06662839651107788,
+        0.051965415477752686,
+        0.04781758785247803
       ],
       "rrf": {
         "rank": 2,
         "positionScore": 0.5,
         "weight": 0.75,
-        "baseScore": 0.0796447280318248,
+        "baseScore": 0.08038914490527393,
         "topRankBonus": 0.02,
-        "totalScore": 0.09964472803182481,
+        "totalScore": 0.10038914490527394,
         "contributions": [
           {
             "listIndex": 0,
@@ -105,31 +105,31 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 3,
+            "query": "dental cleaning options",
+            "rank": 2,
             "weight": 1,
-            "backendScore": 0.05249285697937012,
-            "rrfContribution": 0.015873015873015872
+            "backendScore": 0.06662839651107788,
+            "rrfContribution": 0.016129032258064516
           },
           {
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 5,
+            "query": "dental professionals for teeth cleaning",
+            "rank": 2,
             "weight": 1,
-            "backendScore": -0.025601625442504883,
-            "rrfContribution": 0.015384615384615385
+            "backendScore": 0.051965415477752686,
+            "rrfContribution": 0.016129032258064516
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 2,
+            "query": "Who can clean my teeth is an important concept that relates to dental professionals for teeth cleaning.изации",
+            "rank": 3,
             "weight": 1,
-            "backendScore": 0.07517963647842407,
-            "rrfContribution": 0.016129032258064516
+            "backendScore": 0.04781758785247803,
+            "rrfContribution": 0.015873015873015872
           }
         ]
       },
@@ -148,17 +148,17 @@
       "ftsScores": [],
       "vectorScores": [
         0.022432446479797363,
-        0.05277550220489502,
-        -0.005812168121337891,
-        0.06993192434310913
+        0.03619349002838135,
+        0.02324730157852173,
+        0.053370535373687744
       ],
       "rrf": {
         "rank": 3,
         "positionScore": 0.3333333333333333,
         "weight": 0.75,
-        "baseScore": 0.079621095750128,
+        "baseScore": 0.07913269526172752,
         "topRankBonus": 0.02,
-        "totalScore": 0.09962109575012801,
+        "totalScore": 0.09913269526172752,
         "contributions": [
           {
             "listIndex": 0,
@@ -174,31 +174,31 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 2,
+            "query": "dental cleaning options",
+            "rank": 5,
             "weight": 1,
-            "backendScore": 0.05277550220489502,
-            "rrfContribution": 0.016129032258064516
+            "backendScore": 0.03619349002838135,
+            "rrfContribution": 0.015384615384615385
           },
           {
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
+            "query": "dental professionals for teeth cleaning",
             "rank": 3,
             "weight": 1,
-            "backendScore": -0.005812168121337891,
+            "backendScore": 0.02324730157852173,
             "rrfContribution": 0.015873015873015872
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 3,
+            "query": "Who can clean my teeth is an important concept that relates to dental professionals for teeth cleaning.изации",
+            "rank": 2,
             "weight": 1,
-            "backendScore": 0.06993192434310913,
-            "rrfContribution": 0.015873015873015872
+            "backendScore": 0.053370535373687744,
+            "rrfContribution": 0.016129032258064516
           }
         ]
       },
@@ -207,77 +207,8 @@
     }
   },
   {
-    "docid": "#3c0636",
-    "score": 0.35,
-    "file": "qmd://modes/README.md",
-    "line": 1,
-    "title": "Fixture corpus",
-    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
-    "explain": {
-      "ftsScores": [],
-      "vectorScores": [
-        0.011292517185211182,
-        0.04145306348800659,
-        0.03602522611618042,
-        0.0697978138923645
-      ],
-      "rrf": {
-        "rank": 4,
-        "positionScore": 0.25,
-        "weight": 0.6,
-        "baseScore": 0.07814826302729529,
-        "topRankBonus": 0.02,
-        "totalScore": 0.09814826302729529,
-        "contributions": [
-          {
-            "listIndex": 0,
-            "source": "vec",
-            "queryType": "original",
-            "query": "who can clean my teeth",
-            "rank": 5,
-            "weight": 2,
-            "backendScore": 0.011292517185211182,
-            "rrfContribution": 0.03076923076923077
-          },
-          {
-            "listIndex": 1,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 4,
-            "weight": 1,
-            "backendScore": 0.04145306348800659,
-            "rrfContribution": 0.015625
-          },
-          {
-            "listIndex": 2,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 2,
-            "weight": 1,
-            "backendScore": 0.03602522611618042,
-            "rrfContribution": 0.016129032258064516
-          },
-          {
-            "listIndex": 3,
-            "source": "vec",
-            "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 4,
-            "weight": 1,
-            "backendScore": 0.0697978138923645,
-            "rrfContribution": 0.015625
-          }
-        ]
-      },
-      "rerankScore": 0.5000787433157567,
-      "blendedScore": 0.3500314973263027
-    }
-  },
-  {
     "docid": "#37a34e",
-    "score": 0.32,
+    "score": 0.35,
     "file": "qmd://modes/notes/hydration.md",
     "line": 1,
     "title": "Hydration log",
@@ -286,17 +217,17 @@
       "ftsScores": [],
       "vectorScores": [
         0.021074116230010986,
-        0.037364304065704346,
-        -0.009655594825744629,
-        0.06634145975112915
+        0.06046772003173828,
+        0.007221102714538574,
+        0.019023120403289795
       ],
       "rrf": {
-        "rank": 5,
-        "positionScore": 0.2,
+        "rank": 4,
+        "positionScore": 0.25,
         "weight": 0.6,
-        "baseScore": 0.07764423076923077,
-        "topRankBonus": 0,
-        "totalScore": 0.07764423076923077,
+        "baseScore": 0.07789224664224664,
+        "topRankBonus": 0.02,
+        "totalScore": 0.09789224664224665,
         "contributions": [
           {
             "listIndex": 0,
@@ -312,36 +243,105 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 5,
+            "query": "dental cleaning options",
+            "rank": 3,
             "weight": 1,
-            "backendScore": 0.037364304065704346,
-            "rrfContribution": 0.015384615384615385
+            "backendScore": 0.06046772003173828,
+            "rrfContribution": 0.015873015873015872
           },
           {
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
+            "query": "dental professionals for teeth cleaning",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": 0.007221102714538574,
+            "rrfContribution": 0.015384615384615385
+          },
+          {
+            "listIndex": 3,
+            "source": "vec",
+            "queryType": "hyde",
+            "query": "Who can clean my teeth is an important concept that relates to dental professionals for teeth cleaning.изации",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": 0.019023120403289795,
+            "rrfContribution": 0.015384615384615385
+          }
+        ]
+      },
+      "rerankScore": 0.5000602502802206,
+      "blendedScore": 0.3500241001120883
+    }
+  },
+  {
+    "docid": "#3c0636",
+    "score": 0.32,
+    "file": "qmd://modes/README.md",
+    "line": 1,
+    "title": "Fixture corpus",
+    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.011292517185211182,
+        0.04857534170150757,
+        0.010950863361358643,
+        0.020515799522399902
+      ],
+      "rrf": {
+        "rank": 5,
+        "positionScore": 0.2,
+        "weight": 0.6,
+        "baseScore": 0.07764423076923077,
+        "topRankBonus": 0,
+        "totalScore": 0.07764423076923077,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 5,
+            "weight": 2,
+            "backendScore": 0.011292517185211182,
+            "rrfContribution": 0.03076923076923077
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "dental cleaning options",
             "rank": 4,
             "weight": 1,
-            "backendScore": -0.009655594825744629,
+            "backendScore": 0.04857534170150757,
+            "rrfContribution": 0.015625
+          },
+          {
+            "listIndex": 2,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "dental professionals for teeth cleaning",
+            "rank": 4,
+            "weight": 1,
+            "backendScore": 0.010950863361358643,
             "rrfContribution": 0.015625
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 5,
+            "query": "Who can clean my teeth is an important concept that relates to dental professionals for teeth cleaning.изации",
+            "rank": 4,
             "weight": 1,
-            "backendScore": 0.06634145975112915,
-            "rrfContribution": 0.015384615384615385
+            "backendScore": 0.020515799522399902,
+            "rrfContribution": 0.015625
           }
         ]
       },
-      "rerankScore": 0.5000602502802206,
-      "blendedScore": 0.32002410011208826
+      "rerankScore": 0.5000787433157567,
+      "blendedScore": 0.3200314973263027
     }
   }
 ]

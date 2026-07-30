@@ -7,7 +7,8 @@
     {"contains": ["who can clean my teeth"], "stdout": "paraphrase.json"},
     {"contains": ["dental hygienist accepting new patients"], "stdout": "lexical.json"},
     {"contains": ["quantum chromodynamics lattice gauge"], "stdout": "off-corpus.json"},
-    {"contains": ["update"], "stdout": "version.txt"}
+    {"contains": ["synthetic corpus fixture suite"], "stdout": "shared-document.json"},
+    {"contains": ["update"], "stdout": "update.txt"}
   ],
   "default": {"stderr": "no recorded response for this query", "exit_code": 1}
 }

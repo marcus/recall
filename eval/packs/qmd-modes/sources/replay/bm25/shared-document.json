@@ -1,0 +1,10 @@
+[
+  {
+    "docid": "#3c0636",
+    "score": 0.86,
+    "file": "qmd://modes/README.md",
+    "line": 3,
+    "title": "Fixture corpus",
+    "snippet": "@@ -2,4 @@ (1 before, 3 after)\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes\na real person, account, or system.\n"
+  }
+]

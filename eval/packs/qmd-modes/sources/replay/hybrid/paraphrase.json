@@ -10,17 +10,16 @@
       "ftsScores": [],
       "vectorScores": [
         0.4836561679840088,
-        0.429973840713501,
-        0.4289162755012512,
-        0.4698798656463623
+        0.45292890071868896,
+        0.471460223197937
       ],
       "rrf": {
         "rank": 1,
         "positionScore": 1,
         "weight": 1,
-        "baseScore": 0.0819672131147541,
+        "baseScore": 0.06557377049180328,
         "topRankBonus": 0.05,
-        "totalScore": 0.13196721311475412,
+        "totalScore": 0.11557377049180328,
         "contributions": [
           {
             "listIndex": 0,
@@ -36,30 +35,20 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
+            "query": "what is acceptable when it comes to cleaning teeth?",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.429973840713501,
+            "backendScore": 0.45292890071868896,
             "rrfContribution": 0.01639344262295082
           },
           {
             "listIndex": 2,
             "source": "vec",
-            "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 1,
-            "weight": 1,
-            "backendScore": 0.4289162755012512,
-            "rrfContribution": 0.01639344262295082
-          },
-          {
-            "listIndex": 3,
-            "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
+            "query": "The topic of who can clean my teeth covers what are the considerations for deciding who cleans my teeth?. Understanding this is essential for effective implementation.</think>",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.4698798656463623,
+            "backendScore": 0.471460223197937,
             "rrfContribution": 0.01639344262295082
           }
         ]
@@ -69,77 +58,8 @@
     }
   },
   {
-    "docid": "#09f1bc",
-    "score": 0.5,
-    "file": "qmd://modes/guides/bicycle-repair.md",
-    "line": 1,
-    "title": "Bicycle repair",
-    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Bicycle repair\n\n## Fixing a puncture",
-    "explain": {
-      "ftsScores": [],
-      "vectorScores": [
-        0.06644374132156372,
-        0.05249285697937012,
-        -0.025601625442504883,
-        0.07517963647842407
-      ],
-      "rrf": {
-        "rank": 2,
-        "positionScore": 0.5,
-        "weight": 1,
-        "baseScore": 0.0796447280318248,
-        "topRankBonus": 0.02,
-        "totalScore": 0.09964472803182481,
-        "contributions": [
-          {
-            "listIndex": 0,
-            "source": "vec",
-            "queryType": "original",
-            "query": "who can clean my teeth",
-            "rank": 2,
-            "weight": 2,
-            "backendScore": 0.06644374132156372,
-            "rrfContribution": 0.03225806451612903
-          },
-          {
-            "listIndex": 1,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 3,
-            "weight": 1,
-            "backendScore": 0.05249285697937012,
-            "rrfContribution": 0.015873015873015872
-          },
-          {
-            "listIndex": 2,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 5,
-            "weight": 1,
-            "backendScore": -0.025601625442504883,
-            "rrfContribution": 0.015384615384615385
-          },
-          {
-            "listIndex": 3,
-            "source": "vec",
-            "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 2,
-            "weight": 1,
-            "backendScore": 0.07517963647842407,
-            "rrfContribution": 0.016129032258064516
-          }
-        ]
-      },
-      "rerankScore": 0,
-      "blendedScore": 0.5
-    }
-  },
-  {
     "docid": "#0593a8",
-    "score": 0.33,
+    "score": 0.5,
     "file": "qmd://modes/guides/sourdough.md",
     "line": 1,
     "title": "Sourdough starter",
@@ -148,17 +68,16 @@
       "ftsScores": [],
       "vectorScores": [
         0.022432446479797363,
-        0.05277550220489502,
-        -0.005812168121337891,
-        0.06993192434310913
+        0.1320093870162964,
+        0.09094393253326416
       ],
       "rrf": {
-        "rank": 3,
-        "positionScore": 0.3333333333333333,
+        "rank": 2,
+        "positionScore": 0.5,
         "weight": 1,
-        "baseScore": 0.079621095750128,
+        "baseScore": 0.06400409626216078,
         "topRankBonus": 0.02,
-        "totalScore": 0.09962109575012801,
+        "totalScore": 0.08400409626216078,
         "contributions": [
           {
             "listIndex": 0,
@@ -174,31 +93,79 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
+            "query": "what is acceptable when it comes to cleaning teeth?",
             "rank": 2,
             "weight": 1,
-            "backendScore": 0.05277550220489502,
+            "backendScore": 0.1320093870162964,
             "rrfContribution": 0.016129032258064516
           },
           {
             "listIndex": 2,
             "source": "vec",
-            "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 3,
+            "queryType": "hyde",
+            "query": "The topic of who can clean my teeth covers what are the considerations for deciding who cleans my teeth?. Understanding this is essential for effective implementation.</think>",
+            "rank": 2,
             "weight": 1,
-            "backendScore": -0.005812168121337891,
-            "rrfContribution": 0.015873015873015872
+            "backendScore": 0.09094393253326416,
+            "rrfContribution": 0.016129032258064516
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.5
+    }
+  },
+  {
+    "docid": "#09f1bc",
+    "score": 0.33,
+    "file": "qmd://modes/guides/bicycle-repair.md",
+    "line": 1,
+    "title": "Bicycle repair",
+    "snippet": "@@ -1,3 @@ (0 before, 8 after)\n# Bicycle repair\n\n## Fixing a puncture",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.06644374132156372,
+        0.03541320562362671,
+        0.06517338752746582
+      ],
+      "rrf": {
+        "rank": 3,
+        "positionScore": 0.3333333333333333,
+        "weight": 1,
+        "baseScore": 0.06326767990074442,
+        "topRankBonus": 0.02,
+        "totalScore": 0.08326767990074442,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 2,
+            "weight": 2,
+            "backendScore": 0.06644374132156372,
+            "rrfContribution": 0.03225806451612903
           },
           {
-            "listIndex": 3,
+            "listIndex": 1,
+            "source": "vec",
+            "queryType": "vec",
+            "query": "what is acceptable when it comes to cleaning teeth?",
+            "rank": 5,
+            "weight": 1,
+            "backendScore": 0.03541320562362671,
+            "rrfContribution": 0.015384615384615385
+          },
+          {
+            "listIndex": 2,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 3,
+            "query": "The topic of who can clean my teeth covers what are the considerations for deciding who cleans my teeth?. Understanding this is essential for effective implementation.</think>",
+            "rank": 4,
             "weight": 1,
-            "backendScore": 0.06993192434310913,
-            "rrfContribution": 0.015873015873015872
+            "backendScore": 0.06517338752746582,
+            "rrfContribution": 0.015625
           }
         ]
       },
@@ -207,77 +174,8 @@
     }
   },
   {
-    "docid": "#3c0636",
-    "score": 0.25,
-    "file": "qmd://modes/README.md",
-    "line": 1,
-    "title": "Fixture corpus",
-    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
-    "explain": {
-      "ftsScores": [],
-      "vectorScores": [
-        0.011292517185211182,
-        0.04145306348800659,
-        0.03602522611618042,
-        0.0697978138923645
-      ],
-      "rrf": {
-        "rank": 4,
-        "positionScore": 0.25,
-        "weight": 1,
-        "baseScore": 0.07814826302729529,
-        "topRankBonus": 0.02,
-        "totalScore": 0.09814826302729529,
-        "contributions": [
-          {
-            "listIndex": 0,
-            "source": "vec",
-            "queryType": "original",
-            "query": "who can clean my teeth",
-            "rank": 5,
-            "weight": 2,
-            "backendScore": 0.011292517185211182,
-            "rrfContribution": 0.03076923076923077
-          },
-          {
-            "listIndex": 1,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 4,
-            "weight": 1,
-            "backendScore": 0.04145306348800659,
-            "rrfContribution": 0.015625
-          },
-          {
-            "listIndex": 2,
-            "source": "vec",
-            "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
-            "rank": 2,
-            "weight": 1,
-            "backendScore": 0.03602522611618042,
-            "rrfContribution": 0.016129032258064516
-          },
-          {
-            "listIndex": 3,
-            "source": "vec",
-            "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
-            "rank": 4,
-            "weight": 1,
-            "backendScore": 0.0697978138923645,
-            "rrfContribution": 0.015625
-          }
-        ]
-      },
-      "rerankScore": 0,
-      "blendedScore": 0.25
-    }
-  },
-  {
     "docid": "#37a34e",
-    "score": 0.2,
+    "score": 0.25,
     "file": "qmd://modes/notes/hydration.md",
     "line": 1,
     "title": "Hydration log",
@@ -286,17 +184,16 @@
       "ftsScores": [],
       "vectorScores": [
         0.021074116230010986,
-        0.037364304065704346,
-        -0.009655594825744629,
-        0.06634145975112915
+        0.11995100975036621,
+        0.07987523078918457
       ],
       "rrf": {
-        "rank": 5,
-        "positionScore": 0.2,
+        "rank": 4,
+        "positionScore": 0.25,
         "weight": 1,
-        "baseScore": 0.07764423076923077,
-        "topRankBonus": 0,
-        "totalScore": 0.07764423076923077,
+        "baseScore": 0.06299603174603174,
+        "topRankBonus": 0.02,
+        "totalScore": 0.08299603174603175,
         "contributions": [
           {
             "listIndex": 0,
@@ -312,30 +209,78 @@
             "listIndex": 1,
             "source": "vec",
             "queryType": "vec",
-            "query": "overview of dental cleaning procedures",
-            "rank": 5,
+            "query": "what is acceptable when it comes to cleaning teeth?",
+            "rank": 3,
             "weight": 1,
-            "backendScore": 0.037364304065704346,
-            "rrfContribution": 0.015384615384615385
+            "backendScore": 0.11995100975036621,
+            "rrfContribution": 0.015873015873015872
           },
           {
             "listIndex": 2,
             "source": "vec",
+            "queryType": "hyde",
+            "query": "The topic of who can clean my teeth covers what are the considerations for deciding who cleans my teeth?. Understanding this is essential for effective implementation.</think>",
+            "rank": 3,
+            "weight": 1,
+            "backendScore": 0.07987523078918457,
+            "rrfContribution": 0.015873015873015872
+          }
+        ]
+      },
+      "rerankScore": 0,
+      "blendedScore": 0.25
+    }
+  },
+  {
+    "docid": "#3c0636",
+    "score": 0.2,
+    "file": "qmd://modes/README.md",
+    "line": 1,
+    "title": "Fixture corpus",
+    "snippet": "@@ -1,3 @@ (0 before, 5 after)\n# Fixture corpus\n\nA synthetic corpus for the recall-qmd conformance suite. Nothing here describes",
+    "explain": {
+      "ftsScores": [],
+      "vectorScores": [
+        0.011292517185211182,
+        0.06870859861373901,
+        0.04526245594024658
+      ],
+      "rrf": {
+        "rank": 5,
+        "positionScore": 0.2,
+        "weight": 1,
+        "baseScore": 0.061778846153846156,
+        "topRankBonus": 0,
+        "totalScore": 0.061778846153846156,
+        "contributions": [
+          {
+            "listIndex": 0,
+            "source": "vec",
+            "queryType": "original",
+            "query": "who can clean my teeth",
+            "rank": 5,
+            "weight": 2,
+            "backendScore": 0.011292517185211182,
+            "rrfContribution": 0.03076923076923077
+          },
+          {
+            "listIndex": 1,
+            "source": "vec",
             "queryType": "vec",
-            "query": "importance of choosing a qualified dental cleanings",
+            "query": "what is acceptable when it comes to cleaning teeth?",
             "rank": 4,
             "weight": 1,
-            "backendScore": -0.009655594825744629,
+            "backendScore": 0.06870859861373901,
             "rrfContribution": 0.015625
           },
           {
-            "listIndex": 3,
+            "listIndex": 2,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of who can clean my teeth covers debates surrounding the role of dental professionals in cleaning. If you don't know the answer to a question, don't share false information.</think>",
+            "query": "The topic of who can clean my teeth covers what are the considerations for deciding who cleans my teeth?. Understanding this is essential for effective implementation.</think>",
             "rank": 5,
             "weight": 1,
-            "backendScore": 0.06634145975112915,
+            "backendScore": 0.04526245594024658,
             "rrfContribution": 0.015384615384615385
           }
         ]

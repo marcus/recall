@@ -11,8 +11,8 @@
       "vectorScores": [
         0.12833696603775024,
         0.08708089590072632,
-        0.05444788932800293,
-        0.09783834218978882
+        0.12234854698181152,
+        0.15008169412612915
       ],
       "rrf": {
         "rank": 1,
@@ -46,20 +46,20 @@
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "query": "importance of lattice gauge formulations in quantum chromodynamics",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.05444788932800293,
+            "backendScore": 0.12234854698181152,
             "rrfContribution": 0.01639344262295082
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge formulations in quantum chromodynamics. Proper implementation follows established patterns and best practices.idelity",
             "rank": 1,
             "weight": 1,
-            "backendScore": 0.09783834218978882,
+            "backendScore": 0.15008169412612915,
             "rrfContribution": 0.01639344262295082
           }
         ]
@@ -80,8 +80,8 @@
       "vectorScores": [
         0.02395707368850708,
         -0.037476420402526855,
-        -0.03561580181121826,
-        0.036147236824035645
+        0.003587007522583008,
+        0.044494569301605225
       ],
       "rrf": {
         "rank": 2,
@@ -115,20 +115,20 @@
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "query": "importance of lattice gauge formulations in quantum chromodynamics",
             "rank": 2,
             "weight": 1,
-            "backendScore": -0.03561580181121826,
+            "backendScore": 0.003587007522583008,
             "rrfContribution": 0.016129032258064516
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge formulations in quantum chromodynamics. Proper implementation follows established patterns and best practices.idelity",
             "rank": 3,
             "weight": 1,
-            "backendScore": 0.036147236824035645,
+            "backendScore": 0.044494569301605225,
             "rrfContribution": 0.015873015873015872
           }
         ]
@@ -149,16 +149,16 @@
       "vectorScores": [
         -0.0099867582321167,
         -0.03071463108062744,
-        -0.0653764009475708,
-        0.04540085792541504
+        -0.01851189136505127,
+        0.0782175064086914
       ],
       "rrf": {
         "rank": 3,
         "positionScore": 0.3333333333333333,
         "weight": 0.75,
-        "baseScore": 0.07913306451612903,
+        "baseScore": 0.0793810803891449,
         "topRankBonus": 0.02,
-        "totalScore": 0.09913306451612904,
+        "totalScore": 0.09938108038914491,
         "contributions": [
           {
             "listIndex": 0,
@@ -184,20 +184,20 @@
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of lattice gauge theories in quantum chromodynamics",
-            "rank": 4,
+            "query": "importance of lattice gauge formulations in quantum chromodynamics",
+            "rank": 3,
             "weight": 1,
-            "backendScore": -0.0653764009475708,
-            "rrfContribution": 0.015625
+            "backendScore": -0.01851189136505127,
+            "rrfContribution": 0.015873015873015872
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge formulations in quantum chromodynamics. Proper implementation follows established patterns and best practices.idelity",
             "rank": 2,
             "weight": 1,
-            "backendScore": 0.04540085792541504,
+            "backendScore": 0.0782175064086914,
             "rrfContribution": 0.016129032258064516
           }
         ]
@@ -218,16 +218,16 @@
       "vectorScores": [
         0.01294487714767456,
         -0.07311654090881348,
-        -0.08348000049591064,
-        -0.011789798736572266
+        -0.06438422203063965,
+        0.012148022651672363
       ],
       "rrf": {
         "rank": 4,
         "positionScore": 0.25,
         "weight": 0.6,
-        "baseScore": 0.0778998778998779,
+        "baseScore": 0.07814026251526252,
         "topRankBonus": 0.02,
-        "totalScore": 0.0978998778998779,
+        "totalScore": 0.09814026251526252,
         "contributions": [
           {
             "listIndex": 0,
@@ -253,21 +253,21 @@
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of lattice gauge theories in quantum chromodynamics",
+            "query": "importance of lattice gauge formulations in quantum chromodynamics",
             "rank": 5,
             "weight": 1,
-            "backendScore": -0.08348000049591064,
+            "backendScore": -0.06438422203063965,
             "rrfContribution": 0.015384615384615385
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
-            "rank": 5,
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge formulations in quantum chromodynamics. Proper implementation follows established patterns and best practices.idelity",
+            "rank": 4,
             "weight": 1,
-            "backendScore": -0.011789798736572266,
-            "rrfContribution": 0.015384615384615385
+            "backendScore": 0.012148022651672363,
+            "rrfContribution": 0.015625
           }
         ]
       },
@@ -287,16 +287,16 @@
       "vectorScores": [
         -0.013130664825439453,
         -0.07044720649719238,
-        -0.04822587966918945,
-        0.01561117172241211
+        -0.055159807205200195,
+        0.00666201114654541
       ],
       "rrf": {
         "rank": 5,
         "positionScore": 0.2,
         "weight": 0.6,
-        "baseScore": 0.07789224664224664,
-        "topRankBonus": 0.02,
-        "totalScore": 0.09789224664224665,
+        "baseScore": 0.07740384615384616,
+        "topRankBonus": 0,
+        "totalScore": 0.07740384615384616,
         "contributions": [
           {
             "listIndex": 0,
@@ -322,21 +322,21 @@
             "listIndex": 2,
             "source": "vec",
             "queryType": "vec",
-            "query": "importance of lattice gauge theories in quantum chromodynamics",
-            "rank": 3,
+            "query": "importance of lattice gauge formulations in quantum chromodynamics",
+            "rank": 4,
             "weight": 1,
-            "backendScore": -0.04822587966918945,
-            "rrfContribution": 0.015873015873015872
+            "backendScore": -0.055159807205200195,
+            "rrfContribution": 0.015625
           },
           {
             "listIndex": 3,
             "source": "vec",
             "queryType": "hyde",
-            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge theories in quantum chromodynamics. Importance of lattice gauge theories in. Proper implementation follows established patterns and best practices.</think>",
-            "rank": 4,
+            "query": "The topic of quantum chromodynamics lattice gauge covers importance of lattice gauge formulations in quantum chromodynamics. Proper implementation follows established patterns and best practices.idelity",
+            "rank": 5,
             "weight": 1,
-            "backendScore": 0.01561117172241211,
-            "rrfContribution": 0.015625
+            "backendScore": 0.00666201114654541,
+            "rrfContribution": 0.015384615384615385
           }
         ]
       },

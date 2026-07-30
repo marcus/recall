@@ -6,7 +6,7 @@ Size:  3.1 MB
 Documents
   Total:    5 files indexed
   Vectors:  5 embedded
-  Updated:  11s ago
+  Updated:  52s ago
 
 AST Chunking
   Status:   active
@@ -15,7 +15,7 @@ AST Chunking
 Collections
   modes (qmd://modes/)
     Pattern:  **/*.md
-    Files:    5 (updated 11s ago)
+    Files:    5 (updated 52s ago)
 
 Examples
   # List files in a collection

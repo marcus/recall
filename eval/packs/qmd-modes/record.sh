@@ -32,12 +32,19 @@ command -v qmd >/dev/null || { echo "record: qmd is not on PATH" >&2; exit 1; }
 
 # The queries this pack asks. Each is recorded under every mode, and the replay
 # rules match on the query text so one directory answers all of them.
+#
+# The last one exists for the two-views case: it is answered by a file whose H1 is
+# its whole title and which has no subheadings, so the lexical adapter and qmd
+# report the SAME title for it. That agreement is load-bearing — the name relation
+# is the only thing that puts two sources' groups in one cluster, so a case built
+# without it would pass while the corroboration defect stood.
 queries=(
 	"who can clean my teeth"
 	"dental hygienist accepting new patients"
 	"quantum chromodynamics lattice gauge"
+	"synthetic corpus fixture suite"
 )
-slugs=(paraphrase lexical off-corpus)
+slugs=(paraphrase lexical off-corpus shared-document)
 
 echo "== indexing the pack corpus in $stage"
 rm -rf "$stage/corpus"
@@ -64,6 +71,10 @@ for mode in bm25 vector hybrid full; do
 	qmd collection show modes >"$dir/collection-show.txt" 2>/dev/null
 	qmd status >"$dir/status.txt" 2>/dev/null
 	qmd --version >"$dir/version.txt" 2>/dev/null
+	# Recorded rather than mapped to another command's output. A refresh is not
+	# exercised by any case in this pack, but a rule replaying `qmd --version` as
+	# the answer to `qmd update` is a fixture asserting output qmd never wrote.
+	qmd update >"$dir/update.txt" 2>/dev/null
 
 	rules=$(printf '%s' '')
 	for i in "${!queries[@]}"; do
@@ -85,7 +96,7 @@ for mode in bm25 vector hybrid full; do
     {"contains": ["--version"], "stdout": "version.txt"},
     {"contains": ["collection", "show"], "stdout": "collection-show.txt"},
     {"contains": ["status"], "stdout": "status.txt"},
-$rules    {"contains": ["update"], "stdout": "version.txt"}
+$rules    {"contains": ["update"], "stdout": "update.txt"}
   ],
   "default": {"stderr": "no recorded response for this query", "exit_code": 1}
 }
