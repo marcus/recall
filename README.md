@@ -130,9 +130,11 @@ the encoding, not the information tier.
 
 Configuration lives at `~/.config/recall/config.toml`, with adapter definitions
 under `~/.config/recall/adapters.d/`. `recall config explain` prints the merged
-configuration and the file that supplied each value. Adapter commands may only
-come from user-level configuration; a repository's `recall.toml` cannot make
-Recall execute a program.
+configuration and the file that supplied each value. In `[defaults]`,
+`budget_ms` is the end-to-end request latency ceiling when a caller omits
+`--budget-ms`; `timeout_ms` remains the per-source inheritance default only.
+Adapter commands may only come from user-level configuration; a repository's
+`recall.toml` cannot make Recall execute a program.
 
 ## Go adapter SDK
 

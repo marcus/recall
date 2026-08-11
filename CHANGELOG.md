@@ -6,6 +6,17 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- `[defaults] budget_ms` sets the end-to-end request latency budget when a
+  caller omits one (`recall query` without `--budget-ms`, and the same on
+  HTTP/MCP). Raising `timeout_ms` alone never did this: that key remains the
+  per-source inheritance default. Machines that need a longer cold-start
+  ceiling for vector sources should set `budget_ms` explicitly; unset keeps
+  the engine's 5s fallback.
+
 ## [0.4.0] - 2026-07-30
 
 ### Added

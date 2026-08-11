@@ -8,6 +8,7 @@ files
   user     <root>/config/recall/config.toml
 
 defaults
+  budget_ms          0                            [default]
   fusion_reserve_ms  25                           [user <root>/config/recall/config.toml]
   max_results        20                           [user <root>/config/recall/config.toml]
   profile            work                         [user <root>/config/recall/config.toml]

@@ -56,6 +56,12 @@ const (
 type Defaults struct {
 	// Profile is the profile used when a request names none.
 	Profile string `json:"profile"`
+	// Budget is the end-to-end request latency ceiling when a caller omits one
+	// (for example `recall query` without `--budget-ms`). Zero leaves the
+	// engine's built-in fallback in force; it is not Timeout. Timeout is the
+	// per-source inheritance default and must not be overloaded as the request
+	// budget (the builtin Timeout is 2s and would regress cold vector sources).
+	Budget time.Duration `json:"budget_ns"`
 	// Timeout is the per-source query budget for sources that declare none.
 	Timeout time.Duration `json:"timeout_ns"`
 	// FusionReserve is held back from the request deadline so fusion has time

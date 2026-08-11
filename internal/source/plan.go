@@ -253,10 +253,7 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	}
 
 	start := now()
-	queryBudget := time.Duration(req.Budget.LatencyMS) * time.Millisecond
-	if queryBudget <= 0 {
-		queryBudget = DefaultQueryBudget
-	}
+	queryBudget := resolveQueryBudget(req.Budget.LatencyMS, r.cfg.Defaults)
 	plan := Plan{
 		Profile:  profile.Name,
 		Reserve:  reserve,
@@ -583,8 +580,26 @@ func (r *Registry) consider(
 	}
 }
 
-// DefaultQueryBudget bounds a request whose caller stated none.
+// DefaultQueryBudget bounds a request whose caller stated none and whose
+// configuration did not set defaults.budget_ms either.
 const DefaultQueryBudget = 5 * time.Second
+
+// resolveQueryBudget picks the end-to-end latency ceiling for a request.
+//
+// An explicit LatencyMS (CLI --budget-ms, MCP budget_ms, and so on) wins.
+// Otherwise defaults.budget_ms applies when set. Otherwise the engine keeps
+// DefaultQueryBudget. defaults.timeout_ms is never consulted here: it is the
+// per-source inheritance default, and the builtin Timeout is 2s — short enough
+// that treating it as the request budget would regress cold vector sources.
+func resolveQueryBudget(latencyMS int, defaults config.Defaults) time.Duration {
+	if latencyMS > 0 {
+		return time.Duration(latencyMS) * time.Millisecond
+	}
+	if defaults.Budget > 0 {
+		return defaults.Budget
+	}
+	return DefaultQueryBudget
+}
 
 // staticIneligible applies the checks that need nothing from the adapter.
 func staticIneligible(req recall.QueryRequest, profile config.Profile, inst *config.SourceInstance) (string, bool) {

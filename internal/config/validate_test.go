@@ -173,6 +173,17 @@ max_results = -1
 			wantIn:  []string{"negative", "0 is unbounded"},
 		},
 		{
+			name: "negative request latency budget",
+			user: true,
+			project: `
+[defaults]
+profile = "work"
+budget_ms = -1
+`,
+			wantKey: "defaults.budget_ms",
+			wantIn:  []string{"negative", "engine fallback"},
+		},
+		{
 			// Refused rather than clamped, for the reason every ranking value
 			// is: a machine must not rank differently from the configuration
 			// somebody reviewed. One is out of range as well, because relevance
