@@ -148,11 +148,6 @@ func TestUserLayerLoads(t *testing.T) {
 	}
 }
 
-// The two rules that decide how long an answer is are configuration, not
-// constants, and a machine that writes neither still gets both. They are the
-// only defaults whose absence would be invisible: a profile with no result
-// budget returns as many results as its sources have slots, which reads as a
-// thorough answer rather than as a missing rule.
 // defaults.budget_ms is the end-to-end request latency ceiling when a caller
 // omits --budget-ms. It is distinct from timeout_ms, which only inherits onto
 // sources that declare no timeout of their own.
@@ -182,6 +177,11 @@ timeout_ms = 15000
 	}
 }
 
+// The two rules that decide how long an answer is are configuration, not
+// constants, and a machine that writes neither still gets both. They are the
+// only defaults whose absence would be invisible: a profile with no result
+// budget returns as many results as its sources have slots, which reads as a
+// thorough answer rather than as a missing rule.
 func TestVolumeRulesAreConfiguredAndDefaulted(t *testing.T) {
 	bare := mustLoad(t, t.TempDir(), "")
 	if bare.Defaults.MaxResults != config.DefaultMaxResults ||
