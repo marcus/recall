@@ -148,6 +148,35 @@ func TestUserLayerLoads(t *testing.T) {
 	}
 }
 
+// defaults.budget_ms is the end-to-end request latency ceiling when a caller
+// omits --budget-ms. It is distinct from timeout_ms, which only inherits onto
+// sources that declare no timeout of their own.
+func TestRequestBudgetDefaultLoadsSeparatelyFromTimeout(t *testing.T) {
+	bare := mustLoad(t, t.TempDir(), "")
+	if bare.Defaults.Budget != 0 {
+		t.Errorf("bare budget = %v, want unset (engine fallback applies at plan time)", bare.Defaults.Budget)
+	}
+
+	home := writeHome(t, `
+[defaults]
+profile = "work"
+budget_ms = 15000
+timeout_ms = 15000
+`)
+	cfg := mustLoad(t, home, "")
+	if cfg.Defaults.Budget != 15*time.Second {
+		t.Errorf("budget = %v, want 15s from budget_ms", cfg.Defaults.Budget)
+	}
+	if cfg.Defaults.Timeout != 15*time.Second {
+		t.Errorf("timeout = %v, want 15s from timeout_ms", cfg.Defaults.Timeout)
+	}
+
+	explained := cfg.Explain().Defaults["budget_ms"]
+	if explained.Value != int64(15000) || explained.Layer != config.LayerUser {
+		t.Errorf("explained budget_ms = %+v, want 15000 from the user layer", explained)
+	}
+}
+
 // The two rules that decide how long an answer is are configuration, not
 // constants, and a machine that writes neither still gets both. They are the
 // only defaults whose absence would be invisible: a profile with no result

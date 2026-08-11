@@ -28,6 +28,7 @@ type rawFile struct {
 
 type rawDefaults struct {
 	Profile         *string  `toml:"profile"`
+	BudgetMS        *int     `toml:"budget_ms"`
 	TimeoutMS       *int     `toml:"timeout_ms"`
 	FusionReserveMS *int     `toml:"fusion_reserve_ms"`
 	MaxResults      *int     `toml:"max_results"`

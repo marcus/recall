@@ -186,6 +186,10 @@ func (c *Config) mergeDefaults(f sourceFile) error {
 		c.Defaults.Profile = *d.Profile
 		c.defaultOrigins["profile"] = f.Origin
 	}
+	if d.BudgetMS != nil {
+		c.Defaults.Budget = time.Duration(*d.BudgetMS) * time.Millisecond
+		c.defaultOrigins["budget_ms"] = f.Origin
+	}
 	if d.TimeoutMS != nil {
 		c.Defaults.Timeout = time.Duration(*d.TimeoutMS) * time.Millisecond
 		c.defaultOrigins["timeout_ms"] = f.Origin

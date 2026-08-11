@@ -94,6 +94,12 @@ func (c *Config) validateDefaults() error {
 			"must be positive; a source with no time to answer is a source that reports "+
 				"timeout, never empty success"))
 	}
+	// Zero means "unset": the engine keeps its built-in request budget. A
+	// negative value is never a ceiling, only a configuration mistake.
+	if c.Defaults.Budget < 0 {
+		probs.add(invalidErrorf(c.defaultOrigins["budget_ms"].File,
+			"defaults.budget_ms", "must not be negative; 0 leaves the engine fallback"))
+	}
 	if c.Defaults.FusionReserve < 0 {
 		probs.add(invalidErrorf(c.defaultOrigins["fusion_reserve_ms"].File,
 			"defaults.fusion_reserve_ms", "must not be negative"))

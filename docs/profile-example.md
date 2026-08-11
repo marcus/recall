@@ -93,6 +93,7 @@ freshness_modes = ["live"]
 
 [defaults]
 profile = "engineering"
+budget_ms = 15000
 timeout_ms = 2000
 fusion_reserve_ms = 25
 max_results = 20

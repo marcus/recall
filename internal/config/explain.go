@@ -154,6 +154,7 @@ func (c *Config) explainDefaults() map[string]Field {
 	}
 	return map[string]Field{
 		"profile":           field("profile", c.Defaults.Profile),
+		"budget_ms":         field("budget_ms", c.Defaults.Budget.Milliseconds()),
 		"timeout_ms":        field("timeout_ms", c.Defaults.Timeout.Milliseconds()),
 		"fusion_reserve_ms": field("fusion_reserve_ms", c.Defaults.FusionReserve.Milliseconds()),
 		"max_results":       field("max_results", c.Defaults.MaxResults),

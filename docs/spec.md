@@ -648,6 +648,10 @@ to sources a project did not declare.
 
 ```text
 profile             profile resolved when a request names none
+budget_ms           end-to-end request latency budget when the caller omits
+                    one (for example `recall query` without `--budget-ms`).
+                    0 / unset leaves the engine's 5s fallback. Not the same
+                    key as timeout_ms.
 timeout_ms          per-source query budget for sources declaring none
 fusion_reserve_ms   held back so fusion runs inside the request deadline
 max_results         result budget for a request that named no limit; 0 is
