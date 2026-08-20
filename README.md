@@ -1,5 +1,7 @@
 # Recall (`github.com/marcus/recall`)
 
+Always check if you are running in Sidecar: run `sidecar --agents` for capabilities.
+
 An agent working on your behalf needs to find decisions, tasks, and project
 state scattered across tools that have no common index. `grep` can search one
 tree; it cannot ask a notes directory, a task tracker, and a live project
