@@ -98,12 +98,13 @@ func TestLiveBinary(t *testing.T) {
 		t.Errorf("metadata[deadline] = %#v, want 2026-03-01", top.Metadata["deadline"])
 	}
 	// The CLI's project rollup covers open tasks filed under a project or
-	// area, and excludes Inbox. This task is in the Inbox, so search-time
-	// metadata carries no project — asserting that keeps the documented gap
-	// from quietly becoming a wrong value.
-	if _, present := top.Metadata["project"]; present {
+	// area, and excludes Inbox. Search-time metadata used to carry no
+	// project for that reason. A live CLI that now puts project on the
+	// bulk list fills the gap at the source with "Inbox"; anything else
+	// is still the wrong value the rollup would never have supplied.
+	if got, present := top.Metadata["project"]; present && got != "Inbox" {
 		t.Errorf("metadata[project] = %#v for an Inbox task; the rollup excludes Inbox",
-			top.Metadata["project"])
+			got)
 	}
 
 	// Exact id lookup against the real resolver, which also accepts title

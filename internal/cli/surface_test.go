@@ -313,6 +313,11 @@ func TestServeWaitsForActiveRequestDrainBeforeReturning(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	started := time.Now()
 	cancel()
+	// An incomplete request waits for ReadTimeout, net/http's 500ms
+	// RST-avoidance pause, and Shutdown poll backoff. That sum exceeds
+	// one second on Go 1.27, especially under the race detector, while
+	// still finishing well inside serve's 5s Shutdown fallback.
+	const drainBound = 3 * time.Second
 	select {
 	case code := <-done:
 		elapsed := time.Since(started)
@@ -322,10 +327,10 @@ func TestServeWaitsForActiveRequestDrainBeforeReturning(t *testing.T) {
 		if elapsed < 100*time.Millisecond {
 			t.Fatalf("serve returned in %s before active request drained", elapsed)
 		}
-		if elapsed > time.Second {
+		if elapsed > drainBound {
 			t.Fatalf("serve exceeded bounded drain: %s", elapsed)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(drainBound):
 		t.Fatal("serve did not complete bounded active-request drain")
 	}
 }

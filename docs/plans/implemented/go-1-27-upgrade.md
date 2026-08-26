@@ -1,5 +1,7 @@
 # Plan: Upgrade to Go 1.27
 
+Status: implemented.
+
 ## Goal
 
 Move recall from Go 1.26.4 to Go 1.27.0, and along the way fix the two pieces of CI hygiene this upgrade exposes: hardcoded workflow Go versions and a golangci-lint pin that predates Go 1.27 support. Recall adds one verification surface no other project here has: the eval harness with committed performance baselines.
@@ -8,12 +10,12 @@ Move recall from Go 1.26.4 to Go 1.27.0, and along the way fix the two pieces of
 
 | Concern | Today |
 |---|---|
-| go.mod directive | `go 1.26.4`, no `toolchain` directive |
-| ci.yml | Hardcoded `go-version: '1.26'` in multiple jobs (including release-shape) instead of `go-version-file: go.mod`; runs `make eval`; golangci-lint-action pinned at **v2.12.2** |
-| release.yml | Mix of `go-version-file` and hardcoded versions; golangci-lint-action also v2.12.2; goreleaser v2.16.0 (install-only) |
-| Makefile | `lint:` runs bare `golangci-lint run` with no version guard (sidecar's `make lint` shows the pattern for one) |
-| Eval | Committed baselines; `recall eval compare` exits non-zero when a measurement regresses against them, so drift fails CI rather than hiding |
-| Plans convention | this directory (`docs/plans/active`) |
+| go.mod directive | `go 1.27.0`, no `toolchain` directive |
+| ci.yml | `go-version-file: go.mod` in every job; runs `make eval`; golangci-lint-action pinned at **v2.13.1** |
+| release.yml | `go-version-file: go.mod`; golangci-lint-action v2.13.1; goreleaser v2.16.0 (install-only) |
+| Makefile | `lint:` guards the local binary against `GOLANGCI_LINT_VERSION ?= v2.13.1` |
+| Eval | Committed baselines unchanged: `make eval` compared clean, no metric movement |
+| Plans convention | this directory (`docs/plans/implemented`) |
 
 v2.12.2 predates Go 1.27 support (added in golangci-lint v2.13.0): its bundled typechecker rejects the new stdlib and its staticcheck panics on generic methods. sidecar hit this exact failure mode when Homebrew shipped Go 1.27.0 and fixed it by moving to v2.13.1 — recall is exposed both locally (unversioned binary) and in CI (pinned v2.12.2) the moment anything builds with 1.27.
 
@@ -24,6 +26,7 @@ v2.12.2 predates Go 1.27 support (added in golangci-lint v2.13.0): its bundled t
 - **stdversion vet** runs by default under `go test`.
 - Generic methods / embedded field selectors are legal syntax — which is precisely what old staticcheck panics on.
 - darwin floor stays macOS 13+.
+- **net/http shutdown of an incomplete request** waits for ReadTimeout, the stdlib's 500ms RST-avoidance pause, and Shutdown poll backoff. That sum exceeds one second; the serve drain test bound is 3s, still inside the 5s Shutdown fallback.
 
 ## Work sequence
 
@@ -40,9 +43,10 @@ Recall is standalone — no go.work coupling to td/tasks/sidecar. Land it indepe
 
 ## Verification & acceptance evidence
 
-- Both workflows contain no hardcoded Go versions; lint action at v2.13.1 green on CI.
-- `go build ./...`, `go test ./...`, `golangci-lint run ./...` clean locally.
-- Eval run recorded: compare output clean or baselines refreshed with an explanatory commit message.
-- Snapshot artifacts build for all configured targets.
+- Both workflows contain no hardcoded Go versions; lint action at v2.13.1.
+- `go.mod` is `go 1.27.0`. README, CONTRIBUTING, and docs/quickstart state Go 1.27.0; CONTRIBUTING states golangci-lint 2.13.1.
+- `make check` (build, race-enabled tests, golangci-lint 2.13.1) clean locally. No JSON error-string failures.
+- `make eval`: all three packs pass; compare reported **No regression** and no metric movement; baselines not refreshed.
+- `make release-snapshot` built darwin/linux amd64+arm64 archives and passed archive and publication guards.
 
 Out of scope: adopting json/v2-specific APIs, dependency upgrades beyond tidy, changing what the eval harness measures.

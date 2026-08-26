@@ -32,7 +32,22 @@ cover:
 	$(GO) test -race -count=1 -coverprofile=coverage.out ./...
 	$(GO) tool cover -func=coverage.out | tail -1
 
+# Must match golangci-lint-action version in .github/workflows/ci.yml and
+# .github/workflows/release.yml. A local binary older than the CI pin predates
+# Go 1.27 support and fails in ways CI never sees; make the drift loud here.
+GOLANGCI_LINT_VERSION ?= v2.13.1
+
 lint:
+	@got=$$(golangci-lint version 2>/dev/null | sed -n 's/^golangci-lint has version \([0-9.]*\).*/\1/p' | head -1); \
+	want=$(patsubst v%,%,$(GOLANGCI_LINT_VERSION)); \
+	if [ -z "$$got" ]; then \
+		echo "golangci-lint is not installed (need $(GOLANGCI_LINT_VERSION))"; \
+		exit 1; \
+	fi; \
+	if [ "$$got" != "$$want" ]; then \
+		echo "golangci-lint v$$got != GitHub $(GOLANGCI_LINT_VERSION) (.github/workflows/ci.yml)"; \
+		exit 1; \
+	fi
 	golangci-lint run
 
 fmt:

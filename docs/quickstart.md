@@ -10,7 +10,7 @@ generated IDs, Git revisions, and elapsed times will differ.
 
 ## Install
 
-Recall requires Go 1.26.4 or newer.
+Recall requires Go 1.27.0 or newer.
 
 ```sh
 git clone https://github.com/marcus/recall.git

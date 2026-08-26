@@ -10,7 +10,7 @@ Tests and fixtures in this repository treat those behaviors as contracts.
 Open an issue before a large change so the interface and source boundary can be
 agreed on first. Small fixes can go straight to a pull request.
 
-The repository requires Go 1.26.4 or newer and `golangci-lint` 2.12.2. Run the
+The repository requires Go 1.27.0 or newer and `golangci-lint` 2.13.1. Run the
 same gates CI runs:
 
 ```sh
