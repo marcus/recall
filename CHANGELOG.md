@@ -6,6 +6,23 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [0.5.1] - 2026-08-26
+
+### Changed
+
+- The module and documented toolchain are Go 1.27.0. CI reads the version from
+  `go.mod`, and `make lint` fails closed unless the local `golangci-lint` is
+  v2.13.1, the first release that typechecks 1.27.
+
+### Fixed
+
+- `recall refresh --source` on a live adapter that cannot checkpoint (td,
+  tasks) now probes that source's health instead of exiting 4 with
+  `checkpoint_unsupported`. A healthy live source exits 0 with health
+  attached; an unhealthy one exits non-zero with the same diagnostic
+  `recall sources` already prints. Profile-wide `recall refresh` still skips
+  live sources.
+
 ## [0.5.0] - 2026-08-11
 
 ### Added
@@ -148,7 +165,8 @@ migration guidance.
 - Query results preserve source sensitivity ceilings and distinguish complete
   abstention from degraded or failed coverage.
 
-[Unreleased]: https://github.com/marcus/recall/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/marcus/recall/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/marcus/recall/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/marcus/recall/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/marcus/recall/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/marcus/recall/compare/v0.3.0...v0.3.1
