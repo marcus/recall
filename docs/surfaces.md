@@ -112,8 +112,9 @@ exposes four tools:
   the per-source ledger, and the resolved plan.
 - `recall_expand` — evidence behind one locator, with provenance and
   truncation.
-- `recall_refresh` — refresh one source or all eligible checkpoint-capable
-  sources, with typed per-source outcomes and post-refresh health.
+- `recall_refresh` — refresh one named source (checkpoint update or live
+  health probe) or all eligible checkpoint-capable sources, with typed
+  per-source outcomes and post-refresh health.
 - `recall_sources` — configured source capabilities, health, and freshness.
 
 Tool results carry both a compact text block and `structuredContent`. The

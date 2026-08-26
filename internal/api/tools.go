@@ -129,7 +129,7 @@ Do NOT call it before a query, or routinely. It probes every source in the profi
 
 const refreshToolDescription = `Update adapter-owned indexes after source material changed.
 
-Use it when recall_sources or a degraded query reports a checkpoint-capable source as stale, or when the user explicitly asks to refresh Recall. Pass source_id to update one source; omit it to update every eligible checkpoint-capable source in the active profile.
+Use it when recall_sources or a degraded query reports a checkpoint-capable source as stale, or when the user explicitly asks to refresh Recall. Pass source_id to update one source; a live source that cannot checkpoint is probed for health rather than rejected. Omit source_id to update every eligible checkpoint-capable source in the active profile.
 
 This maintenance writes new adapter-owned index generations. Do NOT call it speculatively before ordinary queries, and do not retry a failed refresh without reading its per-source reason and health.
 
@@ -141,7 +141,7 @@ const refreshInputSchema = `{
     "source_id": {
       "type": "string",
       "minLength": 1,
-      "description": "One source id exactly as recall_sources reports it. Omit to refresh every eligible checkpoint-capable source."
+      "description": "One source id exactly as recall_sources reports it. A named live source is health-probed. Omit to refresh every eligible checkpoint-capable source."
     },
     "full": {
       "type": "boolean",

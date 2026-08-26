@@ -603,23 +603,151 @@ func TestRefreshDoesNotAcceptNonAdvancingPartialHealth(t *testing.T) {
 	}
 }
 
-func TestRefreshTargetRejectsUnsupportedAndUnknownSourcesSemantically(t *testing.T) {
+func TestRefreshNamedLiveSourceProbesHealthWithoutCallingRefresh(t *testing.T) {
+	detail := "tasks store is current"
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].health = recall.Health{
+			Status: recall.HealthHealthy, Coverage: recall.IndexComplete,
+			Diagnostics: map[string]any{"detail": detail},
+		}
+	})
+	resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: "tasks", Full: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.RefreshSucceeded || len(resp.Sources) != 1 {
+		t.Fatalf("response = %+v", resp)
+	}
+	got := resp.Sources[0]
+	if got.Status != recall.RefreshSourceRefreshed || got.Reason != "" {
+		t.Fatalf("source = %+v", got)
+	}
+	if got.Health == nil || got.Health.Status != recall.HealthHealthy ||
+		got.Health.Coverage != recall.IndexComplete || got.DiagnosticDetail != detail {
+		t.Fatalf("attached health = %+v detail=%q", got.Health, got.DiagnosticDetail)
+	}
+	tasks := h.fakes["faketasks"]
+	if tasks.healthCalls != 1 {
+		t.Fatalf("Health calls = %d, want 1", tasks.healthCalls)
+	}
+	if tasks.refreshCalls != 0 {
+		t.Fatalf("Refresh calls = %d, want 0 on a live named source", tasks.refreshCalls)
+	}
+}
+
+func TestRefreshNamedLiveSourceReportsDegradedAndUnavailableHealth(t *testing.T) {
+	detail := "tasks CLI cannot list the store"
+	for _, tc := range []struct {
+		name      string
+		health    recall.Health
+		healthErr error
+		status    recall.RefreshSourceStatus
+		reason    recall.RefreshReason
+		outcome   recall.RefreshOutcome
+	}{
+		{
+			name: "degraded",
+			health: recall.Health{
+				Status: recall.HealthDegraded, Coverage: recall.IndexPartial,
+				CheckpointProgress: recall.CheckpointAdvanced,
+				Diagnostics:        map[string]any{"detail": detail},
+			},
+			status:  recall.RefreshSourceDegraded,
+			reason:  recall.RefreshUnhealthy,
+			outcome: recall.RefreshDegraded,
+		},
+		{
+			name: "unavailable",
+			health: recall.Health{
+				Status: recall.HealthUnavailable, Coverage: recall.IndexUnknown,
+				Diagnostics: map[string]any{"last_refresh_error": detail},
+			},
+			status:  recall.RefreshSourceFailed,
+			reason:  recall.RefreshUnhealthy,
+			outcome: recall.RefreshFailed,
+		},
+		{
+			name: "probe error",
+			health: recall.Health{
+				Status: recall.HealthUnavailable, Coverage: recall.IndexUnknown,
+				Diagnostics: map[string]any{"detail": detail},
+			},
+			healthErr: context.DeadlineExceeded,
+			status:    recall.RefreshSourceFailed,
+			reason:    recall.RefreshTimedOut,
+			outcome:   recall.RefreshFailed,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, func(f map[string]*fake) {
+				f["faketasks"].health = tc.health
+				f["faketasks"].healthErr = tc.healthErr
+			})
+			resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: "tasks"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.Outcome != tc.outcome || len(resp.Sources) != 1 {
+				t.Fatalf("response = %+v", resp)
+			}
+			got := resp.Sources[0]
+			if got.Status != tc.status || got.Reason != tc.reason {
+				t.Fatalf("source = %+v, want status %s reason %s", got, tc.status, tc.reason)
+			}
+			if got.DiagnosticDetail != detail {
+				t.Fatalf("diagnostic = %q, want %q", got.DiagnosticDetail, detail)
+			}
+			tasks := h.fakes["faketasks"]
+			if tasks.refreshCalls != 0 {
+				t.Fatalf("Refresh calls = %d, want 0", tasks.refreshCalls)
+			}
+			if tasks.healthCalls != 1 {
+				t.Fatalf("Health calls = %d, want 1", tasks.healthCalls)
+			}
+		})
+	}
+}
+
+func TestRefreshNamedMissingSourceIsNotConfigured(t *testing.T) {
 	h := newHarness(t, nil)
-	for _, sourceID := range []string{"tasks", "missing"} {
-		resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: sourceID})
-		if err != nil {
-			t.Fatal(err)
+	resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{SourceID: "missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.RefreshFailed || len(resp.Sources) != 1 ||
+		resp.Sources[0].Reason != recall.RefreshSourceNotConfigured {
+		t.Fatalf("response = %+v", resp)
+	}
+}
+
+func TestRefreshAllSkipsLiveSourcesWithoutDegradingUsableRefresh(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].manifest = checkpointManifest()
+		f["fakedocs"].refreshHealth = recall.Health{
+			Status: recall.HealthHealthy, Coverage: recall.IndexComplete,
 		}
-		if resp.Outcome != recall.RefreshFailed || len(resp.Sources) != 1 {
-			t.Fatalf("%s response = %+v", sourceID, resp)
-		}
-		wantReason := recall.RefreshCheckpointUnsupported
-		if sourceID == "missing" {
-			wantReason = recall.RefreshSourceNotConfigured
-		}
-		if resp.Sources[0].Reason != wantReason {
-			t.Errorf("%s reason = %s, want %s", sourceID, resp.Sources[0].Reason, wantReason)
-		}
+	})
+	resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{Profile: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Outcome != recall.RefreshSucceeded {
+		t.Fatalf("outcome = %s, want refreshed when the live source was skipped", resp.Outcome)
+	}
+	if len(resp.Sources) != 3 {
+		t.Fatalf("sources = %d, want every profile member reported", len(resp.Sources))
+	}
+	if resp.Sources[1].SourceID != "tasks" ||
+		resp.Sources[1].Status != recall.RefreshSourceSkipped ||
+		resp.Sources[1].Reason != recall.RefreshCheckpointUnsupported {
+		t.Fatalf("tasks = %+v, want skipped checkpoint_unsupported", resp.Sources[1])
+	}
+	tasks := h.fakes["faketasks"]
+	if tasks.refreshCalls != 0 {
+		t.Fatalf("Refresh calls = %d, want 0 on an all-source skip", tasks.refreshCalls)
+	}
+	if tasks.healthCalls != 0 {
+		t.Fatalf("Health calls = %d, want 0 on an all-source skip", tasks.healthCalls)
 	}
 }
 

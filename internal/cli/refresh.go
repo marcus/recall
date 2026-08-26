@@ -10,12 +10,13 @@ import (
 
 const refreshHelp = `usage: recall refresh [flags]
 
-Update one checkpoint-capable source, or every eligible checkpoint-capable
-source in the active profile when --source is omitted. The response reports
-every source considered and the post-refresh health of each attempted source.
+Update one source, or every eligible checkpoint-capable source in the active
+profile when --source is omitted. A named live source that cannot checkpoint
+is probed for health rather than skipped. The response reports every source
+considered and the post-refresh health of each attempted source.
 
 flags:
-  --source ID       refresh only this source id
+  --source ID       refresh this source id; live sources are health-probed
   --full            request a complete rebuild rather than an incremental pass
   --profile NAME    profile to resolve; default is the configured one
   --json            emit the typed result as JSON

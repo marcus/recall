@@ -222,7 +222,7 @@ commands:
   init --docs DIR   create a first user configuration
   query <text>      search and fuse configured sources
   expand <locator>  retrieve evidence from a locator
-  refresh           update one or every eligible checkpoint-capable source
+  refresh           update one source, or every eligible checkpoint-capable source
   sources           list source instances, capabilities, health, and freshness
   doctor            validate configuration, trust boundary, access, health,
                     freshness, identity, and lineage

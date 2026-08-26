@@ -1234,7 +1234,7 @@ under [Output Tiers And Parity](#output-tiers-and-parity).
 ```text
 recall query      search and fuse configured sources
 recall expand     retrieve evidence from a locator
-recall refresh    update one or all eligible checkpoint-capable sources
+recall refresh    update one named source or all eligible checkpoint-capable sources
 recall sources    list source instances and capabilities
 recall config     explain resolved configuration and its origins
 recall doctor     validate config, trust boundary, access, health, freshness

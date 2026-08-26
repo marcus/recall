@@ -11,7 +11,8 @@ import (
 )
 
 // Refresh updates one source, or every eligible checkpoint-capable source in
-// the selected profile. Sources are reported in profile order even though
+// the selected profile. A named source that cannot checkpoint is health-probed
+// instead of skipped. Sources are reported in profile order even though
 // eligible refreshes run concurrently.
 func (a *App) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error) {
 	started := a.now()
@@ -68,7 +69,7 @@ func (a *App) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.Re
 			wg.Add(1)
 			go func(i int, inst *config.SourceInstance) {
 				defer wg.Done()
-				results[i] = a.initializeAndRefreshOne(ctx, inst, req.Full)
+				results[i] = a.initializeAndRefreshOne(ctx, inst, req.Full, req.SourceID != "")
 			}(i, inst)
 		}
 	}
@@ -84,6 +85,7 @@ func (a *App) initializeAndRefreshOne(
 	parent context.Context,
 	inst *config.SourceInstance,
 	full bool,
+	named bool,
 ) recall.RefreshSourceOutcome {
 	out := recall.RefreshSourceOutcome{SourceID: inst.ID, SourceUID: inst.UID}
 	started := a.now()
@@ -99,7 +101,8 @@ func (a *App) initializeAndRefreshOne(
 		out.Elapsed = a.now().Sub(started)
 		return out
 	}
-	if !manifest.Can(recall.CapCheckpoint) {
+	checkpoint := manifest.Can(recall.CapCheckpoint)
+	if !checkpoint && !named {
 		out.Status = recall.RefreshSourceSkipped
 		out.Reason = recall.RefreshCheckpointUnsupported
 		out.Elapsed = a.now().Sub(started)
@@ -109,33 +112,55 @@ func (a *App) initializeAndRefreshOne(
 	adp, err := a.registry.Adapter(inst)
 	if err != nil {
 		out.Status = recall.RefreshSourceFailed
-		out.Reason = classifyRefreshError(err, recall.RefreshOperationFailed)
+		out.Reason = classifyRefreshError(err, refreshFailureReason(checkpoint))
 		out.Elapsed = a.now().Sub(started)
 		return out
 	}
-	health, err := adp.Refresh(ctx, protocol.RefreshParams{Deadline: deadline, Full: full})
-	out.Elapsed = a.now().Sub(started)
-	if health.Status != "" {
-		out.Health = &health
-		out.DiagnosticDetail, _ = health.Diagnostics["detail"].(string)
-		if out.DiagnosticDetail == "" {
-			out.DiagnosticDetail, _ = health.Diagnostics["last_refresh_error"].(string)
-		}
+	var health recall.Health
+	if checkpoint {
+		health, err = adp.Refresh(ctx, protocol.RefreshParams{Deadline: deadline, Full: full})
+	} else {
+		health, err = adp.Health(ctx)
 	}
+	out.Elapsed = a.now().Sub(started)
+	attachRefreshHealth(&out, health)
 	if err != nil {
 		out.Status = recall.RefreshSourceFailed
-		out.Reason = classifyRefreshError(err, recall.RefreshOperationFailed)
+		out.Reason = classifyRefreshError(err, refreshFailureReason(checkpoint))
 		return out
 	}
+	applyRefreshHealth(&out, health, checkpoint)
+	return out
+}
+
+func refreshFailureReason(checkpoint bool) recall.RefreshReason {
+	if checkpoint {
+		return recall.RefreshOperationFailed
+	}
+	return recall.RefreshUnhealthy
+}
+
+func attachRefreshHealth(out *recall.RefreshSourceOutcome, health recall.Health) {
+	if health.Status == "" {
+		return
+	}
+	out.Health = &health
+	out.DiagnosticDetail, _ = health.Diagnostics["detail"].(string)
+	if out.DiagnosticDetail == "" {
+		out.DiagnosticDetail, _ = health.Diagnostics["last_refresh_error"].(string)
+	}
+}
+
+func applyRefreshHealth(out *recall.RefreshSourceOutcome, health recall.Health, honorCheckpointProgress bool) {
 	switch health.Status {
 	case recall.HealthHealthy:
 		out.Status = recall.RefreshSourceRefreshed
 	case recall.HealthDegraded:
-		if health.CheckpointProgress == recall.CheckpointAdvanced {
+		if honorCheckpointProgress && health.CheckpointProgress == recall.CheckpointAdvanced {
 			// The maintenance operation moved comparable checkpoint counters
 			// forward without regression. Keep the attached partial health
 			// honest for queries, but do not call successful progress a failed
-			// scheduler pass.
+			// scheduler pass. Health probes do not set this.
 			out.Status = recall.RefreshSourceRefreshed
 		} else {
 			out.Status = recall.RefreshSourceDegraded
@@ -145,7 +170,6 @@ func (a *App) initializeAndRefreshOne(
 		out.Status = recall.RefreshSourceFailed
 		out.Reason = recall.RefreshUnhealthy
 	}
-	return out
 }
 
 func classifyRefreshError(err error, fallback recall.RefreshReason) recall.RefreshReason {

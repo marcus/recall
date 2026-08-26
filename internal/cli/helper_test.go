@@ -24,15 +24,17 @@ import (
 // parity — so no test depends on a corpus on disk, on the real Tasks binary, or
 // on how long an index build takes.
 type fake struct {
-	manifest   recall.Manifest
-	health     recall.Health
-	healthErr  error
-	candidates []recall.Candidate
-	outcome    recall.SearchOutcome
-	searchErr  error
-	evidence   recall.ExpandResponse
-	expandErr  error
-	lastSearch recall.SearchRequest
+	manifest     recall.Manifest
+	health       recall.Health
+	healthErr    error
+	candidates   []recall.Candidate
+	outcome      recall.SearchOutcome
+	searchErr    error
+	evidence     recall.ExpandResponse
+	expandErr    error
+	lastSearch   recall.SearchRequest
+	healthCalls  int
+	refreshCalls int
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
@@ -63,6 +65,7 @@ func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandRespo
 }
 
 func (f *fake) Health(context.Context) (recall.Health, error) {
+	f.healthCalls++
 	if f.healthErr != nil {
 		return recall.Health{Status: recall.HealthUnavailable}, f.healthErr
 	}
@@ -75,6 +78,7 @@ func (f *fake) Health(context.Context) (recall.Health, error) {
 }
 
 func (f *fake) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
+	f.refreshCalls++
 	return f.Health(ctx)
 }
 

@@ -2,9 +2,9 @@ package recall
 
 import "time"
 
-// RefreshRequest asks Recall to update one checkpoint-capable source, or every
-// eligible checkpoint-capable source in the active profile when SourceID is
-// empty.
+// RefreshRequest asks Recall to update one source, or every eligible
+// checkpoint-capable source in the active profile when SourceID is empty. A
+// named source that cannot checkpoint is health-probed instead of skipped.
 type RefreshRequest struct {
 	// Profile selects the configured source set.
 	Profile string `json:"profile,omitempty"`
