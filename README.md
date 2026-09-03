@@ -1,6 +1,7 @@
 # Recall (`github.com/marcus/recall`)
 
-Always check if you are running in Sidecar: run `sidecar --agents` for capabilities.
+Always check if you are running in Sidecar: run `sidecar agents` for capabilities.
+Recall is also a Sidecar plugin; see [Sidecar plugin](#sidecar-plugin).
 
 An agent working on your behalf needs to find decisions, tasks, and project
 state scattered across tools that have no common index. `grep` can search one
@@ -113,6 +114,7 @@ recall config explain
 recall eval run --pack eval/packs/smoke
 recall serve                     # local HTTP API; loopback by default
 recall mcp                       # MCP tools over stdio
+recall sidecar-plugin            # one Sidecar plugin request on stdin/stdout
 ```
 
 Exit codes are part of the query contract:
@@ -137,6 +139,74 @@ configuration and the file that supplied each value. In `[defaults]`,
 `--budget-ms`; `timeout_ms` remains the per-source inheritance default only.
 Adapter commands may only come from user-level configuration; a repository's
 `recall.toml` cannot make Recall execute a program.
+
+## Sidecar plugin
+
+`recall sidecar-plugin` answers the Sidecar plugin protocol
+(`sidecar.plugin/v1-draft`): one JSON request on standard input, one JSON
+response on standard output, one process per call. It is not meant to be typed.
+Sidecar runs it from a `plugins.external` entry in
+`~/.config/sidecar/config.json`:
+
+```json
+{
+  "features": {"flags": {"plugin_protocol": true}},
+  "plugins": {
+    "external": [
+      {
+        "id": "recall",
+        "command": ["recall", "sidecar-plugin"],
+        "enabled": true,
+        "placements": ["tab", "panes"]
+      }
+    ]
+  }
+}
+```
+
+No `passEnv` is needed for an ordinary install: `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`, `XDG_CACHE_HOME`, and `HOME` are in the environment Sidecar
+passes every plugin, which is everything recall reads to find its own
+configuration and indexes. An adapter that needs a credential variable names it
+in `passEnv`.
+
+What it exposes:
+
+| Surface | Contents |
+| --- | --- |
+| `results` collection | `recall query` through the configured profile. Search is *required*, because recall does not list, it answers. Columns are rank, title, source, and excerpt; the pill on a row is `exact` or `corroborated N`. Sortable by relevance, source, or updated. |
+| `sources` collection | `recall sources`: one row per configured source with its health and the last instant it is known to have been complete. Polled every 120 s while it is on screen. |
+| `results` document | `recall expand --detail full` on the row's locator, with an Evidence section and a Provenance section carrying the path and revision the text came from. |
+| `sources` document | The source's configuration, health, freshness evidence, and declared capabilities. |
+| `refresh-source` action | `recall refresh --source <id>` on a source row. It mutates, so Sidecar confirms it first. |
+| `project` context | When Sidecar sends a project, the query is scoped to it, exactly as `--scope project=NAME` does. |
+
+Recall declares no terminal matchers. Its locator is display-form
+`<source_id>:<local>`, where the source name is user configuration and the local
+part is adapter-owned, so any pattern wide enough to match it would also match
+every URL scheme and every `key: value` pair printed in a terminal.
+
+A page reports what the query claims, not just what it found: `answered`,
+`abstained` (nothing matched and every eligible source answered), or `degraded`
+(a source that should have answered did not). The sources that could not answer,
+the records suppressed below the relevance floor, and anything a response budget
+dropped travel with it as notices. Recall's `failed` exit state — every source
+asked failed, so "no results" would claim nothing — has no page outcome in the
+draft protocol and comes back as a retryable `unavailable` error instead.
+
+Check the wiring without opening the TUI:
+
+```sh
+sidecar plugin check recall --json
+sidecar plugin check recall --list results --query ranking --json
+sidecar plugin check recall --get results 'docs:architecture.md#L1-L8' --json
+sidecar plugin call recall act \
+  --params '{"action":"refresh-source","collection":"sources","id":"docs"}' --json
+```
+
+Both a typed success and a typed failure exit 0, because either one is an
+answer. A non-zero exit means the response itself could not be written, and
+Sidecar reads that as a crashed plugin.
 
 ## Go adapter SDK
 

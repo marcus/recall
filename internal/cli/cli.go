@@ -189,6 +189,8 @@ func Run(ctx context.Context, env Env) int {
 		return runServe(ctx, env, args)
 	case "mcp":
 		return runMCP(ctx, env, args)
+	case "sidecar-plugin":
+		return runSidecarPlugin(ctx, env, args)
 	case "version", "--version":
 		_, err := fmt.Fprintf(env.Stdout, "recall %s (%s)\n", buildinfo.Version, buildinfo.Commit)
 		return report(env, err)
@@ -230,6 +232,7 @@ commands:
   eval              validate, run, compare, and report an evaluation pack
   serve             run the versioned HTTP API
   mcp               run the Model Context Protocol server over stdio
+  sidecar-plugin    answer one Sidecar plugin request on stdin/stdout
   version           print the build identity
 
 Every read command supports --json alongside its human output, and both carry

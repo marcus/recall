@@ -6,6 +6,19 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- `recall sidecar-plugin` answers the Sidecar plugin protocol
+  (`sidecar.plugin/v1-draft`): one JSON request on stdin, one JSON response on
+  stdout, one process per call. It offers a `results` collection over `recall
+  query`, a `sources` collection over `recall sources`, documents for both, and
+  a confirmed `refresh-source` action, and it reads Sidecar's project context as
+  a `--scope project=` narrowing. Recall's `failed` outcome has no page outcome
+  in the draft protocol and comes back as a retryable `unavailable` error. See
+  the README's "Sidecar plugin" section for the config entry and the checks.
+
 ## [0.5.1] - 2026-08-26
 
 ### Changed

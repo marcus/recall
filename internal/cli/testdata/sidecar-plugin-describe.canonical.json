@@ -1,0 +1,65 @@
+{
+  "protocol": "sidecar.plugin/v1-draft",
+  "plugin": {
+    "kind": "recall",
+    "name": "Recall",
+    "version": "0.4.0",
+    "docsUrl": "https://example.test/recall/sidecar"
+  },
+  "context": ["project"],
+  "matchers": [
+    {
+      "id": "locator",
+      "pattern": "\\brc:[a-z0-9]+:[A-Za-z0-9/_.-]+\\b",
+      "priority": 50
+    }
+  ],
+  "collections": [
+    {
+      "id": "results",
+      "title": "Results",
+      "search": "required",
+      "columns": [
+        {"id": "rank", "label": "#", "width": 3, "align": "right", "kind": "number"},
+        {"id": "title", "label": "Title", "primary": true},
+        {"id": "source", "label": "Source", "width": 14},
+        {"id": "excerpt", "label": "Excerpt", "secondary": true}
+      ],
+      "views": [],
+      "sort": [],
+      "detail": true,
+      "refresh": {}
+    },
+    {
+      "id": "sources",
+      "title": "Sources",
+      "search": "none",
+      "columns": [
+        {"id": "name", "label": "Source", "primary": true},
+        {"id": "health", "label": "Health", "kind": "status"},
+        {"id": "fresh", "label": "Fresh", "kind": "timestamp"}
+      ],
+      "refresh": {"everySeconds": 120}
+    }
+  ],
+  "actions": [
+    {
+      "id": "refresh-source",
+      "title": "Refresh source",
+      "on": "item",
+      "collection": "sources",
+      "mutates": true,
+      "confirm": true
+    },
+    {
+      "id": "log-note",
+      "title": "Log note",
+      "on": "item",
+      "collection": "results",
+      "mutates": true,
+      "inputs": [
+        {"id": "text", "label": "Note", "kind": "multiline", "required": true}
+      ]
+    }
+  ]
+}
