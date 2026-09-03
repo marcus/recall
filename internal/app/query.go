@@ -215,12 +215,41 @@ func (a *App) fanOut(ctx context.Context, plan source.Plan) []searchResult {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Adapter code runs on this goroutine, so a panic in it cannot be
+			// recovered by the caller: it would take the process down along
+			// with every other source's answer and the response itself. Caught
+			// here it becomes one source's failure, which is a thing the
+			// coverage report already knows how to say.
+			defer func() {
+				if value := recover(); value != nil {
+					out[i] = panicked(target, value)
+				}
+			}()
 			out[i] = a.searchOne(ctx, target)
 		}()
 	}
 	wg.Wait()
 	return out
 }
+
+// panicked is one source's result when its adapter crashed instead of
+// answering. The outcome is failed rather than unavailable — the source was
+// reachable enough to run — and the reason is its own, so a crash is not
+// reported as a source that was merely down.
+func panicked(t source.Target, value any) searchResult {
+	return searchResult{
+		target:   t,
+		health:   t.Health,
+		response: recall.SearchResponse{Outcome: recall.SearchFailed},
+		err:      panicErr{detail: source.RecoveredPanic("source "+t.Instance.ID, value)},
+	}
+}
+
+// panicErr marks a source that crashed, so [classify] can name it without
+// matching on message text.
+type panicErr struct{ detail string }
+
+func (e panicErr) Error() string { return "panicked: " + e.detail }
 
 func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 	// The health carried on the target is the probe that decided this source
@@ -501,7 +530,10 @@ func outcome(resp recall.QueryResponse, reports []recall.SourceReport) recall.Ou
 // so a caller can act on it without reading an adapter's prose — and so an
 // adapter's own error text, which is source-influenced, never reaches a report.
 func classify(err error) string {
+	var crash panicErr
 	switch {
+	case errors.As(err, &crash):
+		return source.ReasonPanicked
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
 	case errors.Is(err, context.Canceled):

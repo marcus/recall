@@ -49,6 +49,12 @@ type fake struct {
 	searchCalls      int
 	healthCalls      int
 
+	// searchPanic and probePanic model the one failure an adapter cannot
+	// report for itself: a bug in its own code. Each is the value the adapter
+	// panics with, so a test can recognise it in what recall says afterwards.
+	searchPanic string
+	probePanic  string
+
 	// prepared opts this fake into adapter.PreparedSearcher without making
 	// every app test stop exercising the ordinary adapter contract.
 	prepared            bool
@@ -73,6 +79,9 @@ func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, err
 
 func (f *fake) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
 	f.searchCalls++
+	if f.searchPanic != "" {
+		panic(f.searchPanic)
+	}
 	f.sawProject = req.Filters.Project
 	f.sawEntities = append([]string(nil), req.Filters.Entities...)
 	if f.project != "" && req.Filters.Project != "" && !strings.EqualFold(f.project, req.Filters.Project) {
@@ -109,6 +118,9 @@ func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandRespo
 
 func (f *fake) Health(context.Context) (recall.Health, error) {
 	f.healthCalls++
+	if f.probePanic != "" {
+		panic(f.probePanic)
+	}
 	if f.needsHandshake && !f.initialized {
 		return recall.Health{Status: recall.HealthUnavailable}, protocol.ErrSourceUnavailable
 	}
@@ -1592,5 +1604,69 @@ func TestUnsupportedFilterCannotSmuggleCandidatesIntoFusion(t *testing.T) {
 	}
 	if rep := reportFor(t, resp, "docs"); rep.Candidates != 0 {
 		t.Errorf("skipped source reports %d candidates, want 0", rep.Candidates)
+	}
+}
+
+// A panic inside an adapter is the one failure it cannot report for itself, and
+// it happens on a goroutine the caller cannot recover on: unhandled, it takes
+// the process down and every other source's answer with it. Every surface recall
+// has is a one-shot process that owes an answer on stdout — the CLI, the API,
+// the MCP server, and the Sidecar plugin most of all, where a dead process reads
+// to the host as "recall crashed" rather than "one source did".
+func TestAPanickingSourceDegradesTheAnswerInsteadOfKillingTheProcess(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].searchPanic = "adapter bug: index out of range [3] with length 3"
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "still-here", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatalf("a crashed source must not fail the request: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Primary.SourceRecordID != "still-here" {
+		t.Fatalf("results = %+v, want the surviving source's evidence", resp.Results)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %q, want degraded: a source that crashed did not answer", resp.Coverage)
+	}
+	rep := reportFor(t, resp, "docs")
+	if rep.Outcome != recall.SearchFailed {
+		t.Errorf("outcome = %q, want failed", rep.Outcome)
+	}
+	if rep.Reason != source.ReasonPanicked {
+		t.Errorf("reason = %q, want %q; a crash is not an ordinary failure",
+			rep.Reason, source.ReasonPanicked)
+	}
+}
+
+// The same rule one step earlier: planning handshakes and probes every source
+// concurrently, so an adapter that crashes while being considered crashes on a
+// planning goroutine. It is excluded for a reason that degrades, and the plan
+// still names the sources that can answer.
+func TestASourceThatPanicsWhileBeingConsideredIsExcludedRatherThanFatal(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].probePanic = "adapter bug: nil map read while probing"
+		f["faketasks"].candidates = []recall.Candidate{cand("tasks", "still-here", 1)}
+	})
+
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatalf("a crashed source must not fail the request: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Primary.SourceRecordID != "still-here" {
+		t.Fatalf("results = %+v, want the surviving source's evidence", resp.Results)
+	}
+	if resp.Coverage != recall.CoverageDegraded {
+		t.Errorf("coverage = %q, want degraded", resp.Coverage)
+	}
+	rep := reportFor(t, resp, "docs")
+	if rep.Outcome != recall.SearchSkipped {
+		t.Errorf("outcome = %q, want skipped: the source never searched", rep.Outcome)
+	}
+	if rep.Reason != source.ReasonPanicked {
+		t.Errorf("reason = %q, want %q", rep.Reason, source.ReasonPanicked)
+	}
+	if _, ok := rep.Diagnostics["panic"]; !ok {
+		t.Errorf("diagnostics = %v, want the panic named so the bug is findable", rep.Diagnostics)
 	}
 }

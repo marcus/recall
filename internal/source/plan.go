@@ -29,6 +29,13 @@ const (
 	ReasonAdapterUnavailable = "adapter_unavailable"
 	ReasonStoreConflict      = "store_identity_conflict"
 
+	// ReasonPanicked is a source whose adapter crashed while being considered
+	// or asked. It is its own reason rather than adapter_unavailable because
+	// the two are acted on differently: unavailable is a source that is not
+	// there, and this is a bug in code recall ran. It degrades, which is what
+	// every reason outside the closed non-degrading set does.
+	ReasonPanicked = "panicked"
+
 	// The reasons an ADAPTER may state live in pkg/recall, beside the
 	// outcome they qualify, because they are part of the search contract and
 	// not of this planner — an adapter must not have to import the thing that
@@ -282,6 +289,21 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// A handshake or a probe runs adapter code on this goroutine, where
+			// a panic cannot be recovered by whoever called BuildPlan: it would
+			// take the process down and every other source's verdict with it.
+			// Caught here it becomes what it is — one source that cannot be
+			// asked, excluded for a reason that degrades coverage.
+			defer func() {
+				if value := recover(); value != nil {
+					verdicts[i] = verdict{
+						reason: ReasonPanicked,
+						diagnostics: map[string]any{
+							"panic": RecoveredPanic("source "+inst.ID, value),
+						},
+					}
+				}
+			}()
 			verdicts[i] = r.consider(
 				ctx, req, inst, plan.Deadline, queryBudget, reserve, perSource, now)
 		}()
