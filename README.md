@@ -179,7 +179,8 @@ What it exposes:
 | `results` document | `recall expand --detail full` on the row's locator, with an Evidence section and a Provenance section carrying the path and revision the text came from. |
 | `sources` document | The source's configuration, health, freshness evidence, and declared capabilities. |
 | `refresh-source` action | `recall refresh --source <id>` on a source row. It mutates, so Sidecar confirms it first. |
-| `project` context | When Sidecar sends a project, the query is scoped to it, exactly as `--scope project=NAME` does. |
+| `results` filters | Four choosers, read from configuration and applied per call: **profile** (every configured profile, defaulting to the configured default — this is the collection's scope, and its name is what Sidecar's pill shows), **source** (`Any` plus every configured source), **type** (`Any` plus the record types configuration declares), and **since** (an RFC 3339 date). A source outside the chosen profile is refused by name, with a profile that has it. |
+| `project` context | Read to refuse a surface bound to another machine, and for nothing else. Recall answers globally: it applies no project narrowing of its own, because a project name is not something a documents source can evaluate. |
 
 Recall declares no terminal matchers. Its locator is display-form
 `<source_id>:<local>`, where the source name is user configuration and the local
@@ -187,12 +188,18 @@ part is adapter-owned, so any pattern wide enough to match it would also match
 every URL scheme and every `key: value` pair printed in a terminal.
 
 A page reports what the query claims, not just what it found: `answered`,
-`abstained` (nothing matched and every eligible source answered), or `degraded`
-(a source that should have answered did not). The sources that could not answer,
-the records suppressed below the relevance floor, and anything a response budget
-dropped travel with it as notices. Recall's `failed` exit state — every source
-asked failed, so "no results" would claim nothing — has no page outcome in the
-draft protocol and comes back as a retryable `unavailable` error instead.
+`abstained` (nothing matched and every eligible source answered), `degraded` (a
+source that should have answered did not), or `failed` (every source asked
+failed, so an empty list would claim nothing). The outcome describes the rows of
+that page and nothing else — the `sources` collection answers `answered` even
+when a source it lists is unwell, because the list is complete and each row
+carries its own health.
+
+What the page could not show travels with it as data rather than only as prose:
+`omitted` counts the records suppressed below the relevance floor and the
+results a response budget dropped, and `coverage[]` is one row per source with
+its state (`answered`, `timeout`, `unhealthy`, `skipped`, `failed`), the reason
+recall gave, and how long it took. The one-line notices remain the summary.
 
 Check the wiring without opening the TUI:
 

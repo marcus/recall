@@ -14,10 +14,24 @@ migration guidance.
   (`sidecar.plugin/v1-draft`): one JSON request on stdin, one JSON response on
   stdout, one process per call. It offers a `results` collection over `recall
   query`, a `sources` collection over `recall sources`, documents for both, and
-  a confirmed `refresh-source` action, and it reads Sidecar's project context as
-  a `--scope project=` narrowing. Recall's `failed` outcome has no page outcome
-  in the draft protocol and comes back as a retryable `unavailable` error. See
-  the README's "Sidecar plugin" section for the config entry and the checks.
+  a confirmed `refresh-source` action. See the README's "Sidecar plugin" section
+  for the config entry and the checks.
+- The `results` collection declares four filters the host draws and sends back:
+  `profile` (the collection's scope, defaulting to the configured default
+  profile), `source`, `type`, and `since`. Each is built from configuration, so
+  a chooser can never offer something the query would refuse; a source outside
+  the chosen profile is refused with recall's own message naming a profile that
+  has it.
+- A page carries `omitted` (records suppressed and results a budget dropped) and
+  `coverage[]` (one row per source: state, reason, elapsed), so a degraded page
+  can explain itself as a table rather than as one line of prose. Recall's
+  `failed` state — every source asked failed, so an empty list would claim
+  nothing — travels as the page outcome `failed`.
+- The plugin answers globally and narrows nothing by the project the surface is
+  showing. Sidecar's project context is declared and read to refuse a surface
+  bound to another machine, and for nothing else: a project name is not
+  something a documents source can evaluate, so applying it as a scope reported
+  an unsearched corpus as an empty one.
 
 ## [0.5.1] - 2026-08-26
 

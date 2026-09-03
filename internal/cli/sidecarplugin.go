@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +66,38 @@ const (
 	sidecarResults = "results"
 	sidecarSources = "sources"
 )
+
+// Filter identifiers, in the order they are declared. The FIRST is the
+// collection's scope: the host folds its current choice title into the pill, so
+// what a page covers is on screen without opening anything. Profile is that
+// scope because it is the one filter that decides which sources are asked at
+// all; the other three narrow what the asked sources may answer with.
+//
+// They are persisted with the collection tab, so they are contract rather than
+// display strings, exactly as the collection ids are.
+const (
+	sidecarFilterProfile = "profile"
+	sidecarFilterSource  = "source"
+	sidecarFilterType    = "type"
+	sidecarFilterSince   = "since"
+
+	// sidecarFilterAny is the choice id meaning "do not narrow". It is a real
+	// choice rather than an absent value because a radio group needs a way back
+	// to unfiltered that is as visible as the way in.
+	sidecarFilterAny = "any"
+)
+
+// Protocol bounds on a declared filter. A configuration larger than one of them
+// is truncated and says so in the filter's label, because a describe refused
+// for being too big is a plugin that vanishes from the app the day someone
+// configures their sixty-fifth source.
+const (
+	sidecarMaxFilterChoices = 64
+	sidecarMaxFilterID      = 32
+)
+
+// sidecarMaxCoverageRows bounds the per-source coverage table.
+const sidecarMaxCoverageRows = 64
 
 // sidecarStdinLimit bounds the request. The host sends one small object; a
 // stream that never ends is not one, and reading it would be the plugin's own
@@ -168,6 +201,15 @@ type sidecarContext struct {
 	Project *sidecarProject `json:"project"`
 }
 
+// sidecarProject is the project the surface is showing. Only HostID is read
+// today, and only to refuse a surface bound to another machine: recall answers
+// globally, and Name in particular is NOT a filter — a documents source reads a
+// project as a path segment under its own root, so comparing it against a
+// Sidecar project name matched nothing and reported that as an empty corpus.
+//
+// Root is the field the deferred "This project" filter will use, because
+// restricting to records under a path is the question that actually has an
+// answer here. The rest is decoded so the envelope is visible in one place.
 type sidecarProject struct {
 	Root    string `json:"root"`
 	WorkDir string `json:"workDir"`
@@ -179,10 +221,21 @@ type sidecarProject struct {
 type sidecarListParams struct {
 	Collection string           `json:"collection"`
 	Query      string           `json:"query"`
-	View       string           `json:"view"`
 	Sort       sidecarSortOrder `json:"sort"`
 	Cursor     string           `json:"cursor"`
 	Limit      int              `json:"limit"`
+
+	// Filters carries one value per declared filter whose value is not its
+	// default; a missing key means the default. The host drops keys this
+	// plugin did not declare before the call, so a key that arrives here and
+	// is not one of them came from a caller by hand — and is refused rather
+	// than ignored, because a filter that was asked for and not applied
+	// answers a different question than the one the caller asked.
+	Filters map[string]string `json:"filters"`
+
+	// There is deliberately no View field. Recall declares no views, and a
+	// field decoded and never read is a promise the host cannot rely on: it
+	// would send a chosen view and receive a page shaped as though it had not.
 }
 
 type sidecarSortOrder struct {
@@ -254,12 +307,34 @@ type sidecarRefresh struct {
 	EverySeconds int `json:"everySeconds,omitempty"`
 }
 
+// sidecarFilterChoice is one option in a choice filter. The id is what comes
+// back in list params and the title is what the host draws.
+type sidecarFilterChoice struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// sidecarFilter is one chooser the host draws in its View modal and sends back
+// in `list.params.filters`.
+//
+// Default names a choice id for a choice filter, or is the initial text for a
+// text one. A filter whose value equals its default is not sent at all, which
+// is why the default has to be a value this plugin would have applied anyway.
+type sidecarFilter struct {
+	ID      string                `json:"id"`
+	Label   string                `json:"label"`
+	Kind    string                `json:"kind"`
+	Choices []sidecarFilterChoice `json:"choices,omitempty"`
+	Default string                `json:"default,omitempty"`
+}
+
 type sidecarCollection struct {
 	ID      string           `json:"id"`
 	Title   string           `json:"title"`
 	Search  string           `json:"search"`
 	Columns []sidecarColumn  `json:"columns"`
 	Views   []sidecarView    `json:"views"`
+	Filters []sidecarFilter  `json:"filters,omitempty"`
 	Sort    []sidecarSortKey `json:"sort"`
 	Detail  bool             `json:"detail"`
 	Refresh sidecarRefresh   `json:"refresh"`
@@ -290,12 +365,45 @@ type sidecarNotice struct {
 	Text string `json:"text"`
 }
 
+// sidecarOmitted is what this page does not show and why, as counts the host
+// renders beside the row count ("8 shown · 1 below floor · 6 over budget").
+// Suppressed is policy or prior display; Dropped is the response budget.
+type sidecarOmitted struct {
+	Suppressed int `json:"suppressed"`
+	Dropped    int `json:"dropped"`
+}
+
+// sidecarCoverageRow is one source's contribution to this page, for the
+// coverage table the host draws when a page explains itself.
+//
+// It carries what a reader needs to act: which source, what happened, why, and
+// how long it took. It is data rather than a sentence because the host renders
+// it as a table with a tone pill per state, and a plugin writing that sentence
+// would be choosing the layout.
+type sidecarCoverageRow struct {
+	Source    string `json:"source"`
+	State     string `json:"state"`
+	Reason    string `json:"reason,omitempty"`
+	ElapsedMs int64  `json:"elapsedMs,omitempty"`
+}
+
+// Coverage states, the protocol's closed vocabulary for what one source did.
+const (
+	sidecarCoverageAnswered  = "answered"
+	sidecarCoverageTimeout   = "timeout"
+	sidecarCoverageUnhealthy = "unhealthy"
+	sidecarCoverageSkipped   = "skipped"
+	sidecarCoverageFailed    = "failed"
+)
+
 type sidecarPage struct {
-	Outcome    string          `json:"outcome"`
-	Items      []sidecarItem   `json:"items"`
-	NextCursor string          `json:"nextCursor,omitempty"`
-	Total      int             `json:"total,omitempty"`
-	Notices    []sidecarNotice `json:"notices,omitempty"`
+	Outcome    string               `json:"outcome"`
+	Items      []sidecarItem        `json:"items"`
+	NextCursor string               `json:"nextCursor,omitempty"`
+	Total      int                  `json:"total,omitempty"`
+	Notices    []sidecarNotice      `json:"notices,omitempty"`
+	Omitted    *sidecarOmitted      `json:"omitted,omitempty"`
+	Coverage   []sidecarCoverageRow `json:"coverage,omitempty"`
 }
 
 type sidecarField struct {
@@ -467,7 +575,8 @@ func sidecarBudget(ctx context.Context, deadlineMS int64) (context.Context, cont
 // than none: the protocol's rule is that a matcher is a stable, unambiguous
 // shape, and this one is neither.
 func sidecarDescribe(env Env) sidecarResponse {
-	if resp, ok := sidecarConfigProblem(env); !ok {
+	cfg, resp, ok := sidecarConfigProblem(env)
+	if !ok {
 		return resp
 	}
 	return sidecarResponse{
@@ -477,9 +586,11 @@ func sidecarDescribe(env Env) sidecarResponse {
 			Name:    "Recall",
 			Version: buildinfo.Version,
 		},
-		// Project context narrows a request the way `--scope project=` does.
-		// It is declared rather than demanded: recall answers globally, and a
-		// surface with no project simply sends nothing.
+		// Recall answers globally and applies no narrowing of its own from
+		// this. The kind stays declared for the explicit "This project" filter
+		// still to come, which will restrict to records under project.root —
+		// a question about paths, not the documents subfolder name that
+		// context.project.name turned out to mean to a documents source.
 		Context: []string{"project"},
 		Collections: []sidecarCollection{
 			{
@@ -492,7 +603,8 @@ func sidecarDescribe(env Env) sidecarResponse {
 					{ID: "source", Label: "Source", Width: 14},
 					{ID: "excerpt", Label: "Excerpt", Secondary: true},
 				},
-				Views: []sidecarView{},
+				Views:   []sidecarView{},
+				Filters: sidecarResultFilters(env, cfg),
 				Sort: []sidecarSortKey{
 					{ID: "rank", Label: "Relevance", Default: "asc"},
 					{ID: "source", Label: "Source"},
@@ -535,46 +647,189 @@ func sidecarDescribe(env Env) sidecarResponse {
 }
 
 // sidecarConfigProblem reports an installed-but-unconfigured recall as the
-// typed failure the protocol asks for, with the one line that fixes it.
-func sidecarConfigProblem(env Env) (sidecarResponse, bool) {
+// typed failure the protocol asks for, with the one line that fixes it, and
+// hands back the configuration when there is one: what describe declares — the
+// profiles, sources, and record types a user may choose between — is read from
+// it, so loading it twice would be reading the same files to answer the same
+// question.
+func sidecarConfigProblem(env Env) (*config.Config, sidecarResponse, bool) {
 	paths := env.Paths
 	if paths.ConfigHome == "" {
 		resolved, err := config.XDGPaths()
 		if err != nil {
-			return sidecarUnconfigured("recall cannot resolve its configuration directory: "+err.Error(),
+			return nil, sidecarUnconfigured("recall cannot resolve its configuration directory: "+err.Error(),
 				"Set XDG_CONFIG_HOME or HOME for the Sidecar process"), false
 		}
 		paths = resolved
 	}
 	if _, err := os.Stat(paths.ConfigFile()); errors.Is(err, os.ErrNotExist) {
-		return sidecarUnconfigured("recall has no configuration at "+paths.ConfigFile(),
+		return nil, sidecarUnconfigured("recall has no configuration at "+paths.ConfigFile(),
 			"Run recall init --docs DIR"), false
 	}
-	if _, err := env.load(); err != nil {
-		return sidecarUnconfigured("recall configuration did not load: "+err.Error(),
+	cfg, err := env.load()
+	if err != nil {
+		return nil, sidecarUnconfigured("recall configuration did not load: "+err.Error(),
 			"Run recall doctor"), false
 	}
-	return sidecarResponse{}, true
+	return cfg, sidecarResponse{}, true
 }
 
-// sidecarProjectScope turns declared project context into a recall scope, and
-// refuses a surface bound to another machine.
+// sidecarResultFilters declares what a user may narrow a query by, in the order
+// the host draws them and with profile first, because profile is the scope: it
+// decides which sources are asked at all, and its title is what the pill shows.
 //
-// The refusal is the rule the protocol states for a plugin that only knows this
-// machine: a remote-bound surface sends that host's paths, and answering them
-// from this machine's index would report one checkout's evidence as another's.
-func sidecarProjectScope(reqCtx *sidecarContext) (*recall.Scope, *sidecarResponse) {
-	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
-		return nil, refusal
+// Every choice list is configuration read back — the profiles this machine
+// declares, the sources it has, the record types those sources say they hold —
+// so a chooser can never offer something the query would then refuse.
+func sidecarResultFilters(env Env, cfg *config.Config) []sidecarFilter {
+	profiles, profilesLost := sidecarChoices(cfg.ProfileNames(), false)
+	sources, sourcesLost := sidecarChoices(sidecarSourceIDs(cfg), true)
+	types, typesLost := sidecarChoices(sidecarRecordTypes(cfg), true)
+
+	// The default has to name a choice that is there. If the configured
+	// default was one of the few dropped above, declaring it would leave the
+	// host showing a scope nobody can return to.
+	fallback := cfg.Defaults.Profile
+	if !sidecarHasChoice(profiles, fallback) {
+		fallback = ""
 	}
-	if reqCtx == nil || reqCtx.Project == nil {
-		return nil, nil
+
+	filters := []sidecarFilter{
+		{
+			ID:      sidecarFilterProfile,
+			Label:   sidecarFilterLabel("Profile", len(cfg.ProfileNames()), profilesLost),
+			Kind:    "choice",
+			Choices: profiles,
+			Default: fallback,
+		},
+		{
+			ID:      sidecarFilterSource,
+			Label:   sidecarFilterLabel("Source", len(sidecarSourceIDs(cfg)), sourcesLost),
+			Kind:    "choice",
+			Choices: sources,
+			Default: sidecarFilterAny,
+		},
+		{
+			ID:      sidecarFilterType,
+			Label:   sidecarFilterLabel("Type", len(sidecarRecordTypes(cfg)), typesLost),
+			Kind:    "choice",
+			Choices: types,
+			Default: sidecarFilterAny,
+		},
+		{
+			ID:    sidecarFilterSince,
+			Label: "Since (RFC 3339 date)",
+			Kind:  "text",
+		},
 	}
-	if strings.TrimSpace(reqCtx.Project.Name) == "" {
-		return nil, nil
+
+	// A truncated chooser is stated in its own label, which is the only notice
+	// a describe response has room for, and named on standard error, which is
+	// where a person debugging their own configuration will look. What it must
+	// not do is refuse the whole declaration: describe is all-or-nothing, and a
+	// recall that disappeared from Sidecar on the day someone configured their
+	// sixty-fifth source would be a worse answer than a shortened list.
+	if profilesLost+sourcesLost+typesLost > 0 {
+		_, _ = fmt.Fprintf(env.stderr(),
+			"recall sidecar-plugin: the filter choosers omit %d profiles, %d sources and %d record types; "+
+				"the protocol bounds a filter at %d choices and an id at %d characters\n",
+			profilesLost, sourcesLost, typesLost, sidecarMaxFilterChoices, sidecarMaxFilterID)
 	}
-	return &recall.Scope{Project: reqCtx.Project.Name}, nil
+	return filters
 }
+
+// sidecarChoices turns configured names into bounded choices, optionally led by
+// the "Any" choice that means "do not narrow".
+//
+// A name longer than the protocol's id bound is DROPPED rather than truncated,
+// which is the one decision here worth stating: an id is what comes back in
+// `list.params.filters`, and a truncated id names nothing this machine has. A
+// chooser entry that cannot be chosen is worse than one that is not offered.
+func sidecarChoices(names []string, leadWithAny bool) ([]sidecarFilterChoice, int) {
+	out := make([]sidecarFilterChoice, 0, len(names)+1)
+	if leadWithAny {
+		out = append(out, sidecarFilterChoice{ID: sidecarFilterAny, Title: "Any"})
+	}
+	lost := 0
+	for _, name := range names {
+		if len([]rune(name)) > sidecarMaxFilterID || len(out) >= sidecarMaxFilterChoices {
+			lost++
+			continue
+		}
+		out = append(out, sidecarFilterChoice{ID: name, Title: name})
+	}
+	return out, lost
+}
+
+func sidecarHasChoice(choices []sidecarFilterChoice, id string) bool {
+	for _, choice := range choices {
+		if choice.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func sidecarFilterLabel(label string, configured, lost int) string {
+	if lost <= 0 {
+		return label
+	}
+	return fmt.Sprintf("%s (%d of %d)", label, configured-lost, configured)
+}
+
+// sidecarSourceIDs is every configured source, in configuration order.
+//
+// Every source rather than the active profile's members: the profile is itself
+// a filter here, and a source chooser that changed its options as the profile
+// changed would hide the source someone is looking for behind the very choice
+// they are trying to make. Naming one outside the chosen profile is answered by
+// recall's own refusal, which says which profile has it.
+func sidecarSourceIDs(cfg *config.Config) []string {
+	out := make([]string, 0, len(cfg.Sources))
+	for _, s := range cfg.Sources {
+		out = append(out, s.ID)
+	}
+	return out
+}
+
+// sidecarRecordTypes is the union of the record types configuration declares,
+// sorted. A source that declares none serves its adapter's default set, which
+// is a fact about the adapter and not about this configuration — describe
+// contacts nothing, so it cannot ask, and it does not guess.
+func sidecarRecordTypes(cfg *config.Config) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range cfg.Sources {
+		for _, rt := range s.RecordTypes {
+			name := string(rt)
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Recall is global. There is deliberately no function here turning project
+// context into a scope.
+//
+// There was one, and it was wrong in a way that could not be seen from the app:
+// it mapped context.project.name onto recall's Scope.Project, which a documents
+// source reads as the first path segment under its own root. A surface showing
+// the "clara-home" project therefore asked every documents source for records
+// filed under a folder called clara-home, matched nothing, and the adapter
+// answered success-with-no-candidates — a claim that the corpus holds nothing,
+// made over a filter the user could not see, widen, or turn off. Only the td
+// adapter compares a workspace name, which is why td rows were the only ones
+// that ever arrived.
+//
+// So the project context is declared and read for exactly one thing: refusing a
+// surface bound to another machine. Narrowing to a project comes back as an
+// explicit filter over project.root once recall can restrict to paths under a
+// root, which is a different question from the one Scope.Project answers.
 
 // sidecarRemoteRefusal refuses a surface bound to another machine, whatever the
 // request is about.
@@ -646,9 +901,21 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		}
 	}
 
-	scope, refusal := sidecarProjectScope(reqCtx)
-	if refusal != nil {
+	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
 		return *refusal
+	}
+	if strings.TrimSpace(params.Cursor) != "" {
+		// Recall answers one page and returns no cursor, so a cursor here was
+		// not one this plugin issued. Answering page one to a caller holding
+		// what it believes is page two would repeat the first rows as though
+		// they were the next ones.
+		return sidecarFail(sidecarCodeInvalidRequest,
+			"recall answers one page and returns no cursor, so there is no page to resume", false)
+	}
+
+	selection, resp, ok := sidecarSelectFilters(env, profile, params.Filters)
+	if !ok {
+		return resp
 	}
 
 	// A limit is not negative, and recall refuses one rather than guessing. The
@@ -659,17 +926,17 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		limit = 0
 	}
 
-	core, closeCore, err := openCore(env, profile, limit, remoteFlags{})
+	core, closeCore, err := openCore(env, selection.profile, limit, remoteFlags{})
 	if err != nil {
 		return sidecarUnconfigured("recall could not open its configuration: "+err.Error(),
 			"Run recall doctor")
 	}
 	defer func() { _ = closeCore() }()
 
-	resp, err := core.Query(ctx, recall.QueryRequest{
+	answer, err := core.Query(ctx, recall.QueryRequest{
 		Query:   query,
-		Profile: profile,
-		Scope:   scope,
+		Profile: selection.profile,
+		Scope:   selection.scope,
 		Mode:    recall.ModeExplicit,
 		Budget: recall.Budget{
 			LatencyMS:      budgetMS,
@@ -683,21 +950,22 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		Limit: limit,
 	})
 	if err != nil {
+		if errors.Is(err, recall.ErrUnsatisfiableScope) {
+			// A source chosen outside the chosen profile. Recall's own refusal
+			// already names a profile that has it, which is the sentence the
+			// user needs and one this plugin could only paraphrase. It is the
+			// caller's to fix, not this installation's, so it is invalid_request
+			// rather than unavailable and it is not retryable: repeating it
+			// unchanged fails the same way.
+			return sidecarFail(sidecarCodeInvalidRequest, err.Error(), false)
+		}
 		// A request that could not be planned or fused made no claim about the
 		// corpus, so it is an error rather than an empty page.
 		return sidecarFail(sidecarCodeUnavailable, "recall could not run the query: "+err.Error(), true)
 	}
-	if resp.Outcome == recall.OutcomeFailed {
-		// Every source that was asked failed. The draft protocol's page
-		// outcomes are answered, abstained, and degraded, none of which can
-		// carry "nothing looked hard enough for an empty list to mean
-		// anything", so this is a typed failure instead. It is retryable
-		// because the sources, not the request, are what went wrong.
-		return sidecarFail(sidecarCodeUnavailable, sidecarFailedMessage(resp), true)
-	}
 
-	rows := make([]sidecarRow, 0, len(resp.Results))
-	for i, r := range resp.Results {
+	rows := make([]sidecarRow, 0, len(answer.Results))
+	for i, r := range answer.Results {
 		rows = append(rows, sidecarRow{rank: i + 1, result: r})
 	}
 	sidecarSortRows(rows, params.Sort)
@@ -708,16 +976,272 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 	}
 
 	page := &sidecarPage{
-		Outcome: sidecarOutcomeOf(resp),
+		Outcome: sidecarOutcomeOf(answer),
 		Items:   items,
 		// Recall answers once, bounded by the profile's max_results and the
 		// response budget: there is no second page to point at, and a cursor
 		// that always came back empty is the honest report of that.
 		NextCursor: "",
-		Total:      len(items) + resp.DroppedResults,
-		Notices:    sidecarNotices(resp, scope),
+		Total:      len(items) + answer.DroppedResults,
+		Notices:    sidecarNotices(answer),
+		Omitted:    sidecarOmittedCounts(answer),
+		Coverage:   sidecarCoverage(answer),
 	}
 	return sidecarResponse{Protocol: sidecarProtocol, Page: page}
+}
+
+// sidecarSelection is one call's resolved narrowing: which profile answers, and
+// what the answering sources are allowed to return.
+type sidecarSelection struct {
+	// profile is empty for the configured default, which is what an unset
+	// profile means everywhere else in recall.
+	profile string
+	scope   *recall.Scope
+}
+
+// sidecarSelectFilters reads `list.params.filters` against what describe
+// declared.
+//
+// The host drops keys this plugin did not declare before the call, so anything
+// unknown that arrives came from a caller by hand and is refused: a filter
+// asked for and not applied answers a wider question than the caller asked,
+// under a page that says nothing about it. A value that is not a configured
+// profile, source, or record type is refused for the same reason — the choosers
+// were built from configuration, so a value outside them was typed rather than
+// chosen.
+//
+// The flag profile is the floor: `recall sidecar-plugin --profile X` is how an
+// installation pins the plugin to one profile, and a call with no profile
+// filter keeps it.
+func sidecarSelectFilters(env Env, flagProfile string, filters map[string]string) (sidecarSelection, sidecarResponse, bool) {
+	selection := sidecarSelection{profile: flagProfile}
+	if len(filters) == 0 {
+		return selection, sidecarResponse{}, true
+	}
+
+	cfg, problem, ok := sidecarConfigProblem(env)
+	if !ok {
+		return selection, problem, false
+	}
+
+	scope := &recall.Scope{}
+	applied := false
+	for _, id := range sidecarFilterOrder(filters) {
+		value := strings.TrimSpace(filters[id])
+		switch id {
+		case sidecarFilterProfile:
+			if value == "" {
+				continue
+			}
+			if _, found := cfg.Profile(value); !found {
+				return selection, sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
+					"filter %s: no profile named %q; this machine declares %s",
+					id, value, strings.Join(cfg.ProfileNames(), ", ")), false), false
+			}
+			selection.profile = value
+		case sidecarFilterSource:
+			if value == "" || value == sidecarFilterAny {
+				continue
+			}
+			if _, found := cfg.Source(value); !found {
+				return selection, sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
+					"filter %s: no source named %q is configured; `recall sources` lists what this installation has",
+					id, value), false), false
+			}
+			scope.SourceIDs = append(scope.SourceIDs, value)
+			applied = true
+		case sidecarFilterType:
+			if value == "" || value == sidecarFilterAny {
+				continue
+			}
+			if !sidecarDeclaresType(cfg, value) {
+				return selection, sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
+					"filter %s: no configured source declares record type %q; this machine declares %s",
+					id, value, strings.Join(sidecarRecordTypes(cfg), ", ")), false), false
+			}
+			scope.RecordTypes = append(scope.RecordTypes, recall.RecordType(value))
+			applied = true
+		case sidecarFilterSince:
+			if value == "" {
+				continue
+			}
+			since, err := sidecarSince(value)
+			if err != nil {
+				return selection, sidecarFail(sidecarCodeInvalidRequest,
+					"filter "+sidecarFilterSince+": "+err.Error(), false), false
+			}
+			scope.Since = since
+			applied = true
+		default:
+			return selection, sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
+				"no filter named %q; recall declares %s, %s, %s, and %s",
+				id, sidecarFilterProfile, sidecarFilterSource,
+				sidecarFilterType, sidecarFilterSince), false), false
+		}
+	}
+	if applied {
+		selection.scope = scope
+	}
+	return selection, sidecarResponse{}, true
+}
+
+// sidecarFilterOrder reads the filters in declared order, then anything else
+// sorted. Map iteration is random, and two bad values in one call would
+// otherwise be refused with whichever message came up first — a request that
+// answered differently each time it was repeated unchanged.
+func sidecarFilterOrder(filters map[string]string) []string {
+	declared := []string{
+		sidecarFilterProfile, sidecarFilterSource, sidecarFilterType, sidecarFilterSince,
+	}
+	out := make([]string, 0, len(filters))
+	for _, id := range declared {
+		if _, present := filters[id]; present {
+			out = append(out, id)
+		}
+	}
+	var rest []string
+	for id := range filters {
+		if !slices.Contains(declared, id) {
+			rest = append(rest, id)
+		}
+	}
+	sort.Strings(rest)
+	return append(out, rest...)
+}
+
+func sidecarDeclaresType(cfg *config.Config, value string) bool {
+	for _, declared := range sidecarRecordTypes(cfg) {
+		if declared == value {
+			return true
+		}
+	}
+	return false
+}
+
+// sidecarSince reads the date a text filter carries. Both RFC 3339 forms are
+// accepted — the full date the label asks for, and a full timestamp — because a
+// text box is typed into by a person, and refusing "2026-09-03T00:00:00Z" for
+// being more precise than asked would be a rule with no reason behind it.
+//
+// A date is read as UTC midnight rather than as local midnight: the bound
+// travels to sources that hold instants in UTC, and a local reading would move
+// the boundary by hours depending on where the reader is sitting.
+func sidecarSince(value string) (*time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, value); err == nil {
+			utc := t.UTC()
+			return &utc, nil
+		}
+	}
+	return nil, fmt.Errorf("%q is not an RFC 3339 date; want %s or %s",
+		sidecarLine(value, 64), time.Now().UTC().Format("2006-01-02"),
+		time.Now().UTC().Format(time.RFC3339))
+}
+
+// sidecarOmittedCounts is what this page does not show: records withheld by
+// policy or prior display, and results the response budget removed. Absent when
+// there are none, because two zeroes rendered in the summary row would be a
+// claim about omission on every page that omitted nothing.
+func sidecarOmittedCounts(resp recall.QueryResponse) *sidecarOmitted {
+	suppressed := 0
+	for _, s := range resp.Suppressed {
+		suppressed += s.Count
+	}
+	if suppressed == 0 && resp.DroppedResults == 0 {
+		return nil
+	}
+	return &sidecarOmitted{Suppressed: suppressed, Dropped: resp.DroppedResults}
+}
+
+// sidecarCoverage projects recall's per-source ledger onto the coverage table.
+//
+// It is absent rather than empty when the ledger is: a response whose budget
+// replaced the ledger with a summary has no per-source facts to report, and a
+// table of nothing would read as a request that asked nobody. The notice still
+// names the sources that could not answer, because that line never shrinks.
+func sidecarCoverage(resp recall.QueryResponse) []sidecarCoverageRow {
+	if len(resp.SourceOutcomes) == 0 {
+		return nil
+	}
+	rows := make([]sidecarCoverageRow, 0, len(resp.SourceOutcomes))
+	for _, report := range resp.SourceOutcomes {
+		rows = append(rows, sidecarCoverageRowOf(report))
+	}
+	if len(rows) <= sidecarMaxCoverageRows {
+		return rows
+	}
+	// Past the bound, the rows that explain the page are kept first. A profile
+	// with more than 64 sources would otherwise lose exactly the rows the table
+	// exists for — the ones that did not answer — to sources that did.
+	kept := make([]sidecarCoverageRow, 0, sidecarMaxCoverageRows)
+	for _, row := range rows {
+		if row.State != sidecarCoverageAnswered && len(kept) < sidecarMaxCoverageRows {
+			kept = append(kept, row)
+		}
+	}
+	for _, row := range rows {
+		if row.State == sidecarCoverageAnswered && len(kept) < sidecarMaxCoverageRows {
+			kept = append(kept, row)
+		}
+	}
+	return kept
+}
+
+func sidecarCoverageRowOf(report recall.SourceReport) sidecarCoverageRow {
+	state, reason := sidecarCoverageState(report)
+	row := sidecarCoverageRow{
+		Source: sidecarLine(report.SourceID, 512),
+		State:  state,
+		Reason: sidecarLine(reason, 200),
+	}
+	if report.Elapsed > 0 {
+		row.ElapsedMs = report.Elapsed.Milliseconds()
+	}
+	return row
+}
+
+// sidecarCoverageState maps recall's search outcomes onto the protocol's five
+// states.
+//
+// Two of the mappings are decisions rather than translations. A PARTIAL search
+// is reported as unhealthy, not answered: the protocol has no partial state,
+// and this table is read to find out why a page is degraded — a source that
+// searched half its boundary and appeared as "answered" would leave the reader
+// with a degraded page nothing in the table explains. Its reason says what
+// happened. A DENIED source is unhealthy too: policy and credentials are
+// different causes with the same consequence, that the source could not be
+// read, and the reason names which.
+//
+// An outcome this build does not know is unhealthy rather than answered, for
+// the reason the protocol gives for reading an unknown page outcome as degraded:
+// of the two ways to be wrong, that is the one that does not invent a guarantee.
+func sidecarCoverageState(report recall.SourceReport) (string, string) {
+	reason := report.Reason
+	switch report.Outcome {
+	case recall.SearchSuccess:
+		return sidecarCoverageAnswered, reason
+	case recall.SearchPartial:
+		if reason == "" {
+			reason = "partial: the source searched only part of its boundary"
+		}
+		return sidecarCoverageUnhealthy, reason
+	case recall.SearchTimeout:
+		return sidecarCoverageTimeout, reason
+	case recall.SearchSkipped:
+		return sidecarCoverageSkipped, reason
+	case recall.SearchFailed:
+		return sidecarCoverageFailed, reason
+	case recall.SearchUnavailable, recall.SearchDenied:
+		if reason == "" {
+			reason = string(report.Outcome)
+		}
+		return sidecarCoverageUnhealthy, reason
+	default:
+		if reason == "" {
+			reason = "outcome " + string(report.Outcome) + " is not one this build knows"
+		}
+		return sidecarCoverageUnhealthy, reason
+	}
 }
 
 // sidecarRow is one result with the rank it earned, kept separately so a
@@ -823,11 +1347,17 @@ func sidecarResultItem(row sidecarRow) sidecarItem {
 // sidecarOutcomeOf maps recall's two independent facts onto the protocol's one
 // enumeration.
 //
-// Coverage wins over abstention, for the reason recall's own exit codes order
-// them that way: an abstention is a claim about the corpus, and an incomplete
-// set of sources does not support one.
+// Failure wins over both, and coverage wins over abstention, for the reason
+// recall's own exit codes order them that way: an abstention is a claim about
+// the corpus, and neither an incomplete set of sources nor a set that all
+// failed supports one. `failed` is a page rather than a typed error because it
+// is a statement about this row set — every source asked failed, so the empty
+// list means nothing — and the host draws an error card over it rather than
+// "no matches".
 func sidecarOutcomeOf(resp recall.QueryResponse) string {
 	switch {
+	case resp.Outcome == recall.OutcomeFailed:
+		return "failed"
 	case resp.Coverage == recall.CoverageDegraded:
 		return "degraded"
 	case resp.Outcome == recall.OutcomeAbstained:
@@ -848,7 +1378,7 @@ func sidecarFailedMessage(resp recall.QueryResponse) string {
 // sidecarNotices carries the coverage facts recall refuses to leave silent:
 // which sources did not answer, what was withheld, and what a budget removed.
 // Each is one line, and the list is bounded to what the host will draw.
-func sidecarNotices(resp recall.QueryResponse, scope *recall.Scope) []sidecarNotice {
+func sidecarNotices(resp recall.QueryResponse) []sidecarNotice {
 	var out []sidecarNotice
 	add := func(tone, text string) {
 		if len(out) >= 4 || text == "" {
@@ -857,18 +1387,13 @@ func sidecarNotices(resp recall.QueryResponse, scope *recall.Scope) []sidecarNot
 		out = append(out, sidecarNotice{Tone: tone, Text: sidecarLine(text, 200)})
 	}
 
-	// First, because it is the notice that explains an empty page. Project
-	// context arrives from the surface rather than from the user, and recall
-	// applies it as a hard filter, so a corpus that answers this query
-	// everywhere else can come back abstained here — and the host draws that
-	// as "no matches, sources fine", over a filter the user cannot see, widen,
-	// or turn off. Naming it is the difference between "recall knows nothing
-	// about this" and "recall was only asked about one project".
-	if scope != nil && scope.Project != "" {
-		add("info", fmt.Sprintf("scoped to project %q, the project this Sidecar surface is showing",
-			scope.Project))
-	}
-	if degraded := degradedSources(resp); len(degraded) > 0 {
+	// First, because it is the notice that explains an empty page: every source
+	// failed, so the empty list is not a fact about the corpus. The "did not
+	// answer" line below would be true and would say less, so it is skipped —
+	// the coverage table carries the per-source detail either way.
+	if resp.Outcome == recall.OutcomeFailed {
+		add("danger", sidecarFailedMessage(resp))
+	} else if degraded := degradedSources(resp); len(degraded) > 0 {
 		add("warning", fmt.Sprintf("%d of %d sources did not answer (%s)",
 			len(degraded), sidecarSourceCount(resp), strings.Join(degraded, ", ")))
 	}
@@ -1062,7 +1587,7 @@ func sidecarGet(ctx context.Context, env Env, profile string, req sidecarRequest
 // the row carried are not reachable here, and this document does not invent
 // them.
 func sidecarGetResult(ctx context.Context, env Env, profile, id string, reqCtx *sidecarContext) sidecarResponse {
-	if _, refusal := sidecarProjectScope(reqCtx); refusal != nil {
+	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
 		return *refusal
 	}
 	locator, err := recall.ParseLocator(strings.TrimSpace(id))

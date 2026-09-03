@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -96,6 +97,20 @@ func newPluginMachineWith(t *testing.T, keepUnreadable bool) *pluginMachine {
 // paragraph longer than a cell — in front of a real adapter rather than
 // asserting against a fake.
 func newPluginMachineWithFiles(t *testing.T, keepUnreadable bool, extra map[string]string) *pluginMachine {
+	return newPluginMachineConfigured(t, sidecarPluginTOML, keepUnreadable, extra)
+}
+
+// newPluginMachineConfigured is the same installation over a caller-supplied
+// configuration. The filter tests need more than one profile, more than one
+// source, and declared record types to have anything to choose between, and a
+// chooser built from configuration can only be tested against a configuration.
+//
+// Three placeholders are substituted: CORPUS is the fixture corpus, TRANSCRIPTS
+// is a second small corpus (a separate store, so two sources are two sources
+// rather than one seen twice), and MISSING is a path that does not exist.
+func newPluginMachineConfigured(
+	t *testing.T, configTOML string, keepUnreadable bool, extra map[string]string,
+) *pluginMachine {
 	t.Helper()
 	binary := recallBinary(t)
 
@@ -114,7 +129,19 @@ func newPluginMachineWithFiles(t *testing.T, keepUnreadable bool, extra map[stri
 			t.Fatal(err)
 		}
 	}
-	body := strings.ReplaceAll(sidecarPluginTOML, "CORPUS", corpus)
+	transcripts := filepath.Join(root, "transcripts")
+	if err := os.MkdirAll(transcripts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(transcripts, "standup.md"),
+		[]byte(sidecarTranscript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := strings.NewReplacer(
+		"CORPUS", corpus,
+		"TRANSCRIPTS", transcripts,
+		"MISSING", filepath.Join(root, "gone"),
+	).Replace(configTOML)
 	if err := os.WriteFile(filepath.Join(configHome, "recall", "config.toml"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -845,6 +872,84 @@ sources = ["docs"]
 max_sensitivity = "internal"
 `
 
+// sidecarTranscript is the second corpus: one file, a different store, and the
+// same query term as the fixture corpus, so a profile or source change is
+// observable as a change in which rows come back rather than as an empty page.
+const sidecarTranscript = `# Standup transcript 2026-08-14
+
+Marcus: ranking needs corroboration from a second source before we promote it.
+Clara: agreed — one source saying it twice is not corroboration.
+`
+
+// sidecarFilterTOML is an installation with something to choose between: two
+// profiles, two sources over two stores, and two declared record types. Every
+// chooser recall declares is read from configuration, so this is what the
+// filter tests are asserting against.
+const sidecarFilterTOML = `
+[defaults]
+profile = "work"
+timeout_ms = 20000
+
+[[sources]]
+source_uid = "01UIDDOCS"
+source_id = "docs"
+adapter = "documents"
+location = "CORPUS"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+record_types = ["document"]
+
+[[sources]]
+source_uid = "01UIDCHAT"
+source_id = "transcripts"
+adapter = "documents"
+location = "TRANSCRIPTS"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+record_types = ["message"]
+
+[profiles.work]
+sources = ["docs", "transcripts"]
+max_sensitivity = "internal"
+
+[profiles.standups]
+sources = ["transcripts"]
+max_sensitivity = "internal"
+`
+
+// sidecarUnhealthyTOML configures one source that cannot be read. It is how the
+// sources collection is asked the question the outcome rule exists for: rows
+// that are all present, describing something that is not well.
+const sidecarUnhealthyTOML = `
+[defaults]
+profile = "work"
+timeout_ms = 20000
+
+[[sources]]
+source_uid = "01UIDDOCS"
+source_id = "docs"
+adapter = "documents"
+location = "CORPUS"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[[sources]]
+source_uid = "01UIDGONE"
+source_id = "vanished"
+adapter = "documents"
+location = "MISSING"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[profiles.work]
+sources = ["docs", "vanished"]
+max_sensitivity = "internal"
+`
+
 // assertNoControlRunes walks every string in a decoded response and fails on a
 // control character. C0, DEL, and C1 are all of them except newline and tab,
 // which are the only two with a meaning in a document body: an escape
@@ -889,6 +994,94 @@ func itemIDs(t *testing.T, page map[string]any) []string {
 	return out
 }
 
+func filtersOf(t *testing.T, collection map[string]any) []map[string]any {
+	t.Helper()
+	raw, _ := collection["filters"].([]any)
+	if len(raw) == 0 {
+		t.Fatalf("the collection declares no filters: %s", mustJSON(collection))
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, entry := range raw {
+		filter, _ := entry.(map[string]any)
+		out = append(out, filter)
+	}
+	return out
+}
+
+func filterIDs(filters []map[string]any) []string {
+	out := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		id, _ := filter["id"].(string)
+		out = append(out, id)
+	}
+	return out
+}
+
+func choicesOf(filter map[string]any) []map[string]any {
+	raw, _ := filter["choices"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, entry := range raw {
+		choice, _ := entry.(map[string]any)
+		out = append(out, choice)
+	}
+	return out
+}
+
+func choiceIDs(filter map[string]any) []string {
+	choices := choicesOf(filter)
+	out := make([]string, 0, len(choices))
+	for _, choice := range choices {
+		id, _ := choice["id"].(string)
+		out = append(out, id)
+	}
+	return out
+}
+
+func coverageRows(t *testing.T, page map[string]any) []map[string]any {
+	t.Helper()
+	raw, _ := page["coverage"].([]any)
+	if len(raw) == 0 {
+		t.Fatalf("the page carries no coverage table: %s", mustJSON(page))
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, entry := range raw {
+		row, _ := entry.(map[string]any)
+		out = append(out, row)
+	}
+	return out
+}
+
+func coverageBySource(t *testing.T, page map[string]any) map[string]map[string]any {
+	t.Helper()
+	out := map[string]map[string]any{}
+	for _, row := range coverageRows(t, page) {
+		source, _ := row["source"].(string)
+		out[source] = row
+	}
+	return out
+}
+
+// rowSources is the set of sources a page's rows came from, sorted and deduped:
+// what a scope filter changes is which sources answered, not how many rows each
+// of them happened to contribute.
+func rowSources(page map[string]any) []string {
+	items, _ := page["items"].([]any)
+	seen := map[string]bool{}
+	var out []string
+	for _, entry := range items {
+		row, _ := entry.(map[string]any)
+		cells, _ := row["cells"].(map[string]any)
+		source, _ := cells["source"].(string)
+		if source == "" || seen[source] {
+			continue
+		}
+		seen[source] = true
+		out = append(out, source)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func notices(page map[string]any) []string {
 	raw, _ := page["notices"].([]any)
 	out := make([]string, 0, len(raw))
@@ -925,6 +1118,31 @@ func (c *scriptedCore) Query(context.Context, recall.QueryRequest) (recall.Query
 			SourceOutcomes: []recall.SourceReport{{
 				SourceID: "docs", Outcome: recall.SearchFailed, Reason: "unreachable",
 			}},
+		}, nil
+	case "ledger":
+		// One response carrying every part of the ledger the page projects:
+		// records withheld, results a budget removed, and a source in each of
+		// recall's search outcomes. No real corpus produces all of them at
+		// once, and the mapping between the two vocabularies is exactly what
+		// has to stay pinned.
+		return recall.QueryResponse{
+			Outcome:        recall.OutcomeAnswered,
+			Coverage:       recall.CoverageDegraded,
+			DroppedResults: 6,
+			Suppressed: []recall.Suppression{
+				{Reason: "below_relevance_floor", Count: 1},
+				{Reason: "duplicate_view", Count: 2},
+			},
+			SourceOutcomes: []recall.SourceReport{
+				{SourceID: "docs", Outcome: recall.SearchSuccess, Elapsed: 12 * time.Millisecond},
+				{SourceID: "slow", Outcome: recall.SearchTimeout, Reason: "budget_exhausted",
+					Elapsed: 2000 * time.Millisecond},
+				{SourceID: "mail", Outcome: recall.SearchUnavailable, Reason: "unreachable"},
+				{SourceID: "vault", Outcome: recall.SearchDenied, Reason: "denied"},
+				{SourceID: "half", Outcome: recall.SearchPartial},
+				{SourceID: "other", Outcome: recall.SearchSkipped, Reason: "out_of_profile"},
+				{SourceID: "crashed", Outcome: recall.SearchFailed, Reason: "panicked"},
+			},
 		}, nil
 	}
 	return recall.QueryResponse{}, nil
@@ -1251,59 +1469,80 @@ func TestSidecarPluginAnswersAPanicOnTheRefreshFanOutWithOneTypedFailure(t *test
 	}
 }
 
-// The one thing the draft protocol's page outcomes cannot express: every source
-// recall asked failed, so an empty list would claim the corpus holds nothing
-// when in fact nothing looked. It is a retryable typed failure, and it is
-// asserted here because no real configuration reaches it — an unreachable
+// Every source recall asked failed, so an empty list would claim the corpus
+// holds nothing when in fact nothing looked. That is the `failed` outcome: a
+// page, because it is a statement about this row set, and the host draws an
+// error card over it rather than "no matches". It is asserted through a
+// scripted core because no real configuration reaches it — an unreachable
 // documents source is SKIPPED, which is degraded, not failed.
-func TestSidecarPluginReportsAnEverySourceFailedQueryAsRetryableUnavailable(t *testing.T) {
+func TestSidecarPluginReportsAnEverySourceFailedQueryAsAFailedPage(t *testing.T) {
 	resp, _ := callScripted(t, "failed",
 		sidecarRequest("list", `{"collection":"results","query":"anything"}`))
 
-	fail, ok := resp["error"].(map[string]any)
-	if !ok {
-		t.Fatalf("every source failing answered with %v, want a typed error rather than an empty page", resp)
+	if _, present := resp["error"]; present {
+		t.Fatalf("every source failing answered with a typed error; the outcome carries it now: %s",
+			mustJSON(resp))
 	}
-	if fail["code"] != "unavailable" {
-		t.Errorf("code = %v, want unavailable", fail["code"])
-	}
-	if fail["retryable"] != true {
-		t.Error("retryable = false; the sources failed, not the request")
-	}
-	if msg, _ := fail["message"].(string); !strings.Contains(msg, "docs") {
-		t.Errorf("message = %q, want the source that failed named", msg)
-	}
-	if _, present := resp["page"]; present {
-		t.Error("an every-source-failed query answered with a page, which claims coverage it did not have")
-	}
-}
-
-// A project surface's context becomes a hard scope on every query recall runs
-// from it, and the user has no control that shows, widens, or clears it. An
-// empty page under that filter is drawn by the host as "no matches, sources
-// fine" — a claim about the corpus that the corpus does not support. Naming the
-// scope in a notice is what lets an empty page explain itself.
-func TestSidecarPluginNamesTheProjectScopeItApplied(t *testing.T) {
-	m := newPluginMachine(t)
-	resp := m.call(t, fmt.Sprintf(
-		`{"protocol":%q,"instance":"recall","deadlineMs":20000,`+
-			`"context":{"project":{"root":"/checkout","workDir":"/checkout",`+
-			`"name":"nosuchproject","branch":"main"}},`+
-			`"method":"list","params":{"collection":"results","query":"corroboration","limit":20}}`,
-		sidecarProtocol))
-
 	page := mustPage(t, resp)
-	notices, _ := page["notices"].([]any)
+	if page["outcome"] != "failed" {
+		t.Fatalf("outcome = %v, want failed: %s", page["outcome"], mustJSON(resp))
+	}
+	if items, _ := page["items"].([]any); len(items) != 0 {
+		t.Errorf("a failed page carried rows: %s", mustJSON(resp))
+	}
 	named := false
-	for _, raw := range notices {
-		notice, _ := raw.(map[string]any)
-		if text, _ := notice["text"].(string); strings.Contains(text, "nosuchproject") {
+	for _, text := range notices(page) {
+		if strings.Contains(text, "docs") {
 			named = true
 		}
 	}
 	if !named {
-		t.Fatalf("the applied project scope is invisible, so an empty page reads as an empty corpus: %s",
-			mustJSON(resp))
+		t.Errorf("no notice names the source that failed: %s", mustJSON(page))
+	}
+	rows := coverageRows(t, page)
+	if len(rows) != 1 || rows[0]["source"] != "docs" || rows[0]["state"] != "failed" {
+		t.Errorf("coverage = %s, want one failed row for docs", mustJSON(page["coverage"]))
+	}
+	if rows[0]["reason"] != "unreachable" {
+		t.Errorf("coverage reason = %v, want the reason recall reported", rows[0]["reason"])
+	}
+}
+
+// Recall is global, whatever project the surface happens to be showing.
+//
+// It used to map context.project.name onto recall's Scope.Project, which a
+// documents source reads as the first path segment under its own root: a
+// surface showing a project therefore asked every documents source for records
+// filed under a folder of that name, matched none, and the adapter answered
+// success-with-no-candidates — an empty page the host drew as "no matches,
+// sources fine". This is td-35bcd1's proof case: a project name nothing on this
+// machine has must answer exactly what no context at all answers.
+func TestSidecarPluginAnswersGloballyWhateverProjectIsOnScreen(t *testing.T) {
+	m := newPluginMachine(t)
+	query := `"method":"list","params":{"collection":"results","query":"corroboration","limit":20}`
+
+	global := m.call(t, fmt.Sprintf(`{"protocol":%q,"instance":"recall","deadlineMs":20000,%s}`,
+		sidecarProtocol, query))
+	scoped := m.call(t, fmt.Sprintf(
+		`{"protocol":%q,"instance":"recall","deadlineMs":20000,`+
+			`"context":{"project":{"root":"/checkout","workDir":"/checkout",`+
+			`"name":"nosuchproject","branch":"main"}},%s}`,
+		sidecarProtocol, query))
+
+	globalPage, scopedPage := mustPage(t, global), mustPage(t, scoped)
+	if ids := itemIDs(t, globalPage); len(ids) == 0 {
+		t.Fatalf("no rows for a term the fixture corpus holds: %s", mustJSON(global))
+	}
+	if got, want := itemIDs(t, scopedPage), itemIDs(t, globalPage); !jsonEqual(got, want) {
+		t.Errorf("a project on screen changed the answer\n with context: %v\nwithout it:  %v", got, want)
+	}
+	if got, want := scopedPage["outcome"], globalPage["outcome"]; got != want {
+		t.Errorf("outcome = %v with a project on screen, %v without it", got, want)
+	}
+	for _, text := range notices(scopedPage) {
+		if strings.Contains(text, "nosuchproject") || strings.Contains(text, "scoped to project") {
+			t.Errorf("a project scope was applied and announced: %q", text)
+		}
 	}
 }
 
@@ -1319,6 +1558,332 @@ func TestSidecarPluginClampsAnAbsurdDeadlineInsteadOfOverflowing(t *testing.T) {
 	page := mustPage(t, resp)
 	if items, _ := page["items"].([]any); len(items) == 0 {
 		t.Fatalf("the largest possible budget answered nothing: %s", mustJSON(resp))
+	}
+}
+
+// Every chooser recall declares is configuration read back. A filter offering
+// something the query would then refuse — a profile this machine does not have,
+// a source it never configured — is a control that exists only to fail.
+func TestSidecarPluginDeclaresItsFiltersFromConfiguration(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarFilterTOML, false, nil)
+	resp := m.call(t, sidecarRequest("describe", ""))
+
+	filters := filtersOf(t, collectionsByID(t, resp)["results"])
+	if got := filterIDs(filters); !equalStrings(got, []string{"profile", "source", "type", "since"}) {
+		t.Fatalf("filters = %v, want profile, source, type, since in that order", got)
+	}
+	// The first declared filter is the collection's scope: its title is what
+	// the host folds into the pill, so it has to be the one that decides which
+	// sources are asked at all.
+	if filters[0]["id"] != "profile" {
+		t.Errorf("scope filter = %v, want profile first", filters[0]["id"])
+	}
+
+	profile := filters[0]
+	if profile["kind"] != "choice" {
+		t.Errorf("profile kind = %v, want choice", profile["kind"])
+	}
+	if got := choiceIDs(profile); !equalStrings(got, []string{"standups", "work"}) {
+		t.Errorf("profile choices = %v, want every configured profile", got)
+	}
+	if profile["default"] != "work" {
+		t.Errorf("profile default = %v, want the configured default profile", profile["default"])
+	}
+	if got := choiceIDs(filters[1]); !equalStrings(got, []string{"any", "docs", "transcripts"}) {
+		t.Errorf("source choices = %v, want Any plus every configured source", got)
+	}
+	if filters[1]["default"] != "any" {
+		t.Errorf("source default = %v, want any", filters[1]["default"])
+	}
+	if got := choiceIDs(filters[2]); !equalStrings(got, []string{"any", "document", "message"}) {
+		t.Errorf("type choices = %v, want Any plus the record types configuration declares", got)
+	}
+	since := filters[3]
+	if since["kind"] != "text" {
+		t.Errorf("since kind = %v, want text", since["kind"])
+	}
+	if raw, present := since["choices"]; present {
+		if list, _ := raw.([]any); len(list) > 0 {
+			t.Errorf("since carries choices %v; a text filter has none", raw)
+		}
+	}
+	for _, filter := range filters {
+		id, _ := filter["id"].(string)
+		if len(id) > 32 {
+			t.Errorf("filter id %q is longer than the protocol's 32 characters", id)
+		}
+		for _, choice := range choicesOf(filter) {
+			for _, key := range []string{"id", "title"} {
+				if value, _ := choice[key].(string); len([]rune(value)) > 32 {
+					t.Errorf("choice %s %q is longer than the protocol's 32 characters", key, value)
+				}
+			}
+		}
+		if n := len(choicesOf(filter)); n > 64 {
+			t.Errorf("filter %q declares %d choices; the protocol's bound is 64", id, n)
+		}
+	}
+	if n := len(filters); n > 8 {
+		t.Errorf("results declares %d filters; the protocol's bound is 8", n)
+	}
+}
+
+// A list with no filters resolves the configured default profile, and a filter
+// changes which sources answer. This is the whole of the scope decision: what a
+// page covers is chosen by the user and visible in the pill, never applied
+// behind their back.
+func TestSidecarPluginResolvesTheDefaultProfileAndSwitchesOnTheFilter(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarFilterTOML, false, nil)
+
+	unfiltered := mustPage(t, m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20}`)))
+	if got := rowSources(unfiltered); !jsonEqual(got, []string{"docs", "transcripts"}) {
+		t.Fatalf("the default profile answered from %v, want both of its sources", got)
+	}
+
+	narrowed := mustPage(t, m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20,`+
+			`"filters":{"profile":"standups"}}`)))
+	if got := rowSources(narrowed); !jsonEqual(got, []string{"transcripts"}) {
+		t.Fatalf("the standups profile answered from %v, want only its own source: %s",
+			got, mustJSON(narrowed))
+	}
+	if narrowed["outcome"] != "answered" {
+		t.Errorf("outcome = %v, want answered: the chosen profile's sources all answered",
+			narrowed["outcome"])
+	}
+
+	// And the same narrowing by source, inside the profile that has it.
+	bySource := mustPage(t, m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20,`+
+			`"filters":{"source":"transcripts"}}`)))
+	if got := rowSources(bySource); !jsonEqual(got, []string{"transcripts"}) {
+		t.Errorf("source=transcripts answered from %v", got)
+	}
+}
+
+// A source outside the chosen profile is recall's own refusal, verbatim: it
+// names a profile that does have the source, which is the sentence that makes
+// the next attempt a real one rather than a guess. The alternative — an empty
+// page under `abstained` — would say every eligible source answered and none
+// knew, over a request where nothing was asked.
+func TestSidecarPluginRefusesASourceOutsideTheChosenProfile(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarFilterTOML, false, nil)
+	resp := m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20,`+
+			`"filters":{"profile":"standups","source":"docs"}}`))
+
+	failure, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("a source outside the profile was answered: %s", mustJSON(resp))
+	}
+	if failure["code"] != "invalid_request" {
+		t.Errorf("code = %v, want invalid_request: it is the caller's to fix", failure["code"])
+	}
+	if failure["retryable"] == true {
+		t.Error("retryable = true; repeating this unchanged fails the same way")
+	}
+	message, _ := failure["message"].(string)
+	for _, want := range []string{"docs", "standups", "work"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("message %q does not name %q", message, want)
+		}
+	}
+}
+
+// The two filters that narrow what an answering source may return.
+func TestSidecarPluginNarrowsByTypeAndSince(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarFilterTOML, false, nil)
+	const query = `{"collection":"results","query":"corroboration","limit":20`
+
+	// A record type decides which sources are eligible at all: one that
+	// declares it does not hold the type is not asked, and the coverage table
+	// says so rather than the page reporting an empty success over it.
+	t.Run("type", func(t *testing.T) {
+		documents := mustPage(t, m.call(t, sidecarRequest("list",
+			query+`,"filters":{"type":"document"}}`)))
+		if got := rowSources(documents); !jsonEqual(got, []string{"docs"}) {
+			t.Errorf("type=document answered from %v, want the source that declares it: %s",
+				got, mustJSON(documents))
+		}
+		if row := coverageBySource(t, documents)["transcripts"]; row["state"] != "skipped" {
+			t.Errorf("transcripts coverage = %s, want skipped: it declares no document records",
+				mustJSON(row))
+		}
+
+		messages := mustPage(t, m.call(t, sidecarRequest("list",
+			query+`,"filters":{"type":"message"}}`)))
+		row := coverageBySource(t, messages)["docs"]
+		if row["state"] != "skipped" {
+			t.Errorf("docs coverage = %s, want skipped: it declares no message records", mustJSON(row))
+		}
+		if reason, _ := row["reason"].(string); !strings.Contains(reason, "record_type") {
+			t.Errorf("reason = %q, want the record-type mismatch recall reported", reason)
+		}
+	})
+
+	t.Run("since keeps what is newer", func(t *testing.T) {
+		page := mustPage(t, m.call(t, sidecarRequest("list",
+			query+`,"filters":{"since":"2000-01-01"}}`)))
+		if got := rowSources(page); len(got) == 0 {
+			t.Errorf("a date every record is newer than removed every row: %s", mustJSON(page))
+		}
+	})
+
+	t.Run("since drops what is older", func(t *testing.T) {
+		future := time.Now().AddDate(1, 0, 0).UTC().Format("2006-01-02")
+		page := mustPage(t, m.call(t, sidecarRequest("list",
+			query+fmt.Sprintf(`,"filters":{"since":%q}}`, future))))
+		if items, _ := page["items"].([]any); len(items) != 0 {
+			t.Errorf("a date in the future kept rows: %s", mustJSON(page))
+		}
+		// Nothing failed and nothing was withheld from a source that could not
+		// answer: this is a true abstention over the filtered corpus.
+		if page["outcome"] != "abstained" {
+			t.Errorf("outcome = %v, want abstained", page["outcome"])
+		}
+	})
+
+	t.Run("an unreadable date is refused by name", func(t *testing.T) {
+		resp := m.call(t, sidecarRequest("list", query+`,"filters":{"since":"last tuesday"}}`))
+		failure, ok := resp["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("an unparseable date was applied or ignored: %s", mustJSON(resp))
+		}
+		if failure["code"] != "invalid_request" {
+			t.Errorf("code = %v, want invalid_request", failure["code"])
+		}
+		message, _ := failure["message"].(string)
+		if !strings.Contains(message, "since") || !strings.Contains(message, "RFC 3339") {
+			t.Errorf("message %q does not name the filter and the form it wants", message)
+		}
+	})
+
+	t.Run("a filter recall never declared is refused", func(t *testing.T) {
+		resp := m.call(t, sidecarRequest("list", query+`,"filters":{"project":"clara-home"}}`))
+		failure, ok := resp["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("an undeclared filter was accepted: %s", mustJSON(resp))
+		}
+		if message, _ := failure["message"].(string); !strings.Contains(message, "project") {
+			t.Errorf("message %q does not name the filter it does not have", message)
+		}
+	})
+}
+
+// What a page does not show, and what each source did. Both are data rather
+// than a sentence, because the host renders one in the summary row and the
+// other as a table, and a plugin writing either as prose would be choosing the
+// layout for it.
+func TestSidecarPluginReportsOmittedAndPerSourceCoverage(t *testing.T) {
+	resp, _ := callScripted(t, "ledger",
+		sidecarRequest("list", `{"collection":"results","query":"anything"}`))
+	page := mustPage(t, resp)
+
+	omitted, ok := page["omitted"].(map[string]any)
+	if !ok {
+		t.Fatalf("no omitted block over a response that withheld records and dropped results: %s",
+			mustJSON(page))
+	}
+	if omitted["suppressed"] != float64(3) {
+		t.Errorf("suppressed = %v, want every withheld record counted", omitted["suppressed"])
+	}
+	if omitted["dropped"] != float64(6) {
+		t.Errorf("dropped = %v, want what the response budget removed", omitted["dropped"])
+	}
+
+	states := map[string]string{}
+	reasons := map[string]string{}
+	for _, row := range coverageRows(t, page) {
+		source, _ := row["source"].(string)
+		states[source], _ = row["state"].(string)
+		reasons[source], _ = row["reason"].(string)
+	}
+	want := map[string]string{
+		"docs":    "answered",
+		"slow":    "timeout",
+		"mail":    "unhealthy",
+		"vault":   "unhealthy",
+		"half":    "unhealthy",
+		"other":   "skipped",
+		"crashed": "failed",
+	}
+	if !jsonEqual(states, want) {
+		t.Errorf("coverage states = %s\nwant %s", mustJSON(states), mustJSON(want))
+	}
+	if reasons["slow"] != "budget_exhausted" {
+		t.Errorf("timeout reason = %q, want the reason recall reported", reasons["slow"])
+	}
+	// A partial search has no state of its own in the protocol, so it must at
+	// least say what happened: an "answered" row would leave a degraded page
+	// with nothing in the table explaining it.
+	if !strings.Contains(reasons["half"], "partial") {
+		t.Errorf("partial reason = %q, want it to say the boundary was not fully searched", reasons["half"])
+	}
+	for _, row := range coverageRows(t, page) {
+		if n := len([]rune(fmt.Sprint(row["reason"]))); n > 200 {
+			t.Errorf("coverage reason is %d runes; the protocol's bound is 200", n)
+		}
+	}
+	if elapsed := coverageBySource(t, page)["slow"]["elapsedMs"]; elapsed != float64(2000) {
+		t.Errorf("elapsedMs = %v, want the source's own duration in milliseconds", elapsed)
+	}
+	if _, present := coverageBySource(t, page)["mail"]["elapsedMs"]; present {
+		t.Error("a source that reported no duration carries an elapsedMs of zero, which reads as instant")
+	}
+}
+
+// A real page carries the same table, so the coverage modal is not a shape only
+// a fixture produces.
+func TestSidecarPluginCarriesCoverageOnARealPage(t *testing.T) {
+	m := newPluginMachineWith(t, true)
+	page := mustPage(t, m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20}`)))
+	if page["outcome"] != "degraded" {
+		t.Fatalf("outcome = %v, want degraded: %s", page["outcome"], mustJSON(page))
+	}
+	rows := coverageBySource(t, page)
+	row, ok := rows["docs"]
+	if !ok {
+		t.Fatalf("no coverage row for the source that could not fully answer: %s", mustJSON(page))
+	}
+	if row["state"] == "answered" {
+		t.Errorf("state = answered on the source that degraded the page: %s", mustJSON(row))
+	}
+}
+
+// The outcome describes the row set of this page and nothing else. Every
+// configured source is in the list, so the list is complete — what is unwell is
+// what the rows describe, and the status pill on each row is where that lives.
+func TestSidecarPluginAnswersTheSourcesCollectionEvenWhenASourceIsUnwell(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarUnhealthyTOML, false, nil)
+	page := mustPage(t, m.call(t, sidecarRequest("list", `{"collection":"sources"}`)))
+
+	if page["outcome"] != "answered" {
+		t.Fatalf("outcome = %v, want answered: every configured source is in the list",
+			page["outcome"])
+	}
+	items, _ := page["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("sources = %d rows, want both configured sources: %s", len(items), mustJSON(page))
+	}
+	unwell := false
+	for _, entry := range items {
+		row, _ := entry.(map[string]any)
+		cells, _ := row["cells"].(map[string]any)
+		if cells["name"] != "vanished" {
+			continue
+		}
+		status, _ := row["status"].(map[string]any)
+		if tone, _ := status["tone"].(string); tone == "danger" || tone == "warning" {
+			unwell = true
+		}
+	}
+	if !unwell {
+		t.Errorf("the row for a source that cannot be read carries no unwell status: %s", mustJSON(page))
+	}
+	if len(notices(page)) == 0 {
+		t.Error("a list containing a source that cannot answer says so in no notice")
 	}
 }
 
