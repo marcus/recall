@@ -212,21 +212,12 @@ func (a *App) fanOut(ctx context.Context, plan source.Plan) []searchResult {
 	var wg sync.WaitGroup
 
 	for i, target := range plan.Targets {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// Adapter code runs on this goroutine, so a panic in it cannot be
-			// recovered by the caller: it would take the process down along
-			// with every other source's answer and the response itself. Caught
-			// here it becomes one source's failure, which is a thing the
-			// coverage report already knows how to say.
-			defer func() {
-				if value := recover(); value != nil {
-					out[i] = panicked(target, value)
-				}
-			}()
-			out[i] = a.searchOne(ctx, target)
-		}()
+		// Adapter code runs on the goroutine [source.RunGuarded] starts, so a
+		// panic in it becomes one source's failure — a thing the coverage
+		// report already knows how to say — rather than a dead process.
+		source.RunGuarded(&wg, &out[i], target.Instance.ID,
+			func() searchResult { return a.searchOne(ctx, target) },
+			func(detail string) searchResult { return panicked(target, detail) })
 	}
 	wg.Wait()
 	return out
@@ -236,12 +227,12 @@ func (a *App) fanOut(ctx context.Context, plan source.Plan) []searchResult {
 // answering. The outcome is failed rather than unavailable — the source was
 // reachable enough to run — and the reason is its own, so a crash is not
 // reported as a source that was merely down.
-func panicked(t source.Target, value any) searchResult {
+func panicked(t source.Target, detail string) searchResult {
 	return searchResult{
 		target:   t,
 		health:   t.Health,
 		response: recall.SearchResponse{Outcome: recall.SearchFailed},
-		err:      panicErr{detail: source.RecoveredPanic("source "+t.Instance.ID, value)},
+		err:      panicErr{detail: detail},
 	}
 }
 

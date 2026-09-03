@@ -286,27 +286,21 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 			verdicts[i] = verdict{reason: reason}
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// A handshake or a probe runs adapter code on this goroutine, where
-			// a panic cannot be recovered by whoever called BuildPlan: it would
-			// take the process down and every other source's verdict with it.
-			// Caught here it becomes what it is — one source that cannot be
-			// asked, excluded for a reason that degrades coverage.
-			defer func() {
-				if value := recover(); value != nil {
-					verdicts[i] = verdict{
-						reason: ReasonPanicked,
-						diagnostics: map[string]any{
-							"panic": RecoveredPanic("source "+inst.ID, value),
-						},
-					}
+		// A handshake or a probe runs adapter code on the goroutine
+		// [RunGuarded] starts. A panic there becomes what it is — one source
+		// that cannot be asked, excluded for a reason that degrades coverage —
+		// rather than a dead process.
+		RunGuarded(&wg, &verdicts[i], inst.ID,
+			func() verdict {
+				return r.consider(
+					ctx, req, inst, plan.Deadline, queryBudget, reserve, perSource, now)
+			},
+			func(detail string) verdict {
+				return verdict{
+					reason:      ReasonPanicked,
+					diagnostics: map[string]any{"panic": detail},
 				}
-			}()
-			verdicts[i] = r.consider(
-				ctx, req, inst, plan.Deadline, queryBudget, reserve, perSource, now)
-		}()
+			})
 	}
 	wg.Wait()
 	refuseDuplicateStores(instances, verdicts)

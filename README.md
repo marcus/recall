@@ -208,6 +208,16 @@ Both a typed success and a typed failure exit 0, because either one is an
 answer. A non-zero exit means the response itself could not be written, and
 Sidecar reads that as a crashed plugin.
 
+A source that crashes is one of those typed failures rather than a crashed
+plugin. Recall recovers a panic at two boundaries: the request itself, which
+answers with the `internal` error code, and every per-source goroutine it fans
+out onto for planning, query, and refresh, where a crash becomes that one
+source's `panicked` failure while the other sources still answer. The crash
+detail and its stack go to standard error, never to the single JSON object on
+stdout. The guarantee stops at that per-source boundary: an adapter that starts
+goroutines of its own is responsible for recovering on them, because that is a
+stack recall never sees.
+
 ## Go adapter SDK
 
 Go adapters import `github.com/marcus/recall/pkg/adapter`,

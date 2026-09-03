@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/source"
 	"github.com/marcus/recall/pkg/protocol"
 	"github.com/marcus/recall/pkg/recall"
 )
@@ -66,11 +67,26 @@ func (a *App) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.Re
 			results[i].Status = recall.RefreshSourceSkipped
 			results[i].Reason = recall.RefreshDenied
 		default:
-			wg.Add(1)
-			go func(i int, inst *config.SourceInstance) {
-				defer wg.Done()
-				results[i] = a.initializeAndRefreshOne(ctx, inst, req.Full, req.SourceID != "")
-			}(i, inst)
+			// Initialize, Refresh, and Health all run adapter code on the
+			// goroutine [source.RunGuarded] starts. A panic there is one
+			// source that could not be maintained — the others still refresh,
+			// and the caller still gets a report — rather than a dead process
+			// with no answer on standard output at all.
+			source.RunGuarded(&wg, &results[i], inst.ID,
+				func() recall.RefreshSourceOutcome {
+					return a.initializeAndRefreshOne(ctx, inst, req.Full, req.SourceID != "")
+				},
+				func(string) recall.RefreshSourceOutcome {
+					// The crash detail stays on standard error with its stack.
+					// DiagnosticDetail carries what an adapter reported about
+					// itself, and an adapter that crashed reported nothing.
+					return recall.RefreshSourceOutcome{
+						SourceID:  inst.ID,
+						SourceUID: inst.UID,
+						Status:    recall.RefreshSourceFailed,
+						Reason:    recall.RefreshPanicked,
+					}
+				})
 		}
 	}
 	wg.Wait()

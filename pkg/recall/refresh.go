@@ -67,6 +67,13 @@ const (
 	RefreshTimedOut RefreshReason = "timeout"
 	// RefreshUnhealthy means refreshed state was not usable.
 	RefreshUnhealthy RefreshReason = "unhealthy"
+	// RefreshPanicked means the adapter crashed while being refreshed or
+	// probed. It is its own reason rather than refresh_failed because the two
+	// are acted on differently: a failed refresh is something the adapter
+	// reported and may recover from, and this is a bug in code recall ran. The
+	// crash detail and its stack go to standard error and nowhere else, so the
+	// wire value matches the one a source report uses for the same event.
+	RefreshPanicked RefreshReason = "panicked"
 )
 
 // RefreshSourceOutcome reports every source considered by the request. Health

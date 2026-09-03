@@ -49,11 +49,14 @@ type fake struct {
 	searchCalls      int
 	healthCalls      int
 
-	// searchPanic and probePanic model the one failure an adapter cannot
-	// report for itself: a bug in its own code. Each is the value the adapter
-	// panics with, so a test can recognise it in what recall says afterwards.
-	searchPanic string
-	probePanic  string
+	// searchPanic, probePanic, and initializePanic model the one failure an
+	// adapter cannot report for itself: a bug in its own code. Each is the
+	// value the adapter panics with, so a test can recognise it in what recall
+	// says afterwards. Between them they crash on every per-source goroutine
+	// recall starts — planning, query, and refresh.
+	searchPanic     string
+	probePanic      string
+	initializePanic string
 
 	// prepared opts this fake into adapter.PreparedSearcher without making
 	// every app test stop exercising the ordinary adapter contract.
@@ -73,6 +76,9 @@ type fake struct {
 }
 
 func (f *fake) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
+	if f.initializePanic != "" {
+		panic(f.initializePanic)
+	}
 	f.initialized = true
 	return f.manifest, f.initializeErr
 }
@@ -1668,5 +1674,72 @@ func TestASourceThatPanicsWhileBeingConsideredIsExcludedRatherThanFatal(t *testi
 	}
 	if _, ok := rep.Diagnostics["panic"]; !ok {
 		t.Errorf("diagnostics = %v, want the panic named so the bug is findable", rep.Diagnostics)
+	}
+}
+
+// The third and last per-source fan-out. Refresh initializes, refreshes, and
+// probes every eligible source concurrently, so an adapter that crashes in any
+// of those crashes on a refresh goroutine — where an unrecovered panic kills a
+// process that owes its host a single answer on stdout. It is reachable from
+// the Sidecar plugin's refresh-source action, where the user would be told
+// recall crashed rather than that one source did.
+//
+// A crashed source is failed for its own reason. The rest of the profile still
+// refreshes, and the report still names every member.
+func TestARefreshPanicFailsThatSourceInsteadOfKillingTheProcess(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		crash func(*fake)
+	}{
+		{"refreshing", func(f *fake) { f.probePanic = "adapter bug: nil map read while refreshing" }},
+		{"initializing", func(f *fake) { f.initializePanic = "adapter bug: nil store while handshaking" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, func(f map[string]*fake) {
+				f["fakedocs"].manifest = checkpointManifest()
+				tc.crash(f["fakedocs"])
+				f["faketasks"].manifest = checkpointManifest()
+				f["faketasks"].refreshHealth = recall.Health{
+					Status: recall.HealthHealthy, Coverage: recall.IndexComplete,
+					IndexGeneration: "generation-2",
+				}
+			})
+
+			resp, err := h.app.Refresh(context.Background(), recall.RefreshRequest{Profile: "work"})
+			if err != nil {
+				t.Fatalf("a crashed source must not fail the request: %v", err)
+			}
+			if len(resp.Sources) != 3 {
+				t.Fatalf("sources = %d, want every profile member reported", len(resp.Sources))
+			}
+
+			docs := resp.Sources[0]
+			if docs.SourceID != "docs" || docs.SourceUID != "01UIDDOCS" {
+				t.Fatalf("first source = %+v, want docs named in profile order", docs)
+			}
+			if docs.Status != recall.RefreshSourceFailed || docs.Reason != recall.RefreshPanicked {
+				t.Errorf("docs outcome = %+v, want failed for %q; a crash is not an ordinary "+
+					"refresh failure", docs, recall.RefreshPanicked)
+			}
+			if docs.Health != nil || docs.DiagnosticDetail != "" {
+				t.Errorf("docs carries health %+v and detail %q; an adapter that crashed "+
+					"reported neither, and the crash detail belongs on stderr",
+					docs.Health, docs.DiagnosticDetail)
+			}
+
+			tasks := resp.Sources[1]
+			if tasks.Status != recall.RefreshSourceRefreshed ||
+				tasks.Health == nil || tasks.Health.IndexGeneration != "generation-2" {
+				t.Errorf("tasks outcome = %+v, want the surviving source refreshed", tasks)
+			}
+			if h.fakes["faketasks"].refreshCalls != 1 {
+				t.Errorf("tasks Refresh calls = %d, want 1: one source crashing must not "+
+					"cancel the others", h.fakes["faketasks"].refreshCalls)
+			}
+			if resp.Outcome != recall.RefreshDegraded {
+				t.Errorf("outcome = %q, want degraded: one source produced no usable state",
+					resp.Outcome)
+			}
+		})
 	}
 }

@@ -15,7 +15,13 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/api"
+	"github.com/marcus/recall/internal/app"
 	"github.com/marcus/recall/internal/cli"
+	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/internal/ranking"
+	"github.com/marcus/recall/internal/source"
+	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/protocol"
 	"github.com/marcus/recall/pkg/recall"
 )
 
@@ -960,14 +966,153 @@ func TestSidecarPluginScriptedCoreChild(t *testing.T) {
 	if script == "" {
 		t.Skip("child half of the scripted-core plugin tests")
 	}
+	core := api.Core(&scriptedCore{script: script})
+	if script == fanOutPanicScript {
+		core = fanOutPanicCore(t)
+	}
 	os.Exit(cli.Run(context.Background(), cli.Env{
 		Args:   []string{"sidecar-plugin"},
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
-		Core:   &scriptedCore{script: script},
+		Core:   core,
 	}))
 }
+
+// The scripted panics above all happen on the request's own goroutine, where
+// one recover at the top of the command can catch them. The panic this guards
+// against does not: refresh fans out over sources, and an adapter's Initialize,
+// Refresh, and Health all run on a goroutine no caller can recover on. Deleting
+// the per-source recovery would leave every test above passing and this one
+// killing the process.
+//
+// It is run over a real recall core rather than a scripted one for the same
+// reason the rest of this file runs a real process: the goroutine has to be the
+// one recall actually starts.
+const (
+	fanOutPanicScript = "refresh-fan-out-panic"
+	fanOutPanicDetail = "scripted crash: nil index inside a source adapter's refresh"
+)
+
+// fanOutPanicCore is a real recall core over one configured source whose
+// adapter crashes when it is refreshed.
+func fanOutPanicCore(t *testing.T) api.Core {
+	t.Helper()
+
+	home := filepath.Join(os.Getenv("HOME"), "core")
+	configHome := filepath.Join(home, "config")
+	if err := os.MkdirAll(filepath.Join(configHome, "recall"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(configHome, "recall", "config.toml"),
+		[]byte(fanOutPanicConfig), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(config.Options{
+		Paths: config.Paths{
+			ConfigHome: configHome,
+			StateHome:  filepath.Join(home, "state"),
+			CacheHome:  filepath.Join(home, "cache"),
+		},
+		Builtins: []config.Builtin{{
+			Name:           "crashing",
+			FreshnessModes: []recall.FreshnessMode{recall.FreshnessIndexed},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	registry := source.NewRegistry(cfg, source.Options{
+		Builtins: map[string]source.Factory{
+			"crashing": func() adapter.Adapter { return crashingAdapter{} },
+		},
+		StateDir: filepath.Join(home, "state"),
+	})
+	ranker, err := ranking.New(app.RankingConfig(cfg, 0))
+	if err != nil {
+		t.Fatalf("ranking: %v", err)
+	}
+	return &appCore{app: app.New(app.Options{Config: cfg, Registry: registry, Ranker: ranker})}
+}
+
+const fanOutPanicConfig = `
+[defaults]
+profile = "default"
+timeout_ms = 2000
+
+[[sources]]
+source_uid = "01UIDCRASH"
+source_id = "docs"
+adapter = "crashing"
+location = "/tmp/crashing"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[profiles.default]
+sources = ["docs"]
+max_sensitivity = "internal"
+`
+
+// crashingAdapter handshakes successfully — a source that failed to initialize
+// would never reach the refresh the test is about — and then crashes on the
+// fan-out goroutine.
+type crashingAdapter struct{}
+
+func (crashingAdapter) Initialize(context.Context, adapter.Config) (recall.Manifest, error) {
+	return recall.Manifest{
+		ProtocolVersion: 1,
+		AdapterID:       "crashing/1",
+		RecordTypes:     []recall.RecordType{recall.RecordDocument},
+		FreshnessModes:  []recall.FreshnessMode{recall.FreshnessIndexed},
+		AsOfSupport:     recall.AsOfFilter,
+		RelevanceBasis:  recall.RelevanceLexicalSpan,
+		Capabilities: []recall.Capability{
+			recall.CapSearch, recall.CapExpand, recall.CapCheckpoint,
+		},
+	}, nil
+}
+
+func (crashingAdapter) Search(context.Context, recall.SearchRequest) (recall.SearchResponse, error) {
+	panic(fanOutPanicDetail)
+}
+
+func (crashingAdapter) Expand(context.Context, recall.ExpandRequest) (recall.ExpandResponse, error) {
+	panic(fanOutPanicDetail)
+}
+
+func (crashingAdapter) Health(context.Context) (recall.Health, error) {
+	panic(fanOutPanicDetail)
+}
+
+func (crashingAdapter) Refresh(context.Context, protocol.RefreshParams) (recall.Health, error) {
+	panic(fanOutPanicDetail)
+}
+
+func (crashingAdapter) Close() error { return nil }
+
+// appCore is the same delegation the CLI's own surface core performs, without
+// the runtime that builds the compiled-in adapters. Only Refresh is exercised.
+type appCore struct{ app *app.App }
+
+func (c *appCore) Query(ctx context.Context, req recall.QueryRequest) (recall.QueryResponse, error) {
+	return c.app.Query(ctx, req)
+}
+
+func (c *appCore) Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
+	return c.app.Expand(ctx, req, "")
+}
+
+func (c *appCore) Refresh(ctx context.Context, req recall.RefreshRequest) (recall.RefreshResponse, error) {
+	return c.app.Refresh(ctx, req)
+}
+
+func (c *appCore) Sources(context.Context) (api.Listing, error) { return api.Listing{}, nil }
+func (c *appCore) Doctor(context.Context) (api.Listing, error)  { return api.Listing{}, nil }
+func (c *appCore) Profile() string                              { return "" }
 
 // callScripted runs one plugin invocation in a child process over a scripted
 // core and returns the decoded response and what reached standard error. The
@@ -1056,6 +1201,53 @@ func TestSidecarPluginAnswersAPanicWithOneTypedInternalError(t *testing.T) {
 				t.Errorf("the panic text or its stack reached stdout: %s", body)
 			}
 		})
+	}
+}
+
+// The same rule for the crash that recover at the request boundary cannot
+// catch. refresh-source fans out over sources, and an adapter that panics does
+// it on a goroutine of recall's own. Unrecovered there the process dies with a
+// goroutine dump and no response, and the host tells the user recall crashed.
+//
+// The answer is one JSON object, exit 0, and a typed failure that names the
+// source — with the crash detail and its stack on standard error, where the
+// host drains them and where they cannot corrupt the one value stdout carries.
+func TestSidecarPluginAnswersAPanicOnTheRefreshFanOutWithOneTypedFailure(t *testing.T) {
+	resp, stderr := callScripted(t, fanOutPanicScript,
+		sidecarRequest("act", `{"action":"refresh-source","collection":"sources","id":"docs"}`))
+
+	if fail, ok := resp["error"].(map[string]any); ok {
+		// A typed error is a legitimate shape for a failed act, but this one
+		// must not be the internal error the request-boundary recover produces:
+		// that would mean the panic escaped the fan-out.
+		if fail["code"] == "internal" {
+			t.Fatalf("the crash reached the request boundary, so the fan-out did not "+
+				"recover it: %v", fail)
+		}
+		return
+	}
+	outcome, ok := resp["outcome"].(map[string]any)
+	if !ok {
+		t.Fatalf("a crashed source answered with %v, want a typed outcome", resp)
+	}
+	if outcome["status"] != "failed" {
+		t.Errorf("status = %v, want failed: the source produced no usable state",
+			outcome["status"])
+	}
+	msg, _ := outcome["message"].(string)
+	if !strings.Contains(msg, "docs") || !strings.Contains(msg, string(recall.RefreshPanicked)) {
+		t.Errorf("message = %q, want the source named and its reason stated", msg)
+	}
+
+	if !strings.Contains(stderr, fanOutPanicDetail) {
+		t.Errorf("stderr does not name the panic, so the bug is not findable:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "goroutine ") {
+		t.Errorf("stderr carries no stack:\n%s", stderr)
+	}
+	body := mustJSON(resp)
+	if strings.Contains(body, fanOutPanicDetail) || strings.Contains(body, "goroutine ") {
+		t.Errorf("the panic text or its stack reached stdout: %s", body)
 	}
 }
 
