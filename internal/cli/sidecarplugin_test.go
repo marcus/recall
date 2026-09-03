@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // The Sidecar plugin surface is tested through a real process, not through
@@ -75,6 +76,15 @@ func newPluginMachine(t *testing.T) *pluginMachine { return newPluginMachineWith
 // decides whether the corpus keeps the fixture's deliberately unreadable file,
 // which is how the degraded path is reached without faking a source.
 func newPluginMachineWith(t *testing.T, keepUnreadable bool) *pluginMachine {
+	return newPluginMachineWithFiles(t, keepUnreadable, nil)
+}
+
+// newPluginMachineWithFiles is the same installation with extra documents
+// written into the corpus, keyed by path relative to it. It exists so a test
+// can put text no fixture would carry — terminal control sequences, a
+// paragraph longer than a cell — in front of a real adapter rather than
+// asserting against a fake.
+func newPluginMachineWithFiles(t *testing.T, keepUnreadable bool, extra map[string]string) *pluginMachine {
 	t.Helper()
 	binary := recallBinary(t)
 
@@ -84,6 +94,15 @@ func newPluginMachineWith(t *testing.T, keepUnreadable bool) *pluginMachine {
 		t.Fatal(err)
 	}
 	corpus := copyFixtureCorpus(t, filepath.Join(root, "corpus"), keepUnreadable)
+	for name, body := range extra {
+		target := filepath.Join(corpus, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	body := strings.ReplaceAll(sidecarPluginTOML, "CORPUS", corpus)
 	if err := os.WriteFile(filepath.Join(configHome, "recall", "config.toml"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -107,8 +126,17 @@ func newPluginMachineWith(t *testing.T, keepUnreadable bool) *pluginMachine {
 }
 
 // call runs one invocation the way the host does and enforces the transport
-// rules on the way back: exit 0, and exactly one JSON value on stdout.
+// rules on the way back: exit 0, exactly one JSON value on stdout, and no
+// response on the wrong stream.
 func (m *pluginMachine) call(t *testing.T, request string) map[string]any {
+	t.Helper()
+	resp, _ := m.callRaw(t, request)
+	return resp
+}
+
+// callRaw is call plus the raw stdout bytes, for the assertions that are about
+// the bytes rather than the decoded object.
+func (m *pluginMachine) callRaw(t *testing.T, request string) (map[string]any, []byte) {
 	t.Helper()
 
 	cmd := exec.Command(m.binary, "sidecar-plugin") //nolint:gosec // the binary is the one this test built
@@ -136,7 +164,12 @@ func (m *pluginMachine) call(t *testing.T, request string) map[string]any {
 	if got := resp["protocol"]; got != sidecarProtocol {
 		t.Fatalf("response protocol = %v, want %q", got, sidecarProtocol)
 	}
-	return resp
+	// The host drains stderr and discards it, so a response written there is
+	// a response nobody reads. Diagnostics are welcome; an answer is not.
+	if strings.Contains(stderr.String(), sidecarProtocol) {
+		t.Fatalf("a protocol response reached stderr, which the host discards:\n%s", stderr.String())
+	}
+	return resp, stdout.Bytes()
 }
 
 const sidecarProtocol = "sidecar.plugin/v1-draft"
@@ -437,6 +470,186 @@ func TestSidecarPluginReportsDegradedCoverage(t *testing.T) {
 	}
 }
 
+// TestSidecarPluginNeverSendsTerminalControlSequences. Every string in a
+// response is provider text: it came from a document recall did not write, and
+// the host paints it into a table and a document body. A cell carrying an
+// escape sequence would be a plugin choosing a colour, moving a cursor, or
+// setting a window title through content the user only meant to read. The host
+// sanitizes too, and this asserts recall does not lean on that: a plugin whose
+// only defence is the host's is a plugin that is unsafe on the next host.
+func TestSidecarPluginNeverSendsTerminalControlSequences(t *testing.T) {
+	hostile := "# Kestrel \x1b[31mtelemetry\x1b[0m notes\x07\n\n" +
+		"The \x1b]0;window-title-hijack\x07 kestrel pipeline\x01\x02 emits \x7f rows " +
+		"about kestrel corroboration.\n"
+	m := newPluginMachineWithFiles(t, false, map[string]string{"kestrel.md": hostile})
+
+	listed := m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"kestrel","view":"","sort":{"key":"","dir":""},"cursor":"","limit":20}`))
+	page := mustPage(t, listed)
+	items, _ := page["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("no rows for a term the corpus holds: %s", mustJSON(listed))
+	}
+	first, _ := items[0].(map[string]any)
+	id, _ := first["id"].(string)
+	assertNoControlRunes(t, "list response", listed)
+	// A cell is one line by construction, so newline and tab are control
+	// characters there too: the host draws a row, not a paragraph.
+	for name, raw := range first["cells"].(map[string]any) {
+		if value, _ := raw.(string); strings.ContainsAny(value, "\n\r\t") {
+			t.Errorf("cell %q carries a line break: %q", name, value)
+		}
+	}
+
+	opened := m.call(t, sidecarRequest("get", fmt.Sprintf(`{"collection":"results","id":%q}`, id)))
+	assertNoControlRunes(t, "get response", opened)
+	doc, ok := opened["resource"].(map[string]any)
+	if !ok {
+		t.Fatalf("get returned no resource: %s", mustJSON(opened))
+	}
+	if body := sectionBody(doc, "Evidence"); !strings.Contains(body, "kestrel") {
+		t.Errorf("the Evidence section lost the record's text along with the escapes: %s", mustJSON(opened))
+	}
+}
+
+// TestSidecarPluginBoundsEveryCell. The protocol's cell bound is 512
+// characters and the host truncates past it, but a plugin that streamed a
+// whole document into one cell would be sending bytes nobody can ever paint
+// and paying for them on every keystroke of a live search.
+func TestSidecarPluginBoundsEveryCell(t *testing.T) {
+	long := strings.Repeat("kestrel migration telemetry corroboration ", 400)
+	m := newPluginMachineWithFiles(t, false, map[string]string{
+		"long.md": "# " + strings.Repeat("Kestrel ", 200) + "\n\n" + long + "\n",
+	})
+
+	listed := m.call(t, sidecarRequest("list",
+		`{"collection":"results","query":"kestrel","view":"","sort":{"key":"","dir":""},"cursor":"","limit":20}`))
+	page := mustPage(t, listed)
+	items, _ := page["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("no rows for a term the corpus holds: %s", mustJSON(listed))
+	}
+	for _, entry := range items {
+		row, _ := entry.(map[string]any)
+		cells, _ := row["cells"].(map[string]any)
+		for name, raw := range cells {
+			value, _ := raw.(string)
+			if n := len([]rune(value)); n > 512 {
+				t.Errorf("cell %q is %d runes; the protocol's bound is 512", name, n)
+			}
+		}
+	}
+	for _, entry := range notices(page) {
+		if n := len([]rune(entry)); n > 200 {
+			t.Errorf("notice is %d runes; the protocol's bound is 200", n)
+		}
+	}
+	if n := len(notices(page)); n > 4 {
+		t.Errorf("page carries %d notices; the protocol's bound is 4", n)
+	}
+}
+
+// TestSidecarPluginLocatorsAreStableAcrossInstalls. A row id is what `get` and
+// every item action receive, and Sidecar persists the open document's identity
+// in pane state across a relaunch. An id carrying a temp path, a run counter,
+// or an index offset would reopen as not_found the next morning, so two
+// independent installations over the same documents have to name them
+// identically.
+func TestSidecarPluginLocatorsAreStableAcrossInstalls(t *testing.T) {
+	request := sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","view":"","sort":{"key":"","dir":""},"cursor":"","limit":20}`)
+
+	first := newPluginMachine(t)
+	second := newPluginMachine(t)
+	firstIDs := itemIDs(t, mustPage(t, first.call(t, request)))
+	secondIDs := itemIDs(t, mustPage(t, second.call(t, request)))
+
+	if len(firstIDs) == 0 {
+		t.Fatal("no rows for a term the fixture corpus holds")
+	}
+	if !jsonEqual(firstIDs, secondIDs) {
+		t.Fatalf("two installations over the same corpus named the same records differently\n%v\n%v",
+			firstIDs, secondIDs)
+	}
+	// Same machine, second run: the id must not move because the query ran again.
+	if again := itemIDs(t, mustPage(t, first.call(t, request))); !jsonEqual(firstIDs, again) {
+		t.Errorf("ids moved between two runs of one installation\n%v\n%v", firstIDs, again)
+	}
+	for _, id := range firstIDs {
+		if strings.Contains(id, os.TempDir()) || filepath.IsAbs(id) {
+			t.Errorf("id %q carries this installation's own path, so it cannot survive a reinstall", id)
+		}
+	}
+	// And the id an installation never produced still opens on it, which is
+	// what makes a persisted document identity worth persisting.
+	opened := second.call(t, sidecarRequest("get",
+		fmt.Sprintf(`{"collection":"results","id":%q}`, firstIDs[0])))
+	doc, ok := opened["resource"].(map[string]any)
+	if !ok || doc["identity"] != firstIDs[0] {
+		t.Errorf("an id from another installation did not open: %s", mustJSON(opened))
+	}
+}
+
+// TestSidecarPluginRefusesARemoteBoundSurface. On a remote-bound surface the
+// project context carries another machine's paths and that machine's host ID.
+// This recall indexes the machine it runs on, so answering would report one
+// checkout's evidence as another's — the protocol's rule is to say so by name.
+func TestSidecarPluginRefusesARemoteBoundSurface(t *testing.T) {
+	m := newPluginMachine(t)
+	remote := `"context":{"project":{"root":"/checkout","workDir":"/checkout","name":"sidecar","branch":"main","hostId":"workshop"}}`
+
+	for name, params := range map[string]string{
+		"list": `"method":"list","params":{"collection":"results","query":"corroboration","limit":20}`,
+		"get":  `"method":"get","params":{"collection":"results","id":"docs:projects/recall/architecture.md#L11-L14"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp := m.call(t, fmt.Sprintf(`{"protocol":%q,"instance":"recall","deadlineMs":20000,%s,%s}`,
+				sidecarProtocol, remote, params))
+			failure, ok := resp["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("a remote-bound surface was answered from this machine's index: %s", mustJSON(resp))
+			}
+			if failure["code"] != "unavailable" {
+				t.Errorf("code = %v, want unavailable", failure["code"])
+			}
+			if message, _ := failure["message"].(string); !strings.Contains(message, "workshop") {
+				t.Errorf("message %q does not name the host it cannot answer for", message)
+			}
+		})
+	}
+}
+
+// TestSidecarPluginSpendsTheDeadlineRatherThanIgnoringIt. deadlineMs is
+// advisory but accurate: the host kills the process group when it expires and
+// reports a crashed plugin. A budget too small to ask anything has to come
+// back inside it, and what comes back must not claim the coverage it did not
+// have — an empty page under `answered` is "the corpus holds nothing", which a
+// query that never ran cannot say.
+func TestSidecarPluginSpendsTheDeadlineRatherThanIgnoringIt(t *testing.T) {
+	m := newPluginMachine(t)
+
+	start := time.Now()
+	resp := m.call(t, `{"protocol":"`+sidecarProtocol+`","method":"list","instance":"recall","deadlineMs":1,`+
+		`"params":{"collection":"results","query":"corroboration","limit":20}}`)
+	elapsed := time.Since(start)
+
+	// The protocol's own list timeout is 10 s; anything at or past it would
+	// have been killed rather than answered.
+	if elapsed > 10*time.Second {
+		t.Fatalf("a 1 ms budget took %s, which the host would have killed", elapsed)
+	}
+	if failure, ok := resp["error"].(map[string]any); ok {
+		if failure["code"] != "unavailable" {
+			t.Errorf("code = %v, want unavailable for a budget that bought nothing", failure["code"])
+		}
+		return
+	}
+	page := mustPage(t, resp)
+	if items, _ := page["items"].([]any); len(items) == 0 && page["outcome"] == "answered" {
+		t.Errorf("an empty page from a 1 ms budget claims the corpus holds nothing: %s", mustJSON(resp))
+	}
+}
+
 // --- helpers ---------------------------------------------------------------
 
 // copyFixtureCorpus copies the documents adapter's fixture corpus into the
@@ -613,3 +826,58 @@ base_prior = 1.0
 sources = ["docs"]
 max_sensitivity = "internal"
 `
+
+// assertNoControlRunes walks every string in a decoded response and fails on a
+// control character. C0, DEL, and C1 are all of them except newline and tab,
+// which are the only two with a meaning in a document body: an escape
+// introduces a sequence, and the rest are invisible to a reader and
+// meaningful to a terminal.
+func assertNoControlRunes(t *testing.T, what string, value any) {
+	t.Helper()
+	switch v := value.(type) {
+	case string:
+		for _, r := range v {
+			if r == '\n' || r == '\t' {
+				continue
+			}
+			if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+				t.Errorf("%s carries control rune %#U in %q", what, r, v)
+				return
+			}
+		}
+	case map[string]any:
+		for key, entry := range v {
+			assertNoControlRunes(t, what+"."+key, entry)
+		}
+	case []any:
+		for i, entry := range v {
+			assertNoControlRunes(t, fmt.Sprintf("%s[%d]", what, i), entry)
+		}
+	}
+}
+
+func itemIDs(t *testing.T, page map[string]any) []string {
+	t.Helper()
+	items, _ := page["items"].([]any)
+	out := make([]string, 0, len(items))
+	for _, entry := range items {
+		row, _ := entry.(map[string]any)
+		id, _ := row["id"].(string)
+		if id == "" {
+			t.Errorf("a row carries no id, so it could be neither opened nor acted on: %v", row)
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+func notices(page map[string]any) []string {
+	raw, _ := page["notices"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		notice, _ := entry.(map[string]any)
+		text, _ := notice["text"].(string)
+		out = append(out, text)
+	}
+	return out
+}
