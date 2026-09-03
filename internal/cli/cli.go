@@ -153,6 +153,16 @@ func (e Env) stdin() io.Reader {
 	return e.Stdin
 }
 
+// stderr is where diagnostics go. It tolerates a zero Env because its caller is
+// a panic handler, and a handler that panicked on a nil writer would lose the
+// crash it exists to report.
+func (e Env) stderr() io.Writer {
+	if e.Stderr == nil {
+		return os.Stderr
+	}
+	return e.Stderr
+}
+
 func (e Env) lookupEnv(name string) (string, bool) {
 	if e.LookupEnv == nil {
 		return os.LookupEnv(name)

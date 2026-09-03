@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,6 +71,11 @@ const (
 // denial of service.
 const sidecarStdinLimit = 1 << 20
 
+// sidecarMaxDeadlineMS is the largest deadline this plugin will honour: ten
+// minutes, an order of magnitude above the host's own 60 s clamp and far below
+// where the arithmetic in sidecarBudget stops being arithmetic.
+const sidecarMaxDeadlineMS = 10 * 60 * 1000
+
 const sidecarPluginHelp = `usage: recall sidecar-plugin [flags]
 
 Answer one Sidecar plugin request. A single JSON object is read from standard
@@ -102,10 +109,45 @@ func runSidecarPlugin(ctx context.Context, env Env, args []string) int {
 		return usageErr(env, sidecarPluginHelp, errors.New("sidecar-plugin takes no arguments"))
 	}
 
-	resp := answerSidecar(ctx, env, *profile)
+	resp := answerSidecarRecovered(ctx, env, *profile)
 	// report is the whole of the exit-code policy here: 0 for an answer of
 	// either kind, non-zero only when the answer could not be delivered.
 	return report(env, emitJSON(env.Stdout, resp))
+}
+
+// answerSidecarRecovered is answerSidecar with the last transport rule this
+// file cannot state in its own code: exactly one JSON object reaches stdout,
+// and the exit code stays 0, even when recall panics.
+//
+// A panic here is a bug, but the host cannot read it as one. An unrecovered
+// panic exits 2 with a goroutine dump and no response at all, and the protocol
+// reads that as a transport failure attributed to the plugin — Sidecar tells the
+// user recall crashed, which is both less useful and less true than "recall hit
+// an internal error while answering this". So the panic becomes the typed
+// internal error the protocol has for exactly this, and the crash detail goes
+// to standard error, where a diagnostic belongs and where it cannot corrupt the
+// single value stdout is allowed to carry.
+//
+// It wraps answerSidecar rather than living inside it because nothing has been
+// written to stdout at this point: the response is a value, and emitting it is
+// the caller's next statement. A recover further in would have to reason about
+// what had already been printed.
+func answerSidecarRecovered(ctx context.Context, env Env, profile string) (resp sidecarResponse) {
+	defer func() {
+		value := recover()
+		if value == nil {
+			return
+		}
+		_, _ = fmt.Fprintf(env.stderr(), "recall sidecar-plugin panicked: %v\n%s\n", value, debug.Stack())
+		// The message says what happened and where to look, and carries
+		// neither the panic value nor the stack: the host renders it to a user
+		// who did not ask recall to crash, and a stack rendered into a pane is
+		// noise in the one place it cannot be read.
+		resp = sidecarFail(sidecarCodeInternal,
+			"recall hit an internal error while answering this request; "+
+				"the panic and its stack were written to standard error", false)
+	}()
+	return answerSidecar(ctx, env, profile)
 }
 
 // sidecarRequest is the envelope the host writes. Params is held raw because it
@@ -192,6 +234,16 @@ type sidecarColumn struct {
 	Secondary bool   `json:"secondary,omitempty"`
 }
 
+// sidecarView is a named preset filter. Recall declares none — its collections
+// are a query's answer and a machine's sources, neither of which has a preset
+// to offer — but the type is the protocol's {id, title} rather than a bare
+// string, because describe is validated all-or-nothing: the first view added
+// under the wrong shape would have the whole declaration refused.
+type sidecarView struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
 type sidecarSortKey struct {
 	ID      string `json:"id"`
 	Label   string `json:"label"`
@@ -207,7 +259,7 @@ type sidecarCollection struct {
 	Title   string           `json:"title"`
 	Search  string           `json:"search"`
 	Columns []sidecarColumn  `json:"columns"`
-	Views   []string         `json:"views"`
+	Views   []sidecarView    `json:"views"`
 	Sort    []sidecarSortKey `json:"sort"`
 	Detail  bool             `json:"detail"`
 	Refresh sidecarRefresh   `json:"refresh"`
@@ -374,6 +426,15 @@ func sidecarBudget(ctx context.Context, deadlineMS int64) (context.Context, cont
 	if deadlineMS <= 0 {
 		return ctx, func() {}, 0
 	}
+	if deadlineMS > sidecarMaxDeadlineMS {
+		// A deadline is milliseconds, and time.Duration is nanoseconds, so the
+		// multiply below overflows int64 somewhere past 9.2e12 ms and comes
+		// back as an instant already in the past: a larger budget would answer
+		// less, which is the one thing a budget must never do. The ceiling is
+		// far above anything a host sends — Sidecar clamps its own timeout to
+		// 60 s — so this only ever meets a caller typing by hand.
+		deadlineMS = sidecarMaxDeadlineMS
+	}
 	reserve := deadlineMS / 10
 	switch {
 	case reserve < 100:
@@ -431,7 +492,7 @@ func sidecarDescribe(env Env) sidecarResponse {
 					{ID: "source", Label: "Source", Width: 14},
 					{ID: "excerpt", Label: "Excerpt", Secondary: true},
 				},
-				Views: []string{},
+				Views: []sidecarView{},
 				Sort: []sidecarSortKey{
 					{ID: "rank", Label: "Relevance", Default: "asc"},
 					{ID: "source", Label: "Source"},
@@ -449,7 +510,7 @@ func sidecarDescribe(env Env) sidecarResponse {
 					{ID: "health", Label: "Health", Kind: "status"},
 					{ID: "fresh", Label: "Fresh", Kind: "timestamp"},
 				},
-				Views:  []string{},
+				Views:  []sidecarView{},
 				Sort:   []sidecarSortKey{},
 				Detail: true,
 				// Health and freshness change without recall being asked, and
@@ -503,20 +564,35 @@ func sidecarConfigProblem(env Env) (sidecarResponse, bool) {
 // machine: a remote-bound surface sends that host's paths, and answering them
 // from this machine's index would report one checkout's evidence as another's.
 func sidecarProjectScope(reqCtx *sidecarContext) (*recall.Scope, *sidecarResponse) {
+	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
+		return nil, refusal
+	}
 	if reqCtx == nil || reqCtx.Project == nil {
 		return nil, nil
 	}
-	project := reqCtx.Project
-	if project.HostID != "" {
-		resp := sidecarFail(sidecarCodeUnavailable, fmt.Sprintf(
-			"this recall runs on the machine Sidecar is running on and cannot answer for host %q",
-			project.HostID), false)
-		return nil, &resp
-	}
-	if strings.TrimSpace(project.Name) == "" {
+	if strings.TrimSpace(reqCtx.Project.Name) == "" {
 		return nil, nil
 	}
-	return &recall.Scope{Project: project.Name}, nil
+	return &recall.Scope{Project: reqCtx.Project.Name}, nil
+}
+
+// sidecarRemoteRefusal refuses a surface bound to another machine, whatever the
+// request is about.
+//
+// It is applied to the sources collection too, and to the action over it, even
+// though a source list is a fact about a machine rather than about a project.
+// That is the point: from a pane bound to another host, this machine's sources
+// are the wrong machine's sources, and `refresh-source` would reindex a corpus
+// nobody is looking at. Answering half the surface by name and the other half
+// with the local truth is the failure mode the refusal exists to prevent.
+func sidecarRemoteRefusal(reqCtx *sidecarContext) *sidecarResponse {
+	if reqCtx == nil || reqCtx.Project == nil || reqCtx.Project.HostID == "" {
+		return nil
+	}
+	resp := sidecarFail(sidecarCodeUnavailable, fmt.Sprintf(
+		"this recall runs on the machine Sidecar is running on and cannot answer for host %q",
+		reqCtx.Project.HostID), false)
+	return &resp
 }
 
 func sidecarList(ctx context.Context, env Env, profile string, budgetMS int, req sidecarRequest) sidecarResponse {
@@ -528,7 +604,7 @@ func sidecarList(ctx context.Context, env Env, profile string, budgetMS int, req
 	case sidecarResults:
 		return sidecarListResults(ctx, env, profile, budgetMS, params, req.Context)
 	case sidecarSources:
-		return sidecarListSources(ctx, env, profile)
+		return sidecarListSources(ctx, env, profile, req.Context)
 	default:
 		return sidecarUnknownCollection(params.Collection)
 	}
@@ -540,7 +616,11 @@ func sidecarUnknownCollection(id string) sidecarResponse {
 }
 
 func sidecarParams(raw json.RawMessage, into any) (sidecarResponse, bool) {
-	if len(raw) == 0 {
+	// JSON null is four bytes rather than none, and a request that spells its
+	// params null is a request with no params. Decoding it would leave the
+	// zero value and answer `no collection named ""`, which sends a plugin
+	// author looking for a collection instead of at their envelope.
+	if len(raw) == 0 || string(bytes.TrimSpace(raw)) == "null" {
 		return sidecarFail(sidecarCodeInvalidRequest, "the request carries no params", false), false
 	}
 	if err := json.Unmarshal(raw, into); err != nil {
@@ -635,7 +715,7 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		// that always came back empty is the honest report of that.
 		NextCursor: "",
 		Total:      len(items) + resp.DroppedResults,
-		Notices:    sidecarNotices(resp),
+		Notices:    sidecarNotices(resp, scope),
 	}
 	return sidecarResponse{Protocol: sidecarProtocol, Page: page}
 }
@@ -768,7 +848,7 @@ func sidecarFailedMessage(resp recall.QueryResponse) string {
 // sidecarNotices carries the coverage facts recall refuses to leave silent:
 // which sources did not answer, what was withheld, and what a budget removed.
 // Each is one line, and the list is bounded to what the host will draw.
-func sidecarNotices(resp recall.QueryResponse) []sidecarNotice {
+func sidecarNotices(resp recall.QueryResponse, scope *recall.Scope) []sidecarNotice {
 	var out []sidecarNotice
 	add := func(tone, text string) {
 		if len(out) >= 4 || text == "" {
@@ -777,6 +857,17 @@ func sidecarNotices(resp recall.QueryResponse) []sidecarNotice {
 		out = append(out, sidecarNotice{Tone: tone, Text: sidecarLine(text, 200)})
 	}
 
+	// First, because it is the notice that explains an empty page. Project
+	// context arrives from the surface rather than from the user, and recall
+	// applies it as a hard filter, so a corpus that answers this query
+	// everywhere else can come back abstained here — and the host draws that
+	// as "no matches, sources fine", over a filter the user cannot see, widen,
+	// or turn off. Naming it is the difference between "recall knows nothing
+	// about this" and "recall was only asked about one project".
+	if scope != nil && scope.Project != "" {
+		add("info", fmt.Sprintf("scoped to project %q, the project this Sidecar surface is showing",
+			scope.Project))
+	}
 	if degraded := degradedSources(resp); len(degraded) > 0 {
 		add("warning", fmt.Sprintf("%d of %d sources did not answer (%s)",
 			len(degraded), sidecarSourceCount(resp), strings.Join(degraded, ", ")))
@@ -828,7 +919,10 @@ func sidecarSuppressed(in []recall.Suppression) string {
 }
 
 // sidecarListSources maps the configured source instances onto rows.
-func sidecarListSources(ctx context.Context, env Env, profile string) sidecarResponse {
+func sidecarListSources(ctx context.Context, env Env, profile string, reqCtx *sidecarContext) sidecarResponse {
+	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
+		return *refusal
+	}
 	listing, resp, ok := sidecarSourceListing(ctx, env, profile)
 	if !ok {
 		return resp
@@ -843,9 +937,14 @@ func sidecarListSources(ctx context.Context, env Env, profile string) sidecarRes
 		}
 	}
 
+	// The outcome stays answered even when a listed source is unhealthy. It
+	// describes THIS list, and every configured source is in it; what is
+	// degraded is the sources' own health, which the status pill and the notice
+	// below already carry. Reporting an incomplete row set when the rows are
+	// complete is the same dishonesty in the other direction as reporting
+	// degraded coverage as an answer.
 	page := &sidecarPage{Outcome: "answered", Items: items, Total: len(items)}
 	if len(unhealthy) > 0 {
-		page.Outcome = "degraded"
 		page.Notices = []sidecarNotice{{
 			Tone: "warning",
 			Text: sidecarLine(fmt.Sprintf("%d of %d sources cannot answer (%s)",
@@ -947,7 +1046,7 @@ func sidecarGet(ctx context.Context, env Env, profile string, req sidecarRequest
 	case sidecarResults:
 		return sidecarGetResult(ctx, env, profile, params.ID, req.Context)
 	case sidecarSources:
-		return sidecarGetSource(ctx, env, profile, params.ID)
+		return sidecarGetSource(ctx, env, profile, params.ID, req.Context)
 	default:
 		return sidecarUnknownCollection(params.Collection)
 	}
@@ -1032,7 +1131,10 @@ func sidecarProvenanceFields(resp recall.ExpandResponse) []sidecarField {
 }
 
 // sidecarGetSource is one source instance as an operator sees it.
-func sidecarGetSource(ctx context.Context, env Env, profile, id string) sidecarResponse {
+func sidecarGetSource(ctx context.Context, env Env, profile, id string, reqCtx *sidecarContext) sidecarResponse {
+	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
+		return *refusal
+	}
 	listing, resp, ok := sidecarSourceListing(ctx, env, profile)
 	if !ok {
 		return resp
@@ -1148,6 +1250,9 @@ func sidecarAct(ctx context.Context, env Env, profile string, req sidecarRequest
 	var params sidecarActParams
 	if resp, ok := sidecarParams(req.Params, &params); !ok {
 		return resp
+	}
+	if refusal := sidecarRemoteRefusal(req.Context); refusal != nil {
+		return *refusal
 	}
 	if params.Action != "refresh-source" {
 		return sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(

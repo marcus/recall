@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marcus/recall/internal/api"
+	"github.com/marcus/recall/internal/cli"
+	"github.com/marcus/recall/pkg/recall"
 )
 
 // The Sidecar plugin surface is tested through a real process, not through
@@ -598,9 +603,16 @@ func TestSidecarPluginRefusesARemoteBoundSurface(t *testing.T) {
 	m := newPluginMachine(t)
 	remote := `"context":{"project":{"root":"/checkout","workDir":"/checkout","name":"sidecar","branch":"main","hostId":"workshop"}}`
 
+	// Every method that carries context, not only the two over the results
+	// collection. A source list is a fact about a machine, so from a pane bound
+	// to another one it is the wrong machine's list — and refresh-source would
+	// reindex a corpus nobody in that pane is looking at.
 	for name, params := range map[string]string{
-		"list": `"method":"list","params":{"collection":"results","query":"corroboration","limit":20}`,
-		"get":  `"method":"get","params":{"collection":"results","id":"docs:projects/recall/architecture.md#L11-L14"}`,
+		"list":         `"method":"list","params":{"collection":"results","query":"corroboration","limit":20}`,
+		"get":          `"method":"get","params":{"collection":"results","id":"docs:projects/recall/architecture.md#L11-L14"}`,
+		"list sources": `"method":"list","params":{"collection":"sources"}`,
+		"get source":   `"method":"get","params":{"collection":"sources","id":"docs"}`,
+		"act":          `"method":"act","params":{"action":"refresh-source","collection":"sources","id":"docs"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			resp := m.call(t, fmt.Sprintf(`{"protocol":%q,"instance":"recall","deadlineMs":20000,%s,%s}`,
@@ -880,4 +892,261 @@ func notices(page map[string]any) []string {
 		out = append(out, text)
 	}
 	return out
+}
+
+// Two of this surface's rules cannot be reached from a real corpus. Nothing
+// recall ships panics on purpose, and every source failing is not the same as
+// no source being configured: a documents source with a missing location is
+// SKIPPED, which is degraded coverage, not a failed query. Both are reached by
+// running the real command in a child process over a scripted core — a real
+// process, real streams, and a real exit code, which is the whole reason this
+// file tests through a process at all.
+const pluginScriptEnv = "RECALL_TEST_PLUGIN_SCRIPT"
+
+// scriptedCore is a recall core with one behaviour written into it.
+type scriptedCore struct{ script string }
+
+func (c *scriptedCore) Query(context.Context, recall.QueryRequest) (recall.QueryResponse, error) {
+	switch c.script {
+	case "panic":
+		panic(scriptedPanic)
+	case "failed":
+		// Every source that was asked failed: an empty list here would claim
+		// the corpus holds nothing, and nothing looked.
+		return recall.QueryResponse{
+			Outcome:  recall.OutcomeFailed,
+			Coverage: recall.CoverageDegraded,
+			SourceOutcomes: []recall.SourceReport{{
+				SourceID: "docs", Outcome: recall.SearchFailed, Reason: "unreachable",
+			}},
+		}, nil
+	}
+	return recall.QueryResponse{}, nil
+}
+
+func (c *scriptedCore) Expand(context.Context, recall.ExpandRequest) (recall.ExpandResponse, error) {
+	if c.script == "panic" {
+		panic(scriptedPanic)
+	}
+	return recall.ExpandResponse{}, nil
+}
+
+func (c *scriptedCore) Refresh(context.Context, recall.RefreshRequest) (recall.RefreshResponse, error) {
+	if c.script == "panic" {
+		panic(scriptedPanic)
+	}
+	return recall.RefreshResponse{}, nil
+}
+
+func (c *scriptedCore) Sources(context.Context) (api.Listing, error) {
+	if c.script == "panic" {
+		panic(scriptedPanic)
+	}
+	return api.Listing{}, nil
+}
+
+func (c *scriptedCore) Doctor(context.Context) (api.Listing, error) {
+	return api.Listing{}, nil
+}
+
+func (c *scriptedCore) Profile() string { return "" }
+
+const scriptedPanic = "scripted crash: nil map read inside a source adapter"
+
+// TestSidecarPluginScriptedCoreChild is the child half of the scripted tests.
+// It is skipped in an ordinary run.
+func TestSidecarPluginScriptedCoreChild(t *testing.T) {
+	script := os.Getenv(pluginScriptEnv)
+	if script == "" {
+		t.Skip("child half of the scripted-core plugin tests")
+	}
+	os.Exit(cli.Run(context.Background(), cli.Env{
+		Args:   []string{"sidecar-plugin"},
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Core:   &scriptedCore{script: script},
+	}))
+}
+
+// callScripted runs one plugin invocation in a child process over a scripted
+// core and returns the decoded response and what reached standard error. The
+// transport rules are enforced here exactly as they are for a real corpus.
+func callScripted(t *testing.T, script, request string) (map[string]any, string) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSidecarPluginScriptedCoreChild$") //nolint:gosec // the test binary itself
+	home := t.TempDir()
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + home,
+		"XDG_CONFIG_HOME=" + filepath.Join(home, "config"),
+		"XDG_STATE_HOME=" + filepath.Join(home, "state"),
+		"XDG_CACHE_HOME=" + filepath.Join(home, "cache"),
+		"SIDECAR_PLUGIN=1",
+		pluginScriptEnv + "=" + script,
+	}
+	cmd.Stdin = strings.NewReader(request)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("exit was not 0; the host reads that as a transport failure and tells the user "+
+			"recall crashed: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	var resp map[string]any
+	if err := dec.Decode(&resp); err != nil {
+		t.Fatalf("stdout was not one JSON object: %v\nstdout: %s\nstderr: %s",
+			err, stdout.String(), stderr.String())
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		t.Fatalf("stdout carried more than one value\nstdout: %s", stdout.String())
+	}
+	if got := resp["protocol"]; got != sidecarProtocol {
+		t.Fatalf("response protocol = %v, want %q", got, sidecarProtocol)
+	}
+	return resp, stderr.String()
+}
+
+// A panic is the one failure the plugin cannot report by returning: unrecovered
+// it exits non-zero with a goroutine dump and NO response, which the protocol
+// reads as a transport failure attributed to the plugin. The user is then told
+// recall crashed instead of being shown the internal error it actually is.
+func TestSidecarPluginAnswersAPanicWithOneTypedInternalError(t *testing.T) {
+	for _, tc := range []struct{ name, request string }{
+		{"list", sidecarRequest("list", `{"collection":"results","query":"anything"}`)},
+		{"get", sidecarRequest("get", `{"collection":"results","id":"docs:notes.md"}`)},
+		{"listSources", sidecarRequest("list", `{"collection":"sources"}`)},
+		{"act", sidecarRequest("act", `{"action":"refresh-source","collection":"sources","id":"docs"}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, stderr := callScripted(t, "panic", tc.request)
+
+			fail, ok := resp["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("a panic answered with %v, want a typed error", resp)
+			}
+			if fail["code"] != "internal" {
+				t.Errorf("code = %v, want internal", fail["code"])
+			}
+			if fail["retryable"] == true {
+				t.Error("retryable = true; a crash repeats until the bug is fixed")
+			}
+			if msg, _ := fail["message"].(string); msg == "" {
+				t.Error("a typed failure with no message tells the user nothing")
+			}
+			for _, page := range []string{"page", "resource", "outcome", "plugin"} {
+				if _, present := resp[page]; present {
+					t.Errorf("the response carries %q as well as an error; exactly one is allowed", page)
+				}
+			}
+
+			// The crash detail belongs on stderr, which the host drains, and
+			// nowhere near the one value stdout may carry.
+			if !strings.Contains(stderr, scriptedPanic) {
+				t.Errorf("stderr does not name the panic, so the bug is not findable:\n%s", stderr)
+			}
+			if !strings.Contains(stderr, "goroutine ") {
+				t.Errorf("stderr carries no stack:\n%s", stderr)
+			}
+			body := mustJSON(resp)
+			if strings.Contains(body, scriptedPanic) || strings.Contains(body, "goroutine ") {
+				t.Errorf("the panic text or its stack reached stdout: %s", body)
+			}
+		})
+	}
+}
+
+// The one thing the draft protocol's page outcomes cannot express: every source
+// recall asked failed, so an empty list would claim the corpus holds nothing
+// when in fact nothing looked. It is a retryable typed failure, and it is
+// asserted here because no real configuration reaches it — an unreachable
+// documents source is SKIPPED, which is degraded, not failed.
+func TestSidecarPluginReportsAnEverySourceFailedQueryAsRetryableUnavailable(t *testing.T) {
+	resp, _ := callScripted(t, "failed",
+		sidecarRequest("list", `{"collection":"results","query":"anything"}`))
+
+	fail, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("every source failing answered with %v, want a typed error rather than an empty page", resp)
+	}
+	if fail["code"] != "unavailable" {
+		t.Errorf("code = %v, want unavailable", fail["code"])
+	}
+	if fail["retryable"] != true {
+		t.Error("retryable = false; the sources failed, not the request")
+	}
+	if msg, _ := fail["message"].(string); !strings.Contains(msg, "docs") {
+		t.Errorf("message = %q, want the source that failed named", msg)
+	}
+	if _, present := resp["page"]; present {
+		t.Error("an every-source-failed query answered with a page, which claims coverage it did not have")
+	}
+}
+
+// A project surface's context becomes a hard scope on every query recall runs
+// from it, and the user has no control that shows, widens, or clears it. An
+// empty page under that filter is drawn by the host as "no matches, sources
+// fine" — a claim about the corpus that the corpus does not support. Naming the
+// scope in a notice is what lets an empty page explain itself.
+func TestSidecarPluginNamesTheProjectScopeItApplied(t *testing.T) {
+	m := newPluginMachine(t)
+	resp := m.call(t, fmt.Sprintf(
+		`{"protocol":%q,"instance":"recall","deadlineMs":20000,`+
+			`"context":{"project":{"root":"/checkout","workDir":"/checkout",`+
+			`"name":"nosuchproject","branch":"main"}},`+
+			`"method":"list","params":{"collection":"results","query":"corroboration","limit":20}}`,
+		sidecarProtocol))
+
+	page := mustPage(t, resp)
+	notices, _ := page["notices"].([]any)
+	named := false
+	for _, raw := range notices {
+		notice, _ := raw.(map[string]any)
+		if text, _ := notice["text"].(string); strings.Contains(text, "nosuchproject") {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("the applied project scope is invisible, so an empty page reads as an empty corpus: %s",
+			mustJSON(resp))
+	}
+}
+
+// deadlineMs is milliseconds and time.Duration is nanoseconds, so a large
+// enough deadline used to multiply past int64 and come back as an instant
+// already gone — a bigger budget answering less than a small one.
+func TestSidecarPluginClampsAnAbsurdDeadlineInsteadOfOverflowing(t *testing.T) {
+	m := newPluginMachine(t)
+	resp := m.call(t, fmt.Sprintf(
+		`{"protocol":%q,"method":"list","instance":"recall","deadlineMs":9223372036854775807,`+
+			`"params":{"collection":"results","query":"corroboration","limit":20}}`, sidecarProtocol))
+
+	page := mustPage(t, resp)
+	if items, _ := page["items"].([]any); len(items) == 0 {
+		t.Fatalf("the largest possible budget answered nothing: %s", mustJSON(resp))
+	}
+}
+
+// JSON null is four bytes rather than none, so a params-less request that
+// spells it out used to decode into a zero value and be refused for naming a
+// collection it never named.
+func TestSidecarPluginReadsNullParamsAsNoParams(t *testing.T) {
+	m := newPluginMachine(t)
+	resp := m.call(t, fmt.Sprintf(
+		`{"protocol":%q,"method":"list","instance":"recall","deadlineMs":20000,"params":null}`,
+		sidecarProtocol))
+
+	failure, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("a request with no params was answered: %s", mustJSON(resp))
+	}
+	if failure["code"] != "invalid_request" {
+		t.Errorf("code = %v, want invalid_request", failure["code"])
+	}
+	if message, _ := failure["message"].(string); !strings.Contains(message, "no params") {
+		t.Errorf("message = %q, want it to name the envelope rather than a collection", message)
+	}
 }
