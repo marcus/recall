@@ -172,12 +172,21 @@ func (m *pluginMachine) call(t *testing.T, request string) map[string]any {
 	return resp
 }
 
+// callPinned is call for an installation whose configured argv carries flags —
+// `recall sidecar-plugin --profile NAME` is how an installation pins the plugin
+// to one profile, and every method has to agree about which one that is.
+func (m *pluginMachine) callPinned(t *testing.T, profile, request string) map[string]any {
+	t.Helper()
+	resp, _ := m.callRaw(t, request, "--profile", profile)
+	return resp
+}
+
 // callRaw is call plus the raw stdout bytes, for the assertions that are about
 // the bytes rather than the decoded object.
-func (m *pluginMachine) callRaw(t *testing.T, request string) (map[string]any, []byte) {
+func (m *pluginMachine) callRaw(t *testing.T, request string, args ...string) (map[string]any, []byte) {
 	t.Helper()
 
-	cmd := exec.Command(m.binary, "sidecar-plugin") //nolint:gosec // the binary is the one this test built
+	cmd := exec.Command(m.binary, append([]string{"sidecar-plugin"}, args...)...) //nolint:gosec // the binary is the one this test built
 	cmd.Env = m.env
 	cmd.Stdin = strings.NewReader(request)
 	var stdout, stderr bytes.Buffer
@@ -1625,6 +1634,40 @@ func TestSidecarPluginDeclaresItsFiltersFromConfiguration(t *testing.T) {
 	}
 	if n := len(filters); n > 8 {
 		t.Errorf("results declares %d filters; the protocol's bound is 8", n)
+	}
+}
+
+// An installation that pins the plugin with `--profile NAME` declares THAT
+// profile as the scope filter's default, not the configured one.
+//
+// The host does not send a filter whose value equals its default, so the
+// default is not decoration: it is the name of the profile a page with no
+// filters was gathered under. Declaring the configured default while the flag
+// pinned another puts a scope in the pill no page ever ran under, and makes the
+// pinned profile the one choice in the radio group that cannot be selected —
+// choosing it sends nothing, and nothing means the flag's profile again.
+func TestSidecarPluginDeclaresThePinnedProfileAsTheScopeDefault(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarFilterTOML, false, nil)
+
+	described := m.callPinned(t, "standups", sidecarRequest("describe", ""))
+	profile := filtersOf(t, collectionsByID(t, described)["results"])[0]
+	if profile["default"] != "standups" {
+		t.Errorf("profile default = %v under --profile standups, want the profile the plugin is pinned to",
+			profile["default"])
+	}
+
+	// And the declaration is true: an unfiltered list runs under exactly it.
+	page := mustPage(t, m.callPinned(t, "standups", sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20}`)))
+	if got := rowSources(page); !jsonEqual(got, []string{"transcripts"}) {
+		t.Errorf("a pinned installation answered from %v, want the pinned profile's own source: %s",
+			got, mustJSON(page))
+	}
+
+	// With no pin, the configured default is what both halves mean.
+	unpinned := m.call(t, sidecarRequest("describe", ""))
+	if got := filtersOf(t, collectionsByID(t, unpinned)["results"])[0]["default"]; got != "work" {
+		t.Errorf("profile default = %v with no pin, want the configured default profile", got)
 	}
 }
 

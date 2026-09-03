@@ -503,7 +503,7 @@ func answerSidecar(ctx context.Context, env Env, profile string) sidecarResponse
 
 	switch req.Method {
 	case sidecarMethodDescribe:
-		return sidecarDescribe(env)
+		return sidecarDescribe(env, profile)
 	case sidecarMethodList:
 		return sidecarList(ctx, env, profile, budgetMS, req)
 	case sidecarMethodGet:
@@ -574,7 +574,7 @@ func sidecarBudget(ctx context.Context, deadlineMS int64) (context.Context, cont
 // path printed in a terminal, and a matcher that fires on all of those is worse
 // than none: the protocol's rule is that a matcher is a stable, unambiguous
 // shape, and this one is neither.
-func sidecarDescribe(env Env) sidecarResponse {
+func sidecarDescribe(env Env, flagProfile string) sidecarResponse {
 	cfg, resp, ok := sidecarConfigProblem(env)
 	if !ok {
 		return resp
@@ -604,7 +604,7 @@ func sidecarDescribe(env Env) sidecarResponse {
 					{ID: "excerpt", Label: "Excerpt", Secondary: true},
 				},
 				Views:   []sidecarView{},
-				Filters: sidecarResultFilters(env, cfg),
+				Filters: sidecarResultFilters(env, cfg, flagProfile),
 				Sort: []sidecarSortKey{
 					{ID: "rank", Label: "Relevance", Default: "asc"},
 					{ID: "source", Label: "Source"},
@@ -681,15 +681,26 @@ func sidecarConfigProblem(env Env) (*config.Config, sidecarResponse, bool) {
 // Every choice list is configuration read back — the profiles this machine
 // declares, the sources it has, the record types those sources say they hold —
 // so a chooser can never offer something the query would then refuse.
-func sidecarResultFilters(env Env, cfg *config.Config) []sidecarFilter {
+// flagProfile is `recall sidecar-plugin --profile NAME`, the way an
+// installation pins the plugin to one profile. It is what the scope filter's
+// default has to name, because the host does not send a filter whose value
+// equals its default: declaring the configured default while the flag pinned
+// another would put a scope in the pill no page was gathered under, and make
+// the pinned profile the one choice in the radio group that cannot be selected.
+func sidecarResultFilters(env Env, cfg *config.Config, flagProfile string) []sidecarFilter {
 	profiles, profilesLost := sidecarChoices(cfg.ProfileNames(), false)
 	sources, sourcesLost := sidecarChoices(sidecarSourceIDs(cfg), true)
 	types, typesLost := sidecarChoices(sidecarRecordTypes(cfg), true)
 
-	// The default has to name a choice that is there. If the configured
-	// default was one of the few dropped above, declaring it would leave the
-	// host showing a scope nobody can return to.
-	fallback := cfg.Defaults.Profile
+	// The default names the profile a call with no profile filter actually runs
+	// under: the pinned one when there is one, the configured default
+	// otherwise. And it has to name a choice that is there — if that profile
+	// was one of the few dropped above, declaring it would leave the host
+	// showing a scope nobody can return to.
+	fallback := strings.TrimSpace(flagProfile)
+	if fallback == "" {
+		fallback = cfg.Defaults.Profile
+	}
 	if !sidecarHasChoice(profiles, fallback) {
 		fallback = ""
 	}

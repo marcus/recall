@@ -17,8 +17,9 @@ migration guidance.
   a confirmed `refresh-source` action. See the README's "Sidecar plugin" section
   for the config entry and the checks.
 - The `results` collection declares four filters the host draws and sends back:
-  `profile` (the collection's scope, defaulting to the configured default
-  profile), `source`, `type`, and `since`. Each is built from configuration, so
+  `profile` (the collection's scope, defaulting to the profile an unfiltered
+  call runs under: the one `--profile` pinned, or the configured default),
+  `source`, `type`, and `since`. Each is built from configuration, so
   a chooser can never offer something the query would refuse; a source outside
   the chosen profile is refused with recall's own message naming a profile that
   has it.

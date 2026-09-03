@@ -179,7 +179,7 @@ What it exposes:
 | `results` document | `recall expand --detail full` on the row's locator, with an Evidence section and a Provenance section carrying the path and revision the text came from. |
 | `sources` document | The source's configuration, health, freshness evidence, and declared capabilities. |
 | `refresh-source` action | `recall refresh --source <id>` on a source row. It mutates, so Sidecar confirms it first. |
-| `results` filters | Four choosers, read from configuration and applied per call: **profile** (every configured profile, defaulting to the configured default — this is the collection's scope, and its name is what Sidecar's pill shows), **source** (`Any` plus every configured source), **type** (`Any` plus the record types configuration declares), and **since** (an RFC 3339 date). A source outside the chosen profile is refused by name, with a profile that has it. |
+| `results` filters | Four choosers, read from configuration and applied per call: **profile** (every configured profile, defaulting to the one an unfiltered call runs under — the profile `--profile` pinned, or the configured default; this is the collection's scope, and its name is what Sidecar's pill shows), **source** (`Any` plus every configured source), **type** (`Any` plus the record types configuration declares), and **since** (an RFC 3339 date). A source outside the chosen profile is refused by name, with a profile that has it. |
 | `project` context | Read to refuse a surface bound to another machine, and for nothing else. Recall answers globally: it applies no project narrowing of its own, because a project name is not something a documents source can evaluate. |
 
 Recall declares no terminal matchers. Its locator is display-form
