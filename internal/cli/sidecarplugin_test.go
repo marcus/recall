@@ -257,6 +257,15 @@ func TestSidecarPluginDescribeDeclaresTheCanonicalShape(t *testing.T) {
 	m := newPluginMachine(t)
 	resp := m.call(t, sidecarRequest("describe", ""))
 
+	canonical := loadCanonicalDescribe(t)
+	// The vendored copy has to be a copy of the frozen protocol's own response,
+	// and the identifier is the part of it that goes stale silently: a fixture
+	// left on the pre-freeze identifier still parses, still compares equal on
+	// every field asserted below, and is no longer the protocol.
+	if got, want := resp["protocol"], canonical["protocol"]; got != want {
+		t.Errorf("describe answered on %v; the vendored canonical response is %v", got, want)
+	}
+
 	plugin, ok := resp["plugin"].(map[string]any)
 	if !ok {
 		t.Fatalf("describe carried no plugin block: %v", resp)
@@ -281,7 +290,7 @@ func TestSidecarPluginDescribeDeclaresTheCanonicalShape(t *testing.T) {
 	}
 
 	got := collectionsByID(t, resp)
-	want := collectionsByID(t, loadCanonicalDescribe(t))
+	want := collectionsByID(t, canonical)
 	for _, id := range []string{"results", "sources"} {
 		gotColumns := normalizeColumns(got[id]["columns"])
 		wantColumns := normalizeColumns(want[id]["columns"])
@@ -446,6 +455,19 @@ func TestSidecarPluginAnswersBothProtocolIdentifiers(t *testing.T) {
 			page := mustPage(t, listed)
 			if items, _ := page["items"].([]any); len(items) == 0 {
 				t.Errorf("list on %s answered no rows: %s", identifier, mustJSON(listed))
+			}
+
+			// A refusal is a response, and the host validates its identifier
+			// the same way it validates an answer's. A typed failure stamped
+			// with the other identifier would reach a pre-freeze Sidecar as a
+			// crashed executable instead of as the sentence it carries.
+			refused, _ := m.callRawOn(t, identifier, fmt.Sprintf(
+				`{"protocol":%q,"method":"get","instance":"recall","deadlineMs":20000,`+
+					`"params":{"collection":"people","id":"x"}}`, identifier))
+			failure, ok := refused["error"].(map[string]any)
+			if !ok || failure["code"] != "invalid_request" {
+				t.Errorf("an unknown collection on %s was not a typed refusal: %s",
+					identifier, mustJSON(refused))
 			}
 		})
 	}
