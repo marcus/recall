@@ -11,11 +11,20 @@ migration guidance.
 ### Added
 
 - `recall sidecar-plugin` answers the Sidecar plugin protocol
-  (`sidecar.plugin/v1-draft`): one JSON request on stdin, one JSON response on
+  (`sidecar.plugin/v1`, frozen): one JSON request on stdin, one JSON response on
   stdout, one process per call. It offers a `results` collection over `recall
   query`, a `sources` collection over `recall sources`, documents for both, and
   a confirmed `refresh-source` action. See the README's "Sidecar plugin" section
   for the config entry and the checks.
+- The plugin speaks the frozen identifier and still answers the pre-freeze
+  `sidecar.plugin/v1-draft`, stamping each response with the identifier its
+  request carried, so a Sidecar built before the freeze keeps working against a
+  newer recall. Any other identifier is refused with a typed `invalid_request`
+  naming what recall speaks.
+- `get` reads `params.filters` in the same shape `list` sends them and resolves
+  the profile from them, so a row found under a raised-sensitivity profile
+  expands under that profile instead of being denied by the ceiling of the
+  profile the plugin is pinned to.
 - The `results` collection declares four filters the host draws and sends back:
   `profile` (the collection's scope, defaulting to the profile an unfiltered
   call runs under: the one `--profile` pinned, or the configured default),

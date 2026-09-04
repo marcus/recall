@@ -143,8 +143,10 @@ Adapter commands may only come from user-level configuration; a repository's
 ## Sidecar plugin
 
 `recall sidecar-plugin` answers the Sidecar plugin protocol
-(`sidecar.plugin/v1-draft`): one JSON request on standard input, one JSON
-response on standard output, one process per call. It is not meant to be typed.
+(`sidecar.plugin/v1`): one JSON request on standard input, one JSON
+response on standard output, one process per call. A request on the pre-freeze
+`sidecar.plugin/v1-draft` is answered too, stamped with the identifier it asked
+on, so a Sidecar older than the freeze keeps working against a newer recall. It is not meant to be typed.
 Sidecar runs it from a `plugins.external` entry in
 `~/.config/sidecar/config.json`:
 
@@ -176,7 +178,7 @@ What it exposes:
 | --- | --- |
 | `results` collection | `recall query` through the configured profile. Search is *required*, because recall does not list, it answers. Columns are rank, title, source, and excerpt; the pill on a row is `exact` or `corroborated N`. Sortable by relevance, source, or updated. |
 | `sources` collection | `recall sources`: one row per configured source with its health and the last instant it is known to have been complete. Polled every 120 s while it is on screen. |
-| `results` document | `recall expand --detail full` on the row's locator, with an Evidence section and a Provenance section carrying the path and revision the text came from. |
+| `results` document | `recall expand --detail full` on the row's locator, with an Evidence section and a Provenance section carrying the path and revision the text came from. The filters the collection was showing travel with `get`, so a row expands under the profile it was found in rather than under the pinned one. |
 | `sources` document | The source's configuration, health, freshness evidence, and declared capabilities. |
 | `refresh-source` action | `recall refresh --source <id>` on a source row. It mutates, so Sidecar confirms it first. |
 | `results` filters | Four choosers, read from configuration and applied per call: **profile** (every configured profile, defaulting to the one an unfiltered call runs under — the profile `--profile` pinned, or the configured default; this is the collection's scope, and its name is what Sidecar's pill shows), **source** (`Any` plus every configured source), **type** (`Any` plus the record types configuration declares), and **since** (an RFC 3339 date). A source outside the chosen profile is refused by name, with a profile that has it. |

@@ -39,7 +39,19 @@ import (
 //     statement. The only non-zero exit is a response that could not be written.
 //   - Standard output carries exactly one JSON value and nothing else.
 //     Diagnostics go to standard error, which the host drains and discards.
-const sidecarProtocol = "sidecar.plugin/v1-draft"
+
+// sidecarProtocol is the frozen identifier: what a response is stamped with
+// unless the request asked for the other one, and what a refusal names.
+const sidecarProtocol = "sidecar.plugin/v1"
+
+// sidecarProtocolDraft is the identifier the protocol carried before it froze.
+// It is accepted, and answered on, for one reason: a Sidecar built before the
+// freeze asks on it, and a plugin that refused would make upgrading recall
+// require upgrading Sidecar first. Which identifier a response carries is
+// decided in exactly one place — see answerSidecarRecovered — and it is always
+// the one the request carried, because answering on the other one is a protocol
+// failure however well meant.
+const sidecarProtocolDraft = "sidecar.plugin/v1-draft"
 
 // Typed error codes, from the resource protocol this one grew out of.
 const (
@@ -113,7 +125,9 @@ const sidecarPluginHelp = `usage: recall sidecar-plugin [flags]
 
 Answer one Sidecar plugin request. A single JSON object is read from standard
 input and a single JSON response object is written to standard output; logs and
-diagnostics go to standard error. The protocol is ` + sidecarProtocol + `.
+diagnostics go to standard error. The protocol is ` + sidecarProtocol + `; a
+request on the pre-freeze ` + sidecarProtocolDraft + ` is answered too, on the
+identifier it was asked on.
 
 This command is not meant to be typed. Sidecar runs it, one process per call,
 from a plugins.external entry:
@@ -148,9 +162,11 @@ func runSidecarPlugin(ctx context.Context, env Env, args []string) int {
 	return report(env, emitJSON(env.Stdout, resp))
 }
 
-// answerSidecarRecovered is answerSidecar with the last transport rule this
-// file cannot state in its own code: exactly one JSON object reaches stdout,
-// and the exit code stays 0, even when recall panics.
+// answerSidecarRecovered reads the request, answers it, and stamps the answer.
+//
+// It carries the last transport rule this file cannot state in its own code:
+// exactly one JSON object reaches stdout, and the exit code stays 0, even when
+// recall panics.
 //
 // A panic here is a bug, but the host cannot read it as one. An unrecovered
 // panic exits 2 with a goroutine dump and no response at all, and the protocol
@@ -166,21 +182,35 @@ func runSidecarPlugin(ctx context.Context, env Env, args []string) int {
 // the caller's next statement. A recover further in would have to reason about
 // what had already been printed.
 func answerSidecarRecovered(ctx context.Context, env Env, profile string) (resp sidecarResponse) {
+	// wire is the identifier this invocation answers on: the frozen one until a
+	// request says otherwise, then whatever that request carried. Nothing below
+	// this function sets Protocol, so this deferred stamp is the only place the
+	// wire identifier is decided, and it reaches every path — the answer, the
+	// typed failures, and the panic.
+	wire := sidecarProtocol
 	defer func() {
-		value := recover()
-		if value == nil {
-			return
+		if value := recover(); value != nil {
+			_, _ = fmt.Fprintf(env.stderr(), "recall sidecar-plugin panicked: %v\n%s\n", value, debug.Stack())
+			// The message says what happened and where to look, and carries
+			// neither the panic value nor the stack: the host renders it to a
+			// user who did not ask recall to crash, and a stack rendered into a
+			// pane is noise in the one place it cannot be read.
+			resp = sidecarFail(sidecarCodeInternal,
+				"recall hit an internal error while answering this request; "+
+					"the panic and its stack were written to standard error", false)
 		}
-		_, _ = fmt.Fprintf(env.stderr(), "recall sidecar-plugin panicked: %v\n%s\n", value, debug.Stack())
-		// The message says what happened and where to look, and carries
-		// neither the panic value nor the stack: the host renders it to a user
-		// who did not ask recall to crash, and a stack rendered into a pane is
-		// noise in the one place it cannot be read.
-		resp = sidecarFail(sidecarCodeInternal,
-			"recall hit an internal error while answering this request; "+
-				"the panic and its stack were written to standard error", false)
+		resp.Protocol = wire
 	}()
-	return answerSidecar(ctx, env, profile)
+
+	req, problem, ok := sidecarReadRequest(env)
+	if !ok {
+		// The identifier stays the frozen one: a request that could not be read,
+		// or that asked for a protocol this build does not speak, is not a
+		// request whose identifier recall may adopt.
+		return problem
+	}
+	wire = req.Protocol
+	return answerSidecar(ctx, env, profile, req)
 }
 
 // sidecarRequest is the envelope the host writes. Params is held raw because it
@@ -246,6 +276,13 @@ type sidecarSortOrder struct {
 type sidecarGetParams struct {
 	Collection string `json:"collection"`
 	ID         string `json:"id"`
+
+	// Filters is what the list that produced this row was showing, in the same
+	// shape list sends and read by the same code. It is here because a row's
+	// scope is part of its address: recall found the row under one profile, and
+	// expanding it under a different one asks about a record the caller never
+	// saw. See sidecarGetResult.
+	Filters map[string]string `json:"filters"`
 }
 
 type sidecarActParams struct {
@@ -258,6 +295,9 @@ type sidecarActParams struct {
 // sidecarResponse is the single object written to stdout. Exactly one of the
 // describe block, resource, page, outcome, or error is populated.
 type sidecarResponse struct {
+	// Protocol is stamped in exactly one place — answerSidecarRecovered — with
+	// the identifier the request carried. Nothing that builds a response sets
+	// it, so no path can answer on an identifier nobody asked for.
 	Protocol string `json:"protocol"`
 
 	Plugin      *sidecarInfo        `json:"plugin,omitempty"`
@@ -453,7 +493,6 @@ type sidecarError struct {
 
 func sidecarFail(code, message string, retryable bool) sidecarResponse {
 	return sidecarResponse{
-		Protocol: sidecarProtocol,
 		Error: &sidecarError{
 			Code:      code,
 			Message:   sidecarLine(message, 400),
@@ -468,32 +507,40 @@ func sidecarUnconfigured(message, hint string) sidecarResponse {
 	return resp
 }
 
-// answerSidecar reads one request and produces one response. It never returns
-// an error: every way this can go wrong is a typed failure the host renders.
-func answerSidecar(ctx context.Context, env Env, profile string) sidecarResponse {
+// sidecarReadRequest reads the one request object off stdin and checks the one
+// thing about it that is not per-method: the protocol identifier.
+//
+// Both identifiers are accepted. Naming what is supported is the whole point of
+// the refusal's message: a host on a newer protocol has to learn which one this
+// build speaks, and a plugin that answered a protocol it does not implement
+// would be worse than one that refused.
+func sidecarReadRequest(env Env) (sidecarRequest, sidecarResponse, bool) {
+	var req sidecarRequest
 	body, err := io.ReadAll(io.LimitReader(env.stdin(), sidecarStdinLimit+1))
 	if err != nil {
-		return sidecarFail(sidecarCodeInvalidRequest, "reading the request: "+err.Error(), false)
+		return req, sidecarFail(sidecarCodeInvalidRequest, "reading the request: "+err.Error(), false), false
 	}
 	if len(body) > sidecarStdinLimit {
-		return sidecarFail(sidecarCodeInvalidRequest,
-			fmt.Sprintf("request is larger than %d bytes", sidecarStdinLimit), false)
+		return req, sidecarFail(sidecarCodeInvalidRequest,
+			fmt.Sprintf("request is larger than %d bytes", sidecarStdinLimit), false), false
 	}
-
-	var req sidecarRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return sidecarFail(sidecarCodeInvalidRequest,
-			"the request is not one JSON object: "+err.Error(), false)
+		return req, sidecarFail(sidecarCodeInvalidRequest,
+			"the request is not one JSON object: "+err.Error(), false), false
 	}
-	if req.Protocol != sidecarProtocol {
-		// Naming what is supported is the whole point of the code: a host on a
-		// newer protocol has to learn which one this build speaks, and a plugin
-		// that answered a protocol it does not implement would be worse than
-		// one that refused.
-		return sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
-			"protocol %q is not supported; recall speaks %s", req.Protocol, sidecarProtocol), false)
+	switch req.Protocol {
+	case sidecarProtocol, sidecarProtocolDraft:
+		return req, sidecarResponse{}, true
+	default:
+		return req, sidecarFail(sidecarCodeInvalidRequest, fmt.Sprintf(
+			"protocol %q is not supported; recall speaks %s, and still answers the pre-freeze %s",
+			req.Protocol, sidecarProtocol, sidecarProtocolDraft), false), false
 	}
+}
 
+// answerSidecar produces one response to one read request. It never returns an
+// error: every way this can go wrong is a typed failure the host renders.
+func answerSidecar(ctx context.Context, env Env, profile string, req sidecarRequest) sidecarResponse {
 	// The deadline is advisory but accurate, so it is spent rather than
 	// ignored: recall is given the budget minus a reserve, and the context is
 	// cut a little later still, so a slow source ends in a typed unavailable
@@ -580,7 +627,6 @@ func sidecarDescribe(env Env, flagProfile string) sidecarResponse {
 		return resp
 	}
 	return sidecarResponse{
-		Protocol: sidecarProtocol,
 		Plugin: &sidecarInfo{
 			Kind:    "recall",
 			Name:    "Recall",
@@ -907,8 +953,7 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		// answered: recall does not list, it answers, and an empty list from a
 		// query nobody made is not a claim about the corpus.
 		return sidecarResponse{
-			Protocol: sidecarProtocol,
-			Page:     &sidecarPage{Outcome: "abstained", Items: []sidecarItem{}},
+			Page: &sidecarPage{Outcome: "abstained", Items: []sidecarItem{}},
 		}
 	}
 
@@ -998,7 +1043,7 @@ func sidecarListResults(ctx context.Context, env Env, profile string, budgetMS i
 		Omitted:    sidecarOmittedCounts(answer),
 		Coverage:   sidecarCoverage(answer),
 	}
-	return sidecarResponse{Protocol: sidecarProtocol, Page: page}
+	return sidecarResponse{Page: page}
 }
 
 // sidecarSelection is one call's resolved narrowing: which profile answers, and
@@ -1487,7 +1532,7 @@ func sidecarListSources(ctx context.Context, env Env, profile string, reqCtx *si
 				len(unhealthy), len(items), strings.Join(unhealthy, ", ")), 200),
 		}}
 	}
-	return sidecarResponse{Protocol: sidecarProtocol, Page: page}
+	return sidecarResponse{Page: page}
 }
 
 func sidecarSourceListing(ctx context.Context, env Env, profile string) (SourceListing, sidecarResponse, bool) {
@@ -1578,25 +1623,42 @@ func sidecarGet(ctx context.Context, env Env, profile string, req sidecarRequest
 	if resp, ok := sidecarParams(req.Params, &params); !ok {
 		return resp
 	}
+	// The same resolution list runs, from the same map: the profile a row was
+	// found under is the profile it expands under. The narrowing filters —
+	// source, type, since — are validated here and then have nothing to narrow,
+	// because a get names one record rather than asking for a set; they are
+	// still refused when their value is not a configured one, because a filter
+	// this plugin declared and silently ignored would be worse on get than it
+	// is on list.
+	selection, resp, ok := sidecarSelectFilters(env, profile, params.Filters)
+	if !ok {
+		return resp
+	}
 	switch params.Collection {
 	case sidecarResults:
-		return sidecarGetResult(ctx, env, profile, params.ID, req.Context)
+		return sidecarGetResult(ctx, env, selection.profile, params.ID, req.Context)
 	case sidecarSources:
-		return sidecarGetSource(ctx, env, profile, params.ID, req.Context)
+		return sidecarGetSource(ctx, env, selection.profile, params.ID, req.Context)
 	default:
 		return sidecarUnknownCollection(params.Collection)
 	}
 }
 
-// sidecarGetResult expands one locator into its evidence.
+// sidecarGetResult expands one locator into its evidence, under the profile the
+// caller resolved from the request's filters.
 //
-// What the document can say is bounded by what expansion knows. Expansion is
-// stateless with respect to the query that produced the locator — deliberately,
-// because it re-checks permissions and must not trust a caller's memory of a
-// result — and `get` carries only the collection and the row id. So the title,
-// the record's date, the corroboration count, and the exact/corroborated pill
-// the row carried are not reachable here, and this document does not invent
-// them.
+// The profile travels because expansion re-checks permissions: it is stateless
+// with respect to the query that produced the locator, deliberately, so a row
+// found under a raised-ceiling profile and expanded under the pinned one is
+// denied for being above a ceiling the caller never chose. Sending the list's
+// filters back on get is what closes that, and it changes nothing about the
+// recheck itself — the profile still has to permit the source, it is simply the
+// profile the row came from.
+//
+// What the document can say is still bounded by what expansion knows. The
+// query's own findings do not travel: the title, the record's date, the
+// corroboration count, and the exact/corroborated pill the row carried are not
+// reachable here, and this document does not invent them.
 func sidecarGetResult(ctx context.Context, env Env, profile, id string, reqCtx *sidecarContext) sidecarResponse {
 	if refusal := sidecarRemoteRefusal(reqCtx); refusal != nil {
 		return *refusal
@@ -1643,7 +1705,7 @@ func sidecarGetResult(ctx context.Context, env Env, profile, id string, reqCtx *
 	if provenance := sidecarProvenanceFields(resp); len(provenance) > 0 {
 		doc.Sections = append(doc.Sections, sidecarSection{Title: "Provenance", Fields: provenance})
 	}
-	return sidecarResponse{Protocol: sidecarProtocol, Resource: doc}
+	return sidecarResponse{Resource: doc}
 }
 
 // sidecarProvenanceFields is where the content came from and what was cut. A
@@ -1679,7 +1741,7 @@ func sidecarGetSource(ctx context.Context, env Env, profile, id string, reqCtx *
 		if s.SourceID != id {
 			continue
 		}
-		return sidecarResponse{Protocol: sidecarProtocol, Resource: sidecarSourceDocument(listing, s)}
+		return sidecarResponse{Resource: sidecarSourceDocument(listing, s)}
 	}
 	return sidecarFail(sidecarCodeNotFound, fmt.Sprintf(
 		"no source named %q in profile %q", id, listing.Profile), false)
@@ -1815,7 +1877,7 @@ func sidecarAct(ctx context.Context, env Env, profile string, req sidecarRequest
 		// A failed action is a typed failure with a message, not a transport
 		// failure: the user asked for something that did not happen, and they
 		// need to be told which.
-		return sidecarResponse{Protocol: sidecarProtocol, Outcome: &sidecarOutcome{
+		return sidecarResponse{Outcome: &sidecarOutcome{
 			Status:  "failed",
 			Message: sidecarLine("recall could not refresh "+id+": "+err.Error(), 200),
 		}}
@@ -1831,7 +1893,7 @@ func sidecarAct(ctx context.Context, env Env, profile string, req sidecarRequest
 		outcome.Status = "failed"
 		outcome.Open = nil
 	}
-	return sidecarResponse{Protocol: sidecarProtocol, Outcome: outcome}
+	return sidecarResponse{Outcome: outcome}
 }
 
 func sidecarRefreshMessage(id string, resp recall.RefreshResponse) string {

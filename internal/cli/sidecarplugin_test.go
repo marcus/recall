@@ -185,6 +185,17 @@ func (m *pluginMachine) callPinned(t *testing.T, profile, request string) map[st
 // the bytes rather than the decoded object.
 func (m *pluginMachine) callRaw(t *testing.T, request string, args ...string) (map[string]any, []byte) {
 	t.Helper()
+	return m.callRawOn(t, sidecarProtocol, request, args...)
+}
+
+// callRawOn is callRaw for a request that asks on a specific protocol
+// identifier and must be answered on that same one. A plugin that answered the
+// frozen identifier to a host still asking the draft would be a protocol
+// failure at that host, so the identifier is asserted rather than accepted.
+func (m *pluginMachine) callRawOn(
+	t *testing.T, wantProtocol, request string, args ...string,
+) (map[string]any, []byte) {
+	t.Helper()
 
 	cmd := exec.Command(m.binary, append([]string{"sidecar-plugin"}, args...)...) //nolint:gosec // the binary is the one this test built
 	cmd.Env = m.env
@@ -208,18 +219,24 @@ func (m *pluginMachine) callRaw(t *testing.T, request string, args ...string) (m
 		t.Fatalf("stdout carried more than one value; the host reads that as a transport failure\nstdout: %s",
 			stdout.String())
 	}
-	if got := resp["protocol"]; got != sidecarProtocol {
-		t.Fatalf("response protocol = %v, want %q", got, sidecarProtocol)
+	if got := resp["protocol"]; got != wantProtocol {
+		t.Fatalf("response protocol = %v, want %q", got, wantProtocol)
 	}
 	// The host drains stderr and discards it, so a response written there is
 	// a response nobody reads. Diagnostics are welcome; an answer is not.
-	if strings.Contains(stderr.String(), sidecarProtocol) {
+	if strings.Contains(stderr.String(), wantProtocol) {
 		t.Fatalf("a protocol response reached stderr, which the host discards:\n%s", stderr.String())
 	}
 	return resp, stdout.Bytes()
 }
 
-const sidecarProtocol = "sidecar.plugin/v1-draft"
+// The frozen identifier, and the pre-freeze one a Sidecar older than the freeze
+// still asks on. Both are spelled literally here rather than imported, because
+// what these tests hold recall to is the wire, not a constant it shares.
+const (
+	sidecarProtocol      = "sidecar.plugin/v1"
+	sidecarProtocolDraft = "sidecar.plugin/v1-draft"
+)
 
 func sidecarRequest(method, params string) string {
 	if params == "" {
@@ -397,6 +414,40 @@ func TestSidecarPluginAbstainsOnAnEmptyQuery(t *testing.T) {
 	}
 	if items, _ := page["items"].([]any); len(items) != 0 {
 		t.Errorf("an empty query produced rows: %s", mustJSON(resp))
+	}
+}
+
+// TestSidecarPluginAnswersBothProtocolIdentifiers.
+//
+// The identifier froze as sidecar.plugin/v1, and a Sidecar built before the
+// freeze asks on sidecar.plugin/v1-draft. Recall answers both and stamps the
+// response with the one it was asked, so upgrading recall never requires
+// upgrading Sidecar first — and a host that validates the identifier strictly,
+// as Sidecar does, still sees its own back.
+func TestSidecarPluginAnswersBothProtocolIdentifiers(t *testing.T) {
+	m := newPluginMachine(t)
+
+	for _, identifier := range []string{sidecarProtocol, sidecarProtocolDraft} {
+		t.Run(identifier, func(t *testing.T) {
+			// callRawOn asserts the echo: the response has to carry this
+			// identifier and no other.
+			described, _ := m.callRawOn(t, identifier, fmt.Sprintf(
+				`{"protocol":%q,"method":"describe","instance":"recall","deadlineMs":20000}`, identifier))
+			plugin, ok := described["plugin"].(map[string]any)
+			if !ok || plugin["kind"] != "recall" {
+				t.Fatalf("describe on %s did not answer: %s", identifier, mustJSON(described))
+			}
+
+			// Not only describe: the identifier is checked once, for every
+			// method, so a real query has to come back on it too.
+			listed, _ := m.callRawOn(t, identifier, fmt.Sprintf(
+				`{"protocol":%q,"method":"list","instance":"recall","deadlineMs":20000,`+
+					`"params":{"collection":"results","query":"corroboration","limit":20}}`, identifier))
+			page := mustPage(t, listed)
+			if items, _ := page["items"].([]any); len(items) == 0 {
+				t.Errorf("list on %s answered no rows: %s", identifier, mustJSON(listed))
+			}
+		})
 	}
 }
 
@@ -926,6 +977,43 @@ max_sensitivity = "internal"
 [profiles.standups]
 sources = ["transcripts"]
 max_sensitivity = "internal"
+`
+
+// sidecarCeilingTOML is an installation whose second source sits above the
+// default profile's sensitivity ceiling. It is the shape the `get` filters
+// exist for: `journal` is searchable and expandable under `personal` and under
+// nothing else, so a row found there and expanded under the pinned profile is
+// denied.
+const sidecarCeilingTOML = `
+[defaults]
+profile = "work"
+timeout_ms = 20000
+
+[[sources]]
+source_uid = "01UIDDOCS"
+source_id = "docs"
+adapter = "documents"
+location = "CORPUS"
+freshness_mode = "indexed"
+sensitivity = "internal"
+base_prior = 1.0
+
+[[sources]]
+source_uid = "01UIDCHAT"
+source_id = "journal"
+adapter = "documents"
+location = "TRANSCRIPTS"
+freshness_mode = "indexed"
+sensitivity = "confidential"
+base_prior = 1.0
+
+[profiles.work]
+sources = ["docs"]
+max_sensitivity = "internal"
+
+[profiles.personal]
+sources = ["docs", "journal"]
+max_sensitivity = "confidential"
 `
 
 // sidecarUnhealthyTOML configures one source that cannot be read. It is how the
@@ -1703,6 +1791,80 @@ func TestSidecarPluginResolvesTheDefaultProfileAndSwitchesOnTheFilter(t *testing
 	if got := rowSources(bySource); !jsonEqual(got, []string{"transcripts"}) {
 		t.Errorf("source=transcripts answered from %v", got)
 	}
+}
+
+// A row expands under the profile it was found in.
+//
+// `get` carries the filters the list that produced the row was showing, and
+// resolves them through the same code list does. Without them the expansion ran
+// under the pinned profile, whose ceiling the row's source is above, and the
+// host showed a denial for a row it had just drawn. The denial is still there
+// and still correct — it is a permission recheck, not a formality — it is
+// simply asked about the profile the caller chose.
+func TestSidecarPluginExpandsUnderTheProfileTheRowWasFoundIn(t *testing.T) {
+	m := newPluginMachineConfigured(t, sidecarCeilingTOML, false, nil)
+	const filters = `"filters":{"profile":"personal"}`
+
+	// The row is only reachable under the raised ceiling, which is what makes
+	// the rest of this test a statement about scope rather than about luck.
+	page := mustPage(t, m.callPinned(t, "work", sidecarRequest("list",
+		`{"collection":"results","query":"corroboration","limit":20,`+filters+`}`)))
+	id := rowIDForSource(t, page, "journal")
+
+	answered := m.callPinned(t, "work", sidecarRequest("get",
+		fmt.Sprintf(`{"collection":"results","id":%q,%s}`, id, filters)))
+	doc, ok := answered["resource"].(map[string]any)
+	if !ok {
+		t.Fatalf("a row found under profile=personal did not expand under it: %s", mustJSON(answered))
+	}
+	if doc["identity"] != id {
+		t.Errorf("identity = %v, want the row id %q back", doc["identity"], id)
+	}
+	if body := sectionBody(doc, "Evidence"); !strings.Contains(body, "orroboration") {
+		t.Errorf("the Evidence section does not carry the record's text: %s", mustJSON(doc))
+	}
+
+	// And the same locator without the filters is the denial the pinned
+	// profile owes: recall never widens a ceiling on its own.
+	denied := m.callPinned(t, "work", sidecarRequest("get",
+		fmt.Sprintf(`{"collection":"results","id":%q}`, id)))
+	failure, ok := denied["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("the pinned profile expanded a source above its ceiling: %s", mustJSON(denied))
+	}
+	message, _ := failure["message"].(string)
+	for _, want := range []string{"journal", "work", "internal"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("message %q does not name %q", message, want)
+		}
+	}
+
+	// A filter value that is not configured is refused on get exactly as it is
+	// on list: a filter declared and then ignored answers a question nobody
+	// asked.
+	unknown := m.call(t, sidecarRequest("get",
+		fmt.Sprintf(`{"collection":"results","id":%q,"filters":{"profile":"nope"}}`, id)))
+	if _, ok := unknown["error"].(map[string]any); !ok {
+		t.Errorf("get accepted a profile this machine does not declare: %s", mustJSON(unknown))
+	}
+}
+
+// rowIDForSource is the id of the first row a given source contributed.
+func rowIDForSource(t *testing.T, page map[string]any, source string) string {
+	t.Helper()
+	items, _ := page["items"].([]any)
+	for _, entry := range items {
+		row, _ := entry.(map[string]any)
+		cells, _ := row["cells"].(map[string]any)
+		if cells["source"] != source {
+			continue
+		}
+		if id, _ := row["id"].(string); id != "" {
+			return id
+		}
+	}
+	t.Fatalf("no row from source %q: %s", source, mustJSON(page))
+	return ""
 }
 
 // A source outside the chosen profile is recall's own refusal, verbatim: it
