@@ -10,3 +10,6 @@ coverage.out
 .sidecar-base
 .td-root
 __pycache__/
+
+# graphify knowledge graph cache (rebuilt by clara-home bin/graphify-refresh)
+graphify-out/
