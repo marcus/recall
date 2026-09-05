@@ -87,7 +87,7 @@ fi
 
 echo "release plan: $release_version"
 $needs_stamp && echo "  - stamp CHANGELOG.md [Unreleased] -> [${release_version#v}] - $(date +%Y-%m-%d)"
-[[ -n $dirty || $needs_stamp ]] && echo "  - commit 'release: prepare $release_version'"
+[[ -n $dirty || $needs_stamp == true ]] && echo "  - commit 'release: prepare $release_version'"
 echo "  - push origin main"
 echo "  - publish via make release-publish (preflight, tag, workflow, tap)"
 
