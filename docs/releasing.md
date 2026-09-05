@@ -29,32 +29,70 @@ these prerequisites immediately before it creates a tag.
 
 ## Cut a release
 
-Prepare and push the release commit on `main`, including the version's
-`CHANGELOG.md` entry, and satisfy the repository's required CI/fork checks.
-From a clean checkout at the live `origin/main` commit:
+Write the release's bullets under `## [Unreleased]` in `CHANGELOG.md` and
+commit them with the work they describe. Then, from a clean checkout of `main`:
 
 ```sh
-make release RELEASE_VERSION=vX.Y.Z
+BUMP=minor make release
 ```
 
-The target:
+That is the whole command. The version is stated once, and `make release`
+derives it in this order of precedence:
 
-1. runs the full local release preflight;
-2. verifies operator tools, GitHub access, and tap push permission;
-3. creates and pushes the annotated tag;
-4. waits for the exact `release.yml` run whose tag and commit match;
-5. requires that workflow and the corresponding GitHub release to succeed;
-6. downloads the exact public tag source archive and calculates its SHA-256;
-7. renders the formula using the renderer and template inside that tagged
+- `RELEASE_VERSION=vX.Y.Z` — an explicit override, the older flow, still
+  supported.
+- The top `CHANGELOG.md` heading, when it is already stamped
+  `## [X.Y.Z] - YYYY-MM-DD`.
+- `BUMP=major|minor|patch` against the newest `v*` tag, when the top heading is
+  still `## [Unreleased]`.
+
+`make release-dry-run` prints the derived version and the exact plan — the
+changelog stamp, the prep commit, the push, the publish — and stops before any
+mutation. It still runs the read-only Homebrew authorization check, so a dry run
+that passes is a release this operator can actually finish.
+
+`scripts/release.sh` then:
+
+1. refuses an empty top changelog section, a version whose tag already exists,
+   and a working tree carrying anything but the changelog stamp;
+2. stamps `## [Unreleased]` to `## [X.Y.Z] - <today>`;
+3. commits `release: prepare vX.Y.Z` and pushes `main`; and
+4. hands off to `make release-publish`, unchanged.
+
+`make release-publish` runs the full local preflight and then
+`scripts/publish-release.sh`, which:
+
+1. verifies operator tools, GitHub access, and tap push permission;
+2. creates and pushes the annotated tag;
+3. waits for the exact `release.yml` run whose tag and commit match;
+4. requires that workflow and the corresponding GitHub release to succeed;
+5. downloads the exact public tag source archive and calculates its SHA-256;
+6. renders the formula using the renderer and template inside that tagged
    archive, so later `main` changes cannot alter a recovery publication;
-8. runs Ruby syntax, `brew style`, and strict online `brew audit` checks;
-9. commits and pushes only `Formula/recall.rb` in a temporary tap clone;
-10. rebases and retries a racing tap push without force-pushing; and
-11. fetches `origin/main` again and verifies its formula version, checksum, and
+7. runs Ruby syntax, `brew style`, and strict online `brew audit` checks;
+8. commits and pushes only `Formula/recall.rb` in a temporary tap clone;
+9. rebases and retries a racing tap push without force-pushing; and
+10. fetches `origin/main` again and verifies its formula version, checksum, and
     complete rendered content.
 
 The command is intentionally blocking. It is not complete until the final
 remote formula verification succeeds.
+
+Before it creates a tag, `scripts/check-release-state.sh pre-tag` also fails
+closed on three things beyond the tag and branch state: a `replace` directive in
+`go.mod`, which breaks `go install` from the module proxy; a sibling
+`github.com/marcus/…` module pinned to anything but its newest published tag;
+and a `ci.yml` run for the exact release commit that is missing, unfinished, or
+not green. The CI gate dispatches a run when the commit has none yet and waits
+for it. `RELEASE_CI_WAIT=0` fails fast instead of waiting, and
+`RELEASE_CI_TIMEOUT` (default 1800 seconds) bounds the wait.
+
+If the changelog commit is already on `main` — a resumed or hand-prepared
+release — call the publish half directly:
+
+```sh
+RELEASE_VERSION=vX.Y.Z make release-publish
+```
 
 ## Recovery after the tag exists
 

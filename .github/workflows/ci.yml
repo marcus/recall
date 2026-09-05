@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # scripts/check-release-state.sh dispatches this when a release head has no
+  # registered run yet, and waits for that exact run before allowing a tag.
+  workflow_dispatch:
 
 permissions:
   contents: read

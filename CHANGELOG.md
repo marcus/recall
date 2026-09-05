@@ -43,6 +43,31 @@ migration guidance.
   something a documents source can evaluate, so applying it as a scope reported
   an unsearched corpus as an empty one.
 
+### Changed
+
+- A release is now changelog + one command. `BUMP=major|minor|patch make
+  release` derives the next version from the latest tag, stamps `##
+  [Unreleased]` to `## [X.Y.Z] - <today>`, commits `release: prepare vX.Y.Z`,
+  pushes `main`, and hands off to the existing preflight and publisher — the
+  version is stated exactly once, or zero times when `BUMP` implies it.
+  Previously the operator hand-edited the changelog heading to a specific
+  version and then repeated that same version on the command line via
+  `RELEASE_VERSION`, and nothing caught the two disagreeing. `scripts/release.sh`
+  refuses an empty `[Unreleased]` section, a tree dirty beyond `CHANGELOG.md`, a
+  tag that already exists, and a `RELEASE_VERSION` that contradicts an
+  already-stamped heading. `make release-dry-run` prints the derived plan and
+  exits before any mutation. `RELEASE_VERSION=vX.Y.Z make release-publish` is the
+  explicit-version path for a changelog commit already on `main`. Ported from
+  `sidecar` and `tasks`, which already carried this flow.
+- `scripts/check-release-state.sh pre-tag` fails closed on three more things
+  before a tag exists: a `replace` directive in `go.mod`, which breaks `go
+  install` from the module proxy; a sibling `github.com/marcus/…` module pinned
+  to anything but its newest published tag; and a `ci.yml` run for the exact
+  release commit that is missing, unfinished, or not green. "Confirm CI is
+  green" was a checklist line, which is how a red `main` gets tagged. The CI
+  gate dispatches a run when the commit has none registered yet and waits for
+  it; `RELEASE_CI_WAIT=0` fails fast and `RELEASE_CI_TIMEOUT` bounds the wait.
+
 ## [0.5.1] - 2026-08-26
 
 ### Changed
