@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "recall",
+  "title": "Recall",
+  "description": "One retrieval core over many user-controlled sources, with honest coverage when a source cannot answer.",
+  "provenance": "Authored 2026-09-14 from inspected Recall source (internal/*, pkg/*, cmd/*, docs/*). Current elements cite supporting evidence paths; the trust-tier signal is planned per docs/plans/active/okf-trust-tier.md.",
+  "boundaries": [
+    {
+      "id": "transports",
+      "title": "Thin transports",
+      "description": "The CLI, HTTP API, MCP server, and Sidecar plugin parse, render, and report. No ranking, permission, or expansion behavior lives here.",
+      "kind": "interface",
+      "members": ["recall.cli", "recall.serve", "recall.mcp", "sidecarplugin"],
+      "color": "#759EB5"
+    },
+    {
+      "id": "trust",
+      "title": "Trust assigned at the boundary",
+      "description": "Profiles set the sensitivity ceiling and eligibility rules. Adapters cannot mark text trusted or lower a floor.",
+      "kind": "permission",
+      "members": ["recall.config", "recall.source", "recall.app"],
+      "color": "#739886"
+    },
+    {
+      "id": "subprocesses",
+      "title": "Out-of-process adapters",
+      "description": "External adapters run as supervised subprocesses speaking newline-delimited JSON-RPC behind the same adapter contract.",
+      "kind": "process",
+      "members": ["recall.proto", "recall.external"],
+      "color": "#B59669"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "overview",
+      "title": "Recall at a glance",
+      "description": "Thin surfaces over one retrieval core, built-in and external adapters over sources Recall reads but never owns.",
+      "expanded": [],
+      "proposed": false,
+      "lens": "structure"
+    },
+    {
+      "id": "query-journey",
+      "title": "From question to evidence",
+      "description": "Follow a query from a surface through eligibility planning, rank fusion, and locator expansion.",
+      "scope": "recall",
+      "expanded": ["recall", "recall.app"],
+      "proposed": false,
+      "lens": "structure"
+    },
+    {
+      "id": "trust-view",
+      "title": "Where trust is decided",
+      "description": "Profiles, ceilings, and eligibility: why a source is asked, skipped, or reported instead of silently dropped.",
+      "scope": "recall",
+      "expanded": ["recall"],
+      "proposed": false,
+      "lens": "trust"
+    },
+    {
+      "id": "proposal",
+      "title": "Reported trust tiers",
+      "description": "A planned documents signal: derive each document's review tier from frontmatter so profiles can prefer human-reviewed writing.",
+      "scope": "recall",
+      "expanded": ["recall", "recall.docs"],
+      "proposed": true,
+      "lens": "structure"
+    }
+  ]
+}

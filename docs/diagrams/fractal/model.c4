@@ -1,0 +1,136 @@
+// Recall architecture. Evidence paths are relative to the repository root.
+specification {
+  element system
+  element actor
+  element store
+  element component
+  element adapter
+  element service
+  relationship calls
+  relationship sends
+  relationship checks
+  relationship reads
+  relationship supervises
+  relationship reports
+  relationship benchmarks
+  tag current
+  tag proposed
+}
+model {
+  caller = actor 'Agent or operator' {
+    description 'Asks questions and expands pointers through the CLI, HTTP, MCP, or the Sidecar plugin.'
+    metadata { uid 'caller' fractalColor '#759EB5' evidence 'README.md' }
+  }
+  corpora = store 'User-controlled sources' {
+    description 'Documents, task stores, and project catalogs Recall reads but never owns, writes, or syncs.'
+    metadata { uid 'corpora' fractalColor '#89A579' evidence 'docs/spec.md' }
+  }
+  recall = system 'Recall' {
+    description 'One retrieval core over many sources, with honest coverage when a source cannot answer.'
+    metadata { uid 'recall' fractalColor '#739886' evidence 'docs/spec.md' }
+    cli = component 'Command line' {
+      description 'Parses arguments, renders pointer or explained output, and reports the outcome in the exit code.'
+      metadata { uid 'recall.cli' fractalColor '#759EB5' evidence ['cmd/recall/main.go', 'internal/cli/cli.go'] }
+    }
+    serve = component 'Local HTTP API' {
+      description 'Serves one profile over loopback HTTP so repeated queries amortize adapter warm-up.'
+      technology 'HTTP on 127.0.0.1:8765'
+      metadata { uid 'recall.serve' fractalColor '#759EB5' evidence ['internal/cli/serve.go', 'internal/api/http.go', 'docs/surfaces.md'] }
+    }
+    mcp = component 'MCP server' {
+      description 'Exposes retrieval as tools to agents, priced and shaped for tool delivery.'
+      metadata { uid 'recall.mcp' fractalColor '#759EB5' evidence ['internal/cli/mcp.go', 'internal/api/mcp.go'] }
+    }
+    sidecarplugin = component 'Sidecar plugin' {
+      description 'Speaks sidecar.plugin/v1 over stdio: one JSON request in, one JSON response out, projecting outcome and coverage into collections and rows.'
+      metadata { uid 'sidecarplugin' fractalColor '#759EB5' evidence 'internal/cli/sidecarplugin.go' }
+    }
+    app = component 'Application core' {
+      description 'Owns orchestration only: plan, fan out, sanitize, fuse, shape, and decide the outcome.'
+      metadata { uid 'recall.app' fractalColor '#739886' evidence ['internal/app/query.go', 'internal/app/build.go'] }
+      query = component 'Query orchestration' {
+        description 'Searches every eligible source and fuses what comes back into one evidence list.'
+        metadata { uid 'recall.app.query' fractalColor '#739886' evidence 'internal/app/query.go' }
+      }
+      expand = component 'Locator expansion' {
+        description 'Retrieves the evidence behind a locator, re-checking permissions at expansion time.'
+        metadata { uid 'recall.app.expand' fractalColor '#739886' evidence 'internal/app/expand.go' }
+      }
+    }
+    source = component 'Source planning and eligibility' {
+      description 'Resolves configured instances into adapters and decides which ones a request may reach.'
+      metadata { uid 'recall.source' fractalColor '#739886' evidence ['internal/source/plan.go', 'internal/source/registry.go'] }
+    }
+    ranking = component 'Rank fusion' {
+      description 'Merges pooled candidates by rank, never by raw score, with lineage-aware corroboration.'
+      metadata { uid 'recall.ranking' fractalColor '#739886' evidence ['internal/ranking/rank.go', 'internal/lineage/lineage.go', 'pkg/recall/relevance.go'] }
+    }
+    shaping = component 'Evidence shaping and explanation' {
+      description 'Fits responses to caller budgets and explains scores, provenance, and per-source outcomes.'
+      metadata { uid 'recall.shaping' fractalColor '#739886' evidence ['internal/evidence/shape.go', 'internal/explain/explain.go', 'internal/pointer/pointer.go'] }
+    }
+    config = component 'Configuration and trust' {
+      description 'Profiles, source instances, and sensitivity ceilings; trust is assigned here, never by adapters.'
+      metadata { uid 'recall.config' fractalColor '#739886' evidence ['internal/config/config.go', 'internal/config/source.go'] }
+    }
+    docs = adapter 'Documents adapter' {
+      description 'Chunked Markdown retrieved from an adapter-owned lexical index and expanded from the live file.'
+      technology 'Markdown, BM25 lexical index'
+      metadata { uid 'recall.docs' fractalColor '#9A91C4' evidence 'internal/adapters/docs/doc.go' }
+      trusttier = component 'OKF trust-tier reporting' {
+        #proposed
+        description 'A planned signal deriving each document review tier from frontmatter for profile rules.'
+        metadata { uid 'recall.trusttier' fractalColor '#9A91C4' evidence 'docs/plans/active/okf-trust-tier.md' }
+      }
+    }
+    tasks = adapter 'Tasks adapter' {
+      description 'Live structured retrieval over a tasks store, with replayable recorded fixtures.'
+      metadata { uid 'recall.tasks' fractalColor '#9A91C4' evidence 'internal/adapters/tasks/doc.go' }
+    }
+    td = adapter 'td workspace adapter' {
+      description 'Live structured retrieval over one td workspace per configured source instance.'
+      metadata { uid 'recall.td' fractalColor '#9A91C4' evidence 'internal/adapters/td/doc.go' }
+    }
+    proto = component 'Adapter protocol transport' {
+      description 'Framing, correlation, and schema validation for out-of-process adapters; no retrieval logic.'
+      technology 'Newline-delimited JSON-RPC 2.0'
+      metadata { uid 'recall.proto' fractalColor '#B59669' evidence ['pkg/protocol/doc.go', 'pkg/adapter/adapter.go', 'docs/adapter-protocol.md'] }
+    }
+    external = service 'Out-of-process adapters' {
+      description 'Gmail, QMD, event-stream, and corpus adapters supervised as subprocesses behind one contract.'
+      metadata { uid 'recall.external' fractalColor '#B59669' evidence ['cmd/recall-gmail/main.go', 'cmd/recall-qmd/main.go', 'cmd/recall-stream/main.go', 'docs/gmail-adapter.md', 'docs/qmd-adapter.md'] }
+    }
+    eval = component 'Retrieval benchmark' {
+      description 'Deterministic labeled packs that pin the clock and gate ranking changes.'
+      metadata { uid 'recall.eval' fractalColor '#82A6B6' evidence ['eval/packs', 'docs/evaluation.md'] }
+    }
+  }
+  caller .calls recall.cli 'Run queries, expansions, and refreshes' { metadata { uid 'caller-cli' } }
+  caller .calls recall.serve 'Query the long-lived core over HTTP' { metadata { uid 'caller-serve' } }
+  caller .calls recall.mcp 'Retrieve through tool calls' { metadata { uid 'caller-mcp' } }
+  caller .calls recall.sidecarplugin 'Invoke one process per plugin call' { metadata { uid 'caller-plugin' } }
+  recall.cli .calls recall.app 'Dispatch through the typed application contract' { metadata { uid 'cli-app' } }
+  recall.serve .calls recall.app 'Dispatch through the typed application contract' { metadata { uid 'serve-app' } }
+  recall.mcp .calls recall.app 'Dispatch through the typed application contract' { metadata { uid 'mcp-app' } }
+  recall.sidecarplugin .calls recall.app 'Reuse retrieval, project the outcome into collections' { metadata { uid 'plugin-app' } }
+  recall.app.query .calls recall.source 'Build the eligibility plan' { metadata { uid 'query-plan' } }
+  recall.app.expand .calls recall.source 'Resolve the locator owning source' { metadata { uid 'expand-resolve' } }
+  recall.app.query .sends recall.ranking 'Fuse pooled candidates by rank' { metadata { uid 'query-fuse' } }
+  recall.app.query .sends recall.shaping 'Shape bounded pointer output' { metadata { uid 'query-shape' } }
+  recall.app.expand .sends recall.shaping 'Shape bounded evidence output' { metadata { uid 'expand-shape' } }
+  recall.app.query .checks recall.config 'Apply the profile and its sensitivity ceiling' { metadata { uid 'query-ceiling' } }
+  recall.app.expand .checks recall.config 'Re-check permissions at expansion time' { metadata { uid 'expand-ceiling' } }
+  recall.source .checks recall.config 'Enforce scope, health, and sensitivity' { metadata { uid 'plan-eligibility' } }
+  recall.source .calls recall.docs 'Search eligible document instances' { metadata { uid 'plan-docs' } }
+  recall.source .calls recall.tasks 'Search eligible tasks instances' { metadata { uid 'plan-tasks' } }
+  recall.source .calls recall.td 'Search eligible td workspaces' { metadata { uid 'plan-td' } }
+  recall.source .calls recall.proto 'Search eligible external instances' { metadata { uid 'plan-external' } }
+  recall.proto .supervises recall.external 'Supervise subprocess adapters over JSON-RPC' { metadata { uid 'proto-supervises' } }
+  recall.docs .reads corpora 'Read the configured Markdown corpus' { metadata { uid 'docs-corpus' } }
+  recall.tasks .reads corpora 'Read the configured tasks store' { metadata { uid 'tasks-corpus' } }
+  recall.td .reads corpora 'Read the configured td workspace' { metadata { uid 'td-corpus' } }
+  recall.external .reads corpora 'Read hosted mail, index, and stream services' { metadata { uid 'external-corpus' } }
+  recall.eval .benchmarks recall.app.query 'Score retrieval against labeled packs' { metadata { uid 'eval-benchmarks' } }
+  recall.docs.trusttier .reports recall.source 'Offer review tiers to profile rules' { metadata { uid 'tier-rules' } }
+}
+views { view index { include * } }
