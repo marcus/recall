@@ -593,6 +593,7 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 	Check, map[string]recall.Manifest, map[string]recall.Health,
 ) {
 	var problems []Problem
+	var exclusions []string
 	manifests := make(map[string]recall.Manifest, len(sources))
 	healths := make(map[string]recall.Health, len(sources))
 
@@ -616,10 +617,17 @@ func healthCheck(ctx context.Context, rt *runtime, sources []*config.SourceInsta
 			continue
 		}
 		healths[s.ID] = health
+		// Deliberate exclusions do not degrade coverage, but the operator must see
+		// why a file such as a robots-noindex page cannot answer a query.
+		if count := health.Diagnostics["excluded_files"]; count != nil && fmt.Sprint(count) != "0" {
+			exclusions = append(exclusions, fmt.Sprintf("%s: %v files excluded (%v)", s.ID, count, health.Diagnostics["excluded_files_sample"]))
+		}
 	}
-	return finishCheck(checkHealth,
-		fmt.Sprintf("%d of %d eligible sources answered a health probe", len(healths), len(sources)),
-		problems), manifests, healths
+	detail := fmt.Sprintf("%d of %d eligible sources answered a health probe", len(healths), len(sources))
+	if len(exclusions) > 0 {
+		detail += "; " + strings.Join(exclusions, "; ")
+	}
+	return finishCheck(checkHealth, detail, problems), manifests, healths
 }
 
 // servingCheck asks what the health check does not: is each source serving

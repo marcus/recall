@@ -668,3 +668,38 @@ reason = "nothing in this corpus is about the camera maker"
 			"not shown that the profile answers it", got)
 	}
 }
+
+func TestDoctorReportsDocumentExclusionsWithoutDegrading(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "secret.html"), []byte("<meta name='robots' content='noindex'><h1>Secret</h1>privateword"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "public.html"), []byte("<h1>Public</h1>publicword"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, harnessOptions{userTOML: fmt.Sprintf(`
+[[sources]]
+source_uid = "01HTMLDOCTOR"
+source_id = "html"
+adapter = "documents"
+location = %q
+location_kind = "path"
+freshness_mode = "indexed"
+record_types = ["document"]
+[sources.settings]
+extensions = [".html"]
+[profiles.default]
+sources = ["html"]
+`, root)})
+	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}} {
+		code, stdout, stderr := h.run(args...)
+		if code != cli.ExitOK {
+			t.Fatalf("doctor exit %d: %s %s", code, stdout, stderr)
+		}
+		for _, want := range []string{"1 files excluded", "secret.html: robots noindex"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("missing %q: %s", want, stdout)
+			}
+		}
+	}
+}

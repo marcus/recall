@@ -32,6 +32,7 @@ type fileRef struct {
 // single unreadable FILE is different — it is one named record that failed, and
 // that is counted rather than fatal.
 type scan struct {
+	Excluded    []skippedDir
 	Files       []fileRef
 	Skipped     []skippedDir
 	Watermark   string
@@ -75,7 +76,7 @@ func scanCorpus(ctx context.Context, root string, s Settings) (scan, error) {
 			if path == root {
 				return nil
 			}
-			if reason, ok := skipReason(path, d.Name(), s); ok {
+			if reason := s.selection().DirectoryReason(root, relOrBase(root, path)); reason != "" {
 				skipped = append(skipped, skippedDir{Path: relOrBase(root, path), Reason: reason})
 				return fs.SkipDir
 			}
@@ -110,37 +111,23 @@ func scanCorpus(ctx context.Context, root string, s Settings) (scan, error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Path < skipped[j].Path })
 
+	paths := make([]string, len(files))
+	byPath := map[string]fileRef{}
+	for i, f := range files {
+		paths[i] = f.Path
+		byPath[f.Path] = f
+	}
+	selected, excluded := s.selection().Select(paths)
+	files = nil
+	for _, rel := range selected {
+		files = append(files, byPath[rel])
+	}
 	out := scan{Files: files, Skipped: skipped, GitRevision: gitRevision(root)}
+	for _, e := range excluded {
+		out.Excluded = append(out.Excluded, skippedDir{Path: e.Path, Reason: e.Reason})
+	}
 	out.Watermark = watermark(files, s.digest(), out.GitRevision)
 	return out, nil
-}
-
-// skipReason reports why the walk does not enter a directory, if it does not.
-//
-// Both reasons are declared configuration, and both are reported: an exclusion
-// the operator cannot see is the failure this whole mechanism exists to avoid.
-// The nested-repository check is the precise one — it names the actual damage,
-// a second checkout of the same documents — while the name patterns are the
-// cheap one that also keeps caches, build output, and virtualenvs out.
-func skipReason(path, name string, s Settings) (string, bool) {
-	if pattern, ok := s.excludedDir(name); ok {
-		return "exclude_dirs " + pattern, true
-	}
-	if s.ExcludeNestedRepos && isRepository(path) {
-		return "nested repository", true
-	}
-	return "", false
-}
-
-// isRepository reports whether a directory holds a .git entry of its own.
-//
-// Lstat rather than Stat, and no check of what the entry is: a clone keeps a
-// .git directory, a worktree and a submodule keep a .git FILE naming the real
-// one, and all three are a separate checkout whose documents are copies of
-// something already indexed under another path.
-func isRepository(dir string) bool {
-	_, err := os.Lstat(filepath.Join(dir, ".git"))
-	return err == nil
 }
 
 // watermark identifies a corpus state.

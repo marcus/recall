@@ -2,9 +2,6 @@ package docs
 
 import (
 	"context"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -62,7 +59,7 @@ const (
 // between searches and immutable, and this cache is neither.
 type bodyReader struct {
 	root     string
-	maxBytes int64
+	settings Settings
 	cache    map[string]parsedFile
 }
 
@@ -71,8 +68,8 @@ type parsedFile struct {
 	ok     bool
 }
 
-func newBodyReader(root string, maxBytes int64) *bodyReader {
-	return &bodyReader{root: root, maxBytes: maxBytes, cache: map[string]parsedFile{}}
+func newBodyReader(root string, settings Settings) *bodyReader {
+	return &bodyReader{root: root, settings: settings, cache: map[string]parsedFile{}}
 }
 
 // excerpt selects the bounded window of this chunk's live body that covers the
@@ -157,35 +154,12 @@ func (b *bodyReader) parse(ctx context.Context, rel string) (parsedFile, bool) {
 		return parsedFile{}, false
 	}
 
-	f, err := os.Open(filepath.Join(b.root, filepath.FromSlash(rel)))
-	if err != nil {
+	text, err := readText(b.root, rel, b.settings)
+	if err != nil || ctx.Err() != nil {
 		return parsedFile{}, false
 	}
-	defer func() { _ = f.Close() }()
+	file := parsedFile{chunks: text.chunks, ok: true}
 
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return parsedFile{}, false
-	}
-	if b.maxBytes > 0 && info.Size() > b.maxBytes {
-		// Grown past the size that admits a document to this corpus. The index
-		// still describes the version that was small enough; the file no longer
-		// is, and quoting it would answer from outside the boundary.
-		return parsedFile{}, false
-	}
-	// One byte past the bound is enough to catch a file that grew between the
-	// stat and the read, without trusting the size the stat reported.
-	limit := b.maxBytes
-	if limit <= 0 {
-		limit = defaultMaxFileBytes
-	}
-	data, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || int64(len(data)) > limit || !utf8.Valid(data) {
-		return parsedFile{}, false
-	}
-
-	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	file := parsedFile{chunks: parseChunks(strings.Split(text, "\n")), ok: true}
 	b.cache[rel] = file
 	return file, true
 }

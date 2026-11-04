@@ -74,8 +74,8 @@ model {
       metadata { uid 'recall.config' fractalColor '#739886' evidence ['internal/config/config.go', 'internal/config/source.go'] }
     }
     docs = adapter 'Documents adapter' {
-      description 'Chunked Markdown retrieved from an adapter-owned lexical index and expanded from the live file.'
-      technology 'Markdown, BM25 lexical index'
+      description 'Markdown and extracted HTML retrieved from an adapter-owned lexical index and expanded as text from the live file.'
+      technology 'Markdown, HTML, BM25 lexical index'
       metadata { uid 'recall.docs' fractalColor '#9A91C4' evidence 'internal/adapters/docs/doc.go' }
       trusttier = component 'OKF trust-tier reporting' {
         #proposed
@@ -126,7 +126,7 @@ model {
   recall.source .calls recall.td 'Search eligible td workspaces' { metadata { uid 'plan-td' } }
   recall.source .calls recall.proto 'Search eligible external instances' { metadata { uid 'plan-external' } }
   recall.proto .supervises recall.external 'Supervise subprocess adapters over JSON-RPC' { metadata { uid 'proto-supervises' } }
-  recall.docs .reads corpora 'Read the configured Markdown corpus' { metadata { uid 'docs-corpus' } }
+  recall.docs .reads corpora 'Read the configured Markdown and HTML corpus' { metadata { uid 'docs-corpus' } }
   recall.tasks .reads corpora 'Read the configured tasks store' { metadata { uid 'tasks-corpus' } }
   recall.td .reads corpora 'Read the configured td workspace' { metadata { uid 'td-corpus' } }
   recall.external .reads corpora 'Read hosted mail, index, and stream services' { metadata { uid 'external-corpus' } }

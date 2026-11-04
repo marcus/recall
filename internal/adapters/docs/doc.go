@@ -1,4 +1,4 @@
-// Package docs is Recall's built-in document corpus adapter: Markdown chunked
+// Package docs is Recall's built-in document corpus adapter: Markdown and HTML chunked
 // by heading, retrieved from an adapter-owned lexical index, expanded live from
 // the original file and line range.
 //

@@ -16,6 +16,7 @@ const excerptRunes = 400
 // Lines are 1-based and inclusive, because that is what a locator prints and
 // what a person types into an editor.
 type parsedChunk struct {
+	Anchor      string
 	Ord         int
 	Heading     string
 	HeadingPath []string

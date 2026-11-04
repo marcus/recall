@@ -284,7 +284,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 		defer cancel()
 	}
 	found, unreadable := candidates(
-		ctx, gen, sourceID, hits, req.Limit, query, allowed, newBodyReader(root, settings.MaxFileBytes))
+		ctx, gen, sourceID, hits, req.Limit, query, allowed, newBodyReader(root, settings))
 
 	// A generation built over a partial boundary answers partial, every time it
 	// answers. The alternative is a source reporting success over a corpus it
@@ -304,7 +304,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 // Expand retrieves evidence behind a locator, live from the file.
 func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
 	a.mu.RLock()
-	gen, root, closed := a.gen, a.root, a.closed
+	gen, root, settings, closed := a.gen, a.root, a.settings, a.closed
 	a.mu.RUnlock()
 
 	switch {
@@ -317,7 +317,7 @@ func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.
 	if err := expired(ctx, req.Deadline); err != nil {
 		return recall.ExpandResponse{}, err
 	}
-	return expand(gen, root, req)
+	return expand(gen, root, settings, req)
 }
 
 // expired reports a request that is already out of time.
@@ -392,8 +392,21 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 		return health, nil
 	}
 
+	excluded := append([]skippedDir(nil), corpus.Excluded...)
+	if gen != nil {
+		for _, e := range gen.excluded {
+			excluded = append(excluded, skippedDir(e))
+		}
+	}
+	health.Diagnostics["excluded_files"] = len(excluded)
+	if len(excluded) > 0 {
+		health.Diagnostics["excluded_files_sample"] = skippedSummary(excluded)
+	}
 	health.SourceWatermark = corpus.Watermark
 	health.RecordCount = int64(len(corpus.Files))
+	if gen != nil && gen.header.Watermark == corpus.Watermark {
+		health.RecordCount -= int64(len(gen.excluded))
+	}
 	// Reported beside coverage, and always, including zero. A directory the
 	// walk refused to enter is content inside the root the operator named that
 	// no query can reach, so "complete coverage over 40 records" and "complete

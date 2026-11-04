@@ -284,6 +284,8 @@ qualified repository or module path when installing and linking to this
 project. The name will be revisited before 1.0 if command-level confusion
 becomes material.
 
+For HTML extraction, source-line citations, size limits, and corpus selection, see the [documents adapter guide](docs/documents-adapter.md).
+
 ## Contributing and license
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change, especially for

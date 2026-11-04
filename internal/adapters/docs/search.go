@@ -615,6 +615,9 @@ func candidates(
 			},
 			ContentFingerprint: c.Fingerprint,
 		})
+		if c.Anchor != "" {
+			out[len(out)-1].Metadata["anchor"] = c.Anchor
+		}
 	}
 	return out, unavailable
 }

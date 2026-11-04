@@ -5,9 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/marcus/recall/pkg/document"
 )
 
 // Settings is the adapter-owned settings block for one document source
@@ -22,10 +25,15 @@ type Settings struct {
 	// Extensions are the file suffixes that count as documents.
 	Extensions []string
 
-	// MaxFileBytes rejects a file too large to be a document. It is a record
+	// MaxFileBytes caps extracted HTML text or raw Markdown. It is a record
 	// failure, not a build failure: one pathological file must not cost the
 	// corpus its index.
 	MaxFileBytes int64
+
+	// MaxRawBytes bounds HTML parse cost before extraction.
+	MaxRawBytes       int64
+	ExcludeGlobs      []string
+	SiblingPreference []string
 
 	// ExcludeDirs are glob patterns matched against a directory's own name.
 	// A directory that matches is not walked at all.
@@ -101,6 +109,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		Extensions:         defaultExtensions(),
 		MaxFileBytes:       defaultMaxFileBytes,
+		MaxRawBytes:        document.DefaultMaxRawBytes,
 		ExcludeDirs:        defaultExcludeDirs(),
 		ExcludeNestedRepos: true,
 	}
@@ -124,24 +133,6 @@ func (s Settings) indexes(rel string) bool {
 	return false
 }
 
-// excludedDir reports the declared pattern that keeps a directory out of the
-// corpus, and whether one matched.
-//
-// Patterns match a directory's own NAME, not its path. Tool state appears at
-// every depth of a corpus, so an exclusion written as a path would have to be
-// restated for each place the same directory turns up, and the one place it was
-// forgotten would be the one that got indexed.
-func (s Settings) excludedDir(name string) (string, bool) {
-	for _, pattern := range s.ExcludeDirs {
-		// parseSettings rejected any pattern path.Match cannot compile, so a
-		// non-nil error here can only mean a Settings value built in code.
-		if ok, err := path.Match(pattern, name); err == nil && ok {
-			return pattern, true
-		}
-	}
-	return "", false
-}
-
 // digest identifies the configuration a generation was built under. Root is
 // excluded: it is recorded in the generation header, and a corpus moved to a
 // new path is the same corpus.
@@ -155,10 +146,13 @@ func (s Settings) digest() string {
 	body, err := json.Marshal(struct {
 		Extensions         []string            `json:"extensions"`
 		MaxFileBytes       int64               `json:"max_file_bytes"`
+		MaxRawBytes        int64               `json:"max_raw_bytes"`
+		ExcludeGlobs       []string            `json:"exclude_globs"`
+		SiblingPreference  []string            `json:"sibling_preference"`
 		ExcludeDirs        []string            `json:"exclude_dirs"`
 		ExcludeNestedRepos bool                `json:"exclude_nested_repos"`
 		Aliases            map[string][]string `json:"aliases,omitempty"`
-	}{s.Extensions, s.MaxFileBytes, s.ExcludeDirs, s.ExcludeNestedRepos, s.Aliases})
+	}{s.Extensions, s.MaxFileBytes, s.MaxRawBytes, s.ExcludeGlobs, s.SiblingPreference, s.ExcludeDirs, s.ExcludeNestedRepos, s.Aliases})
 	// examples_quote_queries is deliberately absent: it changes how a query is
 	// answered, not which files are in the corpus, so a generation built under
 	// either value describes the same boundary and must not be rebuilt when it
@@ -191,13 +185,33 @@ func parseSettings(raw map[string]any) (Settings, error) {
 			if list, err = asStrings(key, value); err == nil {
 				err = out.setExtensions(list)
 			}
-		case "max_file_bytes":
+		case "max_file_bytes", "max_raw_bytes":
 			var n float64
 			if n, err = asNumber(key, value); err == nil {
-				if n < 1 {
-					err = fmt.Errorf("settings.max_file_bytes: want a positive size, got %v", n)
+				if n < 1 || math.IsNaN(n) || math.IsInf(n, 0) || n >= float64(math.MaxInt64) || math.Trunc(n) != n {
+					err = fmt.Errorf("settings.%s: want a positive integer size, got %v", key, n)
 				}
-				out.MaxFileBytes = int64(n)
+				if key == "max_raw_bytes" {
+					out.MaxRawBytes = int64(n)
+				} else {
+					out.MaxFileBytes = int64(n)
+				}
+			}
+		case "exclude_globs", "sibling_preference":
+			var list []string
+			if list, err = asStrings(key, value); err == nil {
+				for i, item := range list {
+					list[i] = strings.TrimSpace(item)
+					if key == "sibling_preference" {
+						list[i] = strings.ToLower(list[i])
+					}
+				}
+				if key == "exclude_globs" {
+					out.ExcludeGlobs = list
+				} else {
+					out.SiblingPreference = list
+				}
+				err = out.selection().Validate()
 			}
 		case "exclude_dirs":
 			var list []string
@@ -368,10 +382,13 @@ func settingsSchema() map[string]any {
 				"items":       map[string]any{"type": "string", "pattern": `^\.[A-Za-z0-9]+$`},
 				"description": "File suffixes indexed as documents.",
 			},
+			"max_raw_bytes":      map[string]any{"type": "integer", "minimum": 1, "description": "HTML raw byte parse cap. Default 16 MiB."},
+			"exclude_globs":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Root-relative path globs; ** matches zero or more directories. Default empty."},
+			"sibling_preference": map[string]any{"type": "array", "items": map[string]any{"type": "string", "pattern": `^\.[A-Za-z0-9]+$`}, "description": "Preferred sibling suffixes in priority order. Default empty."},
 			"max_file_bytes": map[string]any{
 				"type":        "integer",
 				"minimum":     1,
-				"description": "Files larger than this are counted as failures, not indexed.",
+				"description": "Maximum extracted HTML text bytes or Markdown file bytes. Larger files count as failures.",
 			},
 			"exclude_dirs": map[string]any{
 				"type":  "array",
@@ -400,4 +417,8 @@ func settingsSchema() map[string]any {
 			},
 		},
 	}
+}
+
+func (s Settings) selection() document.Selection {
+	return document.Selection{ExcludeDirs: s.ExcludeDirs, ExcludeGlobs: s.ExcludeGlobs, SiblingPreference: s.SiblingPreference, ExcludeNestedRepos: s.ExcludeNestedRepos}
 }

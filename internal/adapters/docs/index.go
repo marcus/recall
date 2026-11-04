@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
+	"github.com/marcus/recall/pkg/document"
 	"github.com/marcus/recall/pkg/recall"
 )
 
@@ -32,15 +32,8 @@ import (
 // either the previous generation or the new one, never a half-written index —
 // which is why an interrupted build costs freshness and nothing else.
 const (
-	// indexFormat 3 removed link destinations and URL-shaped runs from the
-	// terms a chunk is indexed under. A generation built before it holds the
-	// words inside every link target as ordinary prose, so it is rebuilt rather
-	// than read: the alternative is one profile answering a common noun with
-	// its own Sources sections and another not, depending on when each source
-	// was last built. Format 2 added the chunk body digest, without which a
-	// generation cannot prove that a live document still holds the bytes that
-	// were ranked.
-	indexFormat  = 3
+	// Format 4 adds structured HTML, source anchors and explicit exclusions.
+	indexFormat  = 4
 	indexFile    = "index.jsonl"
 	currentFile  = "current"
 	genPrefix    = "gen-"
@@ -88,6 +81,7 @@ type indexedChunk struct {
 	StartLine   int      `json:"start_line"`
 	EndLine     int      `json:"end_line"`
 	Heading     string   `json:"heading,omitempty"`
+	Anchor      string   `json:"anchor,omitempty"`
 	HeadingPath []string `json:"heading_path,omitempty"`
 	Excerpt     string   `json:"excerpt,omitempty"`
 	Fingerprint string   `json:"fingerprint"`
@@ -161,6 +155,7 @@ type indexTrailer struct {
 	Docs     int                  `json:"docs"`
 	Chunks   int                  `json:"chunks"`
 	Failures int                  `json:"failures"`
+	Excluded int                  `json:"excluded"`
 	Coverage recall.IndexCoverage `json:"coverage"`
 }
 
@@ -169,20 +164,22 @@ type indexTrailer struct {
 // load, so a partial index can never be mistaken for a complete boundary even
 // if it were somehow published.
 type record struct {
-	Kind    string        `json:"kind"`
-	Header  *indexHeader  `json:"header,omitempty"`
-	Doc     *indexedDoc   `json:"doc,omitempty"`
-	Chunk   *indexedChunk `json:"chunk,omitempty"`
-	Failure *indexFailure `json:"failure,omitempty"`
-	Trailer *indexTrailer `json:"trailer,omitempty"`
+	Kind     string        `json:"kind"`
+	Header   *indexHeader  `json:"header,omitempty"`
+	Doc      *indexedDoc   `json:"doc,omitempty"`
+	Chunk    *indexedChunk `json:"chunk,omitempty"`
+	Failure  *indexFailure `json:"failure,omitempty"`
+	Excluded *indexFailure `json:"excluded,omitempty"`
+	Trailer  *indexTrailer `json:"trailer,omitempty"`
 }
 
 const (
-	kindHeader  = "header"
-	kindDoc     = "doc"
-	kindChunk   = "chunk"
-	kindFailure = "failure"
-	kindTrailer = "trailer"
+	kindHeader   = "header"
+	kindDoc      = "doc"
+	kindChunk    = "chunk"
+	kindFailure  = "failure"
+	kindExcluded = "excluded"
+	kindTrailer  = "trailer"
 )
 
 type posting struct {
@@ -206,6 +203,7 @@ type generation struct {
 	docs     []indexedDoc
 	chunks   []indexedChunk
 	failures []indexFailure
+	excluded []indexFailure
 	coverage recall.IndexCoverage
 
 	docAt    map[string]int
@@ -359,6 +357,13 @@ func writeGeneration(ctx context.Context, staging, root string, s Settings, corp
 		}
 		doc, chunks, failure := readDocument(root, ref, s)
 		if failure != nil {
+			if failure.Reason == document.ErrNoIndex.Error() {
+				counts.Excluded++
+				if err := body.Encode(record{Kind: kindExcluded, Excluded: failure}); err != nil {
+					return "", err
+				}
+				continue
+			}
 			counts.Failures++
 			if err := body.Encode(record{Kind: kindFailure, Failure: failure}); err != nil {
 				return "", err
@@ -413,28 +418,16 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 	fail := func(reason string) (indexedDoc, []indexedChunk, *indexFailure) {
 		return indexedDoc{}, nil, &indexFailure{Path: ref.Path, Reason: reason}
 	}
-	if ref.Size > s.MaxFileBytes {
-		return fail(fmt.Sprintf("larger than max_file_bytes (%d > %d)", ref.Size, s.MaxFileBytes))
-	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(ref.Path)))
+	text, err := readText(root, ref.Path, s)
 	if err != nil {
-		return fail("unreadable: " + errKind(err))
+		return fail(errKind(err))
 	}
-	if !utf8.Valid(data) {
-		return fail("not valid UTF-8")
-	}
-	if strings.IndexByte(string(data), 0) >= 0 {
-		return fail("binary content")
-	}
-
-	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	lines := strings.Split(text, "\n")
-	parsed := parseChunks(lines)
+	data, parsed := text.data, text.chunks
 
 	sum := sha256.Sum256(data)
 	doc := indexedDoc{
 		Path:        ref.Path,
-		Title:       docTitle(parsed, strings.TrimSuffix(path.Base(ref.Path), path.Ext(ref.Path))),
+		Title:       text.title,
 		Project:     projectOf(ref.Path),
 		Size:        ref.Size,
 		ModTime:     ref.ModTime.UTC(),
@@ -447,6 +440,17 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 	chunks := make([]indexedChunk, 0, len(parsed))
 	for _, c := range parsed {
 		terms, length := c.terms()
+		if text.html != nil {
+			if terms == nil {
+				terms = map[string]int{}
+			}
+			// The document title is visible metadata retained from <head>, and must
+			// remain searchable even when it differs from the body's first heading.
+			for _, term := range tokenize(withoutLocators(text.title)) {
+				terms[term]++
+				length++
+			}
+		}
 		cited, citedLength := c.cited()
 		chunks = append(chunks, indexedChunk{
 			Path:        ref.Path,
@@ -454,6 +458,7 @@ func readDocument(root string, ref fileRef, s Settings) (indexedDoc, []indexedCh
 			StartLine:   c.StartLine,
 			EndLine:     c.EndLine,
 			Heading:     strings.TrimSpace(c.Heading),
+			Anchor:      c.Anchor,
 			HeadingPath: c.HeadingPath,
 			Excerpt:     c.excerpt(),
 			Fingerprint: c.fingerprint(),
@@ -592,6 +597,11 @@ func loadGeneration(dir string) (*generation, error) {
 				return nil, fmt.Errorf("generation %s: empty failure record", gen.id)
 			}
 			gen.failures = append(gen.failures, *rec.Failure)
+		case kindExcluded:
+			if rec.Excluded == nil {
+				return nil, fmt.Errorf("generation %s: empty excluded record", gen.id)
+			}
+			gen.excluded = append(gen.excluded, *rec.Excluded)
 		case kindTrailer:
 			if rec.Trailer == nil {
 				return nil, fmt.Errorf("generation %s: empty trailer", gen.id)
@@ -605,7 +615,7 @@ func loadGeneration(dir string) (*generation, error) {
 	if trailer == nil {
 		return nil, fmt.Errorf("generation %s: truncated, no trailer", gen.id)
 	}
-	if trailer.Docs != len(gen.docs) || trailer.Chunks != len(gen.chunks) || trailer.Failures != len(gen.failures) {
+	if trailer.Docs != len(gen.docs) || trailer.Chunks != len(gen.chunks) || trailer.Failures != len(gen.failures) || trailer.Excluded != len(gen.excluded) {
 		return nil, fmt.Errorf("generation %s: counts disagree with records", gen.id)
 	}
 	gen.coverage = trailer.Coverage

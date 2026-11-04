@@ -6,6 +6,17 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- The documents adapter extracts structured HTML from configured `.html` and `.htm` files: visible text, headings, lists, tables, image alt text, and details. Query excerpts and expansion return text with original source-line locators and heading anchors. Robots `noindex` files are excluded and reported by doctor.
+- Documents settings `max_raw_bytes` (16 MiB by default), `exclude_globs`, and ordered `sibling_preference`. HTML `max_file_bytes` measures extracted text, so embedded images do not consume the text allowance. The shared `pkg/document` API supplies extraction, Markdown rendering, and file-selection rules for adapter consumers. See [the documents guide](docs/documents-adapter.md).
+
+### Changed
+
+- Documents index format 4 automatically rebuilds previous generations. Default Markdown extensions, parsing, and retrieval remain unchanged.
+
 ## [0.6.0] - 2026-09-05
 
 ### Added

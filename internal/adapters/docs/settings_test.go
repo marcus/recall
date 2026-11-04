@@ -2,6 +2,7 @@ package docs_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -310,5 +311,87 @@ func TestAsOfExcludesDocumentsChangedAfterTheBoundary(t *testing.T) {
 	}
 	if got, _ := bounded.Diagnostics["as_of"].(string); got == "" {
 		t.Error("diagnostics do not say how as_of was honored")
+	}
+}
+
+func TestHTMLBoundarySettingsRebuildGeneration(t *testing.T) {
+	root := writtenCorpus(t, map[string]string{"a.md": "# Note\ncontent", "a.html": "<h1>Note</h1>content"})
+	for key, value := range map[string]any{"max_raw_bytes": 2 << 20, "exclude_globs": []any{"a.html"}, "sibling_preference": []any{".md", ".html"}} {
+		t.Run(key, func(t *testing.T) {
+			first, workdir := newAdapter(t, root, htmlSettings())
+			before := health(t, first)
+			_ = first.Close()
+			second := docs.New()
+			defer second.Close()
+			settings := htmlSettings()
+			settings[key] = value
+			if _, err := second.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
+				t.Fatal(err)
+			}
+			after := health(t, second)
+			if after.IndexGeneration == before.IndexGeneration || after.IndexConfig == before.IndexConfig || after.IndexWatermark == before.IndexWatermark {
+				t.Fatalf("%s did not rebuild: %#v", key, after)
+			}
+			_ = second.Close()
+			third := docs.New()
+			defer third.Close()
+			if _, err := third.Initialize(context.Background(), config(root, workdir, settings)); err != nil {
+				t.Fatal(err)
+			}
+			if health(t, third).IndexGeneration != after.IndexGeneration {
+				t.Fatal("unchanged HTML settings rebuilt")
+			}
+		})
+	}
+}
+
+func TestMalformedHTMLSettingsFailInitialize(t *testing.T) {
+	for key, values := range map[string][]any{
+		"max_raw_bytes":      {0, -1, 1.5, "large"},
+		"exclude_globs":      {[]any{"["}, []any{"../x"}, []any{"/x"}, "*.html"},
+		"sibling_preference": {[]any{"md"}, []any{"../md"}, []any{4}},
+	} {
+		for _, value := range values {
+			a := docs.New()
+			_, err := a.Initialize(context.Background(), config(t.TempDir(), t.TempDir(), map[string]any{key: value}))
+			_ = a.Close()
+			if err == nil {
+				t.Errorf("accepted %s = %#v", key, value)
+			}
+		}
+	}
+}
+
+func TestOldDocumentIndexFormatRebuilds(t *testing.T) {
+	first, workdir := newAdapter(t, cleanCorpus(t), nil)
+	before := health(t, first)
+	_ = first.Close()
+	file := filepath.Join(workdir, "index", before.IndexGeneration, "index.jsonl")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = []byte(strings.Replace(string(data), `"format":4`, `"format":3`, 1))
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second := docs.New()
+	defer second.Close()
+	// Recover the configured root from the written header without relying on
+	// private index types.
+	var header struct {
+		Header struct {
+			Root string `json:"root"`
+		} `json:"header"`
+	}
+	line, _, _ := strings.Cut(string(data), "\n")
+	if err := json.Unmarshal([]byte(line), &header); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Initialize(context.Background(), config(header.Header.Root, workdir, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if health(t, second).IndexGeneration == before.IndexGeneration {
+		t.Fatal("old format survived initialization")
 	}
 }

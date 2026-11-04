@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/marcus/recall/pkg/document"
 	"github.com/marcus/recall/pkg/protocol"
 	"github.com/marcus/recall/pkg/recall"
 )
@@ -85,7 +86,7 @@ func parseLocal(local string) (chunkRef, error) {
 // is what makes an expansion current rather than a replay of whatever the last
 // build happened to capture — and comparing its hash to the indexed revision is
 // what lets the response say which of the two the caller got.
-func expand(g *generation, root string, req recall.ExpandRequest) (recall.ExpandResponse, error) {
+func expand(g *generation, root string, settings Settings, req recall.ExpandRequest) (recall.ExpandResponse, error) {
 	ref, err := parseLocal(req.Locator.Local)
 	if err != nil {
 		return recall.ExpandResponse{}, err
@@ -99,8 +100,10 @@ func expand(g *generation, root string, req recall.ExpandRequest) (recall.Expand
 			"%s is not in generation %s", ref.Path, g.id)
 	}
 
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(ref.Path)))
+	text, err := readText(root, ref.Path, settings)
 	switch {
+	case errors.Is(err, document.ErrNoIndex):
+		return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired, "%s is excluded: robots noindex", ref.Path)
 	case errors.Is(err, os.ErrNotExist):
 		return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired,
 			"%s no longer exists", ref.Path)
@@ -109,6 +112,7 @@ func expand(g *generation, root string, req recall.ExpandRequest) (recall.Expand
 			"cannot read %s: %s", ref.Path, errKind(err))
 	}
 
+	data := text.data
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	if ref.Start > len(lines) {
 		return recall.ExpandResponse{}, protocol.Errorf(protocol.CodeLocatorExpired,
@@ -124,7 +128,13 @@ func expand(g *generation, root string, req recall.ExpandRequest) (recall.Expand
 		revision = "file:" + live
 	}
 
-	served, content, boundary := render(lines, ref, req.Detail, g, doc)
+	var served chunkRef
+	var content, boundary string
+	if text.html != nil {
+		served, content, boundary = renderHTML(*text.html, ref, req.Detail, doc.Title)
+	} else {
+		served, content, boundary = render(lines, ref, req.Detail, g, doc)
+	}
 	if boundary != "" {
 		content += truncationMarker(boundary)
 	}
@@ -229,4 +239,65 @@ func isBoundary(s string, i int) bool {
 		return true
 	}
 	return s[i]&0xC0 != 0x80
+}
+
+// renderHTML applies detail limits to extracted lines. Source ranges identify
+// sections; raw markup lines never consume a caller's excerpt/context budget.
+func renderHTML(d document.HTML, ref chunkRef, detail recall.DetailLevel, title string) (chunkRef, string, string) {
+	var lines []string
+	var ranges []chunkRef
+	start, end := -1, 0
+	for _, c := range d.Chunks {
+		body := strings.Split(c.Text(), "\n")
+		from := len(lines)
+		for _, line := range body {
+			lines = append(lines, line)
+			ranges = append(ranges, chunkRef{Path: ref.Path, Start: c.StartLine, End: c.EndLine})
+		}
+		if c.EndLine >= ref.Start && c.StartLine <= ref.End {
+			if start < 0 {
+				start = from
+			}
+			end = len(lines)
+		}
+	}
+	if start < 0 {
+		return ref, "", ""
+	}
+	served := ref
+	served.End = min(served.End, d.SourceLines)
+	if detail == recall.DetailSummary {
+		for _, c := range d.Chunks {
+			if c.StartLine == ref.Start && len(c.HeadingPath) > 0 {
+				title = chunkTitle(indexedDoc{Title: title}, indexedChunk{HeadingPath: c.HeadingPath})
+				break
+			}
+		}
+		text := title
+		for _, line := range lines[start:end] {
+			if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "#") {
+				text += "\n" + line
+				break
+			}
+		}
+		if runes := []rune(text); len(runes) > summaryRunes {
+			return served, string(runes[:summaryRunes]), boundarySummary
+		}
+		return served, text, ""
+	}
+	boundary := ""
+	switch detail {
+	case recall.DetailContext:
+		start = max(0, start-contextLines)
+		end = min(len(lines), end+contextLines)
+		served.Start = ranges[start].Start
+		served.End = ranges[end-1].End
+	case recall.DetailFull:
+	default:
+		if end-start > excerptLines {
+			end = start + excerptLines
+			boundary = boundaryExcerpt
+		}
+	}
+	return served, strings.Join(lines[start:end], "\n"), boundary
 }
