@@ -56,6 +56,9 @@ const (
 // ranked. That substitution is indistinguishable to the caller from a correct
 // answer, which is exactly what the protocol forbids.
 func (a *Adapter) Expand(ctx context.Context, req recall.ExpandRequest) (recall.ExpandResponse, error) {
+	if a.hasDerived() {
+		return a.expandDerived(ctx, req)
+	}
 	set, _, location, _, err := a.session()
 	if err != nil {
 		return recall.ExpandResponse{}, err

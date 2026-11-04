@@ -1,11 +1,15 @@
 package qmd
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/marcus/recall/pkg/document"
 	"github.com/marcus/recall/pkg/protocol"
 )
 
@@ -76,13 +80,19 @@ const (
 
 // Settings is the validated adapter-owned configuration block.
 type Settings struct {
-	Binary         string
-	Collection     string
-	Mode           Mode
-	MaxCandidates  int
-	Timeout        time.Duration
-	RefreshTimeout time.Duration
-	Replay         string
+	Binary            string
+	Collection        string
+	Mode              Mode
+	MaxCandidates     int
+	Timeout           time.Duration
+	RefreshTimeout    time.Duration
+	Replay            string
+	DeriveExtensions  []string
+	DerivedCollection string
+	Selection         document.Selection
+	MaxRawBytes       int64
+	MaxTextBytes      int64
+	derivedSettings   bool
 }
 
 func parseSettings(raw map[string]any, baseDir string) (Settings, error) {
@@ -96,6 +106,7 @@ func parseSettings(raw map[string]any, baseDir string) (Settings, error) {
 	allowed := map[string]bool{
 		"binary": true, "collection": true, "mode": true, "max_candidates": true,
 		"timeout_ms": true, "refresh_timeout_ms": true, "replay": true,
+		"derive_extensions": true, "derived_collection": true, "exclude_dirs": true, "exclude_globs": true, "sibling_preference": true, "exclude_nested_repos": true, "max_raw_bytes": true, "max_file_bytes": true,
 	}
 	for key := range raw {
 		if !allowed[key] {
@@ -183,6 +194,9 @@ func parseSettings(raw map[string]any, baseDir string) (Settings, error) {
 				"qmd: relative replay path requires base_dir")
 		}
 		set.Replay = filepath.Join(baseDir, set.Replay)
+	}
+	if err := set.parseDerived(raw); err != nil {
+		return Settings{}, err
 	}
 	return set, nil
 }
@@ -288,5 +302,105 @@ func settingsSchema() map[string]any {
 // under, for index_config. It names the retrieval configuration and nothing
 // about where this instance found it.
 func (s Settings) settingsDigest() string {
-	return fmt.Sprintf("mode=%s collection=%s limit=%d", s.Mode, s.Collection, s.MaxCandidates)
+	digest := fmt.Sprintf("mode=%s collection=%s limit=%d", s.Mode, s.Collection, s.MaxCandidates)
+	if len(s.DeriveExtensions) > 0 {
+		data, _ := json.Marshal([]any{s.DeriveExtensions, s.DerivedCollection, s.Selection, s.MaxRawBytes, s.MaxTextBytes})
+		digest += fmt.Sprintf(" derived=%x", sha256.Sum256(data))
+	}
+	return digest
+}
+
+// Derived settings are opt-in. Keep the legacy manifest and digest byte-identical
+// when unset, including recorded protocol handshakes.
+func (s *Settings) parseDerived(raw map[string]any) error {
+	s.Selection = document.Selection{ExcludeDirs: []string{".*", "node_modules"}, ExcludeNestedRepos: true}
+	s.MaxRawBytes = document.DefaultMaxRawBytes
+	s.MaxTextBytes = 1 << 20
+	for _, key := range []string{"derive_extensions", "derived_collection", "exclude_dirs", "exclude_globs", "sibling_preference", "exclude_nested_repos", "max_raw_bytes", "max_file_bytes"} {
+		if _, ok := raw[key]; ok {
+			s.derivedSettings = true
+		}
+	}
+	for key, dst := range map[string]*[]string{"derive_extensions": &s.DeriveExtensions, "exclude_dirs": &s.Selection.ExcludeDirs, "exclude_globs": &s.Selection.ExcludeGlobs, "sibling_preference": &s.Selection.SiblingPreference} {
+		v, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var list []string
+		switch vv := v.(type) {
+		case []string:
+			list = append([]string{}, vv...)
+		case []any:
+			for _, x := range vv {
+				t, ok := x.(string)
+				if !ok {
+					return protocol.Errorf(protocol.CodeInvalidParams, "qmd: %s must be a string list", key)
+				}
+				list = append(list, t)
+			}
+		default:
+			return protocol.Errorf(protocol.CodeInvalidParams, "qmd: %s must be a string list", key)
+		}
+		*dst = list
+	}
+	for i, ext := range s.DeriveExtensions {
+		ext = strings.ToLower(ext)
+		if !document.IsHTML("file" + ext) {
+			return protocol.Errorf(protocol.CodeInvalidParams, "qmd: derive_extensions supports .html and .htm")
+		}
+		s.DeriveExtensions[i] = ext
+	}
+	var err error
+	if s.DerivedCollection, err = stringSetting(raw, "derived_collection", ""); err != nil {
+		return err
+	}
+	if len(s.DeriveExtensions) > 0 && (!namePattern.MatchString(s.DerivedCollection) || s.DerivedCollection == s.Collection) {
+		return protocol.Errorf(protocol.CodeInvalidParams, "qmd: derived_collection must be a distinct collection name when derive_extensions is set")
+	}
+	if v, ok := raw["exclude_nested_repos"]; ok {
+		b, ok := v.(bool)
+		if !ok {
+			return protocol.Errorf(protocol.CodeInvalidParams, "qmd: exclude_nested_repos must be boolean")
+		}
+		s.Selection.ExcludeNestedRepos = b
+	}
+	for _, pattern := range s.Selection.ExcludeDirs {
+		if pattern == "" || strings.ContainsAny(pattern, "/\\") {
+			return protocol.Errorf(protocol.CodeInvalidParams, "qmd: exclude_dirs requires basename globs")
+		}
+		if _, err := path.Match(pattern, "probe"); err != nil {
+			return protocol.Errorf(protocol.CodeInvalidParams, "qmd: invalid exclude_dirs glob")
+		}
+	}
+	if err = s.Selection.Validate(); err != nil {
+		return protocol.Errorf(protocol.CodeInvalidParams, "qmd: %s", err)
+	}
+	n, err := intSetting(raw, "max_raw_bytes", int(s.MaxRawBytes), 1)
+	if err != nil {
+		return err
+	}
+	s.MaxRawBytes = int64(n)
+	n, err = intSetting(raw, "max_file_bytes", int(s.MaxTextBytes), 1)
+	if err != nil {
+		return err
+	}
+	s.MaxTextBytes = int64(n)
+	return nil
+}
+
+func (s Settings) schema() map[string]any {
+	schema := settingsSchema()
+	if !s.derivedSettings {
+		return schema
+	}
+	props := schema["properties"].(map[string]any)
+	for _, key := range []string{"derive_extensions", "exclude_dirs", "exclude_globs", "sibling_preference"} {
+		props[key] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+	}
+	props["derived_collection"] = map[string]any{"type": "string", "description": "Collection over the refresh-built HTML Markdown mirror; required with derive_extensions."}
+	props["exclude_nested_repos"] = map[string]any{"type": "boolean"}
+	for _, key := range []string{"max_raw_bytes", "max_file_bytes"} {
+		props[key] = map[string]any{"type": "integer", "minimum": 1}
+	}
+	return schema
 }

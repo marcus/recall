@@ -412,3 +412,52 @@ func TestLiveRefresh(t *testing.T) {
 		t.Fatalf("a search after a refresh failed: %v", err)
 	}
 }
+
+// This proof uses qmd's real embedding/search boundary over a new temporary
+// project-local index and the existing cached models, never the user's index.
+func TestLiveDerivedHTMLParaphrase(t *testing.T) {
+	if !modelsPresent(t) {
+		t.Skip("embedding model is not cached")
+	}
+	root := liveCorpus(t, true)
+	writeDerived(t, root, "b.html", reservoirHTML)
+	base := t.TempDir()
+	a := qmd.New(qmd.Options{})
+	defer a.Close()
+	_, err := a.Initialize(t.Context(), adapter.Config{ProtocolVersionMin: 1, ProtocolVersionMax: 1, SourceID: "semantic", Location: root, Workdir: filepath.Join(base, "adapters", "html-proof"), Settings: map[string]any{"collection": "fixture", "mode": "vector", "derive_extensions": []string{".html"}, "derived_collection": "html-proof", "timeout_ms": 120000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	health, err := a.Refresh(ctx, protocol.RefreshParams{})
+	if err != nil || health.Status != recall.HealthHealthy {
+		t.Fatalf("real derived refresh = %+v %v", health, err)
+	}
+	query := "Where is precipitation collected below ground?"
+	resp, err := a.Search(ctx, recall.SearchRequest{Query: query, Limit: 10})
+	if err != nil || resp.Outcome != recall.SearchSuccess {
+		cmd := exec.CommandContext(ctx, qmdBinary(t), "vsearch", "--json", "-c", "html-proof", "--", query)
+		cmd.Dir = root
+		out, _ := cmd.CombinedOutput()
+		t.Fatalf("real vector search = %+v %v; raw engine response: %s", resp, err, out)
+	}
+	var found *recall.Candidate
+	for i := range resp.Candidates {
+		if resp.Candidates[i].SourceRecordID == "b.html" {
+			found = &resp.Candidates[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("real paraphrase did not find b.html: %+v", resp)
+	}
+	if strings.Contains(found.Locator.Local, ".html.md") || !strings.Contains(found.Locator.Local, "#L8-L12") {
+		t.Fatalf("real source mapping = %+v", found)
+	}
+	expanded, err := a.Expand(ctx, recall.ExpandRequest{Locator: found.Locator, Detail: recall.DetailFull})
+	if err != nil || !strings.Contains(expanded.Content, "underground cistern") || strings.Contains(expanded.Content, "<") {
+		t.Fatalf("real expansion = %+v %v", expanded, err)
+	}
+	t.Logf("real qmd paraphrase %q -> %s, cosine %.4f", query, found.Locator, *found.Relevance)
+}

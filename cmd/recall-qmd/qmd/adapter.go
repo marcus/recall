@@ -40,7 +40,8 @@ type Options struct {
 // through qmd. What the adapter owns is the honesty layer: identity, coverage,
 // relevance, locators, and the classification of every way qmd can fail.
 type Adapter struct {
-	opts Options
+	opts    Options
+	derived *derivedPaths
 
 	mu          sync.RWMutex
 	ready       bool
@@ -105,6 +106,13 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		return recall.Manifest{}, protocol.Errorf(protocol.CodeSourceUnavailable,
 			"qmd: corpus location %q is not a readable directory", labelOf(location))
 	}
+	var derived *derivedPaths
+	if len(set.DeriveExtensions) > 0 {
+		derived, err = newDerivedPaths(cfg.Workdir, location)
+		if err != nil {
+			return recall.Manifest{}, err
+		}
+	}
 	set.Binary = effectiveBinary(set.Binary, location)
 
 	runner := a.opts.Runner
@@ -126,6 +134,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	a.ready = true
 	a.sourceID = cfg.SourceID
 	a.location = location
+	a.derived = derived
 	a.settings = set
 	a.runner = runner
 	a.lastSuccess = nil
@@ -159,7 +168,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		MaxConcurrency:  1,
 		FreshnessPolicy: freshnessPolicy(set.Mode),
 		Sensitivity:     recall.SensitivityInternal,
-		SettingsSchema:  settingsSchema(),
+		SettingsSchema:  set.schema(),
 	}
 	if set.Replay == "" && a.opts.Runner == nil {
 		manifest.ExecutableRequirements = []recall.ExecutableRequirement{{
@@ -306,6 +315,9 @@ func (a *Adapter) spawn(ctx context.Context, maintenance bool, args ...string) (
 // reports, so a search that answers partial cannot sit beside a probe claiming
 // complete.
 func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
+	if a.hasDerived() {
+		return a.healthDerived(ctx)
+	}
 	set, _, location, runner, err := a.session()
 	if err != nil {
 		if errors.Is(err, adapter.ErrClosed) {
@@ -430,6 +442,9 @@ func (a *Adapter) version(ctx context.Context) string {
 // still answering. The error return is reserved for a refresh that could not be
 // attempted at all.
 func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall.Health, error) {
+	if a.hasDerived() {
+		return a.refreshDerived(ctx, p)
+	}
 	set, _, location, _, err := a.session()
 	if err != nil {
 		if errors.Is(err, adapter.ErrClosed) {

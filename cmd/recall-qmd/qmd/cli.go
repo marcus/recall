@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -160,11 +161,14 @@ var allowedArgv = []argvTemplate{
 	// refuses a maintenance shape, so no search or expansion can rebuild an
 	// index as a side effect of a query.
 	{tokens: []string{"update"}, maintenance: true},
+	{tokens: []string{"update", "-c", holeName}, maintenance: true},
+	{tokens: []string{"collection", "add", holePath, "--name", holeName, "--mask", "**/*.md"}, maintenance: true},
 	{tokens: []string{"embed", "-c", holeName}, maintenance: true},
 }
 
 // Typed holes in an argv template.
 const (
+	holePath  = "\x00path"
 	holeName  = "\x00name"
 	holeCount = "\x00count"
 	holeText  = "\x00text"
@@ -211,6 +215,10 @@ func (t argvTemplate) matches(args []string) bool {
 	for i, want := range t.tokens {
 		got := args[i]
 		switch want {
+		case holePath:
+			if !filepath.IsAbs(got) || strings.ContainsRune(got, 0) {
+				return false
+			}
 		case holeName:
 			if !namePattern.MatchString(got) {
 				return false

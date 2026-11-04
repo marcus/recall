@@ -2,7 +2,7 @@
   "version": 1,
   "id": "recall",
   "title": "Recall",
-  "description": "One retrieval core over many user-controlled sources, with honest coverage when a source cannot answer.",
+  "description": "One retrieval core over user-controlled sources, with optional refresh-built HTML semantic mirrors and honest coverage when a source cannot answer.",
   "provenance": "Authored 2026-09-14 from inspected Recall source (internal/*, pkg/*, cmd/*, docs/*). Current elements cite supporting evidence paths; the trust-tier signal is planned per docs/plans/active/okf-trust-tier.md.",
   "boundaries": [
     {

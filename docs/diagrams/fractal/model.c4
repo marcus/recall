@@ -25,6 +25,10 @@ model {
     description 'Documents, task stores, and project catalogs Recall reads but never owns, writes, or syncs.'
     metadata { uid 'corpora' fractalColor '#89A579' evidence 'docs/spec.md' }
   }
+  derivedmirror = store 'Derived HTML text and refresh receipt' {
+    description 'Private state outside the corpus, keyed by source UID. Refresh alone syncs shared HTML extraction to Markdown, deletes gone/excluded files, and updates/embeds the validated derived collection. Read-only queries verify hashes and report incomplete coverage for stale or failed refreshes.'
+    metadata { uid 'derivedmirror' fractalColor '#89A579' evidence ['cmd/recall-qmd/qmd/mirror.go', 'cmd/recall-qmd/qmd/derived.go', 'docs/qmd-adapter.md'] }
+  }
   recall = system 'Recall' {
     description 'One retrieval core over many sources, with honest coverage when a source cannot answer.'
     metadata { uid 'recall' fractalColor '#739886' evidence 'docs/spec.md' }
@@ -97,7 +101,7 @@ model {
       metadata { uid 'recall.proto' fractalColor '#B59669' evidence ['pkg/protocol/doc.go', 'pkg/adapter/adapter.go', 'docs/adapter-protocol.md'] }
     }
     external = service 'Out-of-process adapters' {
-      description 'Gmail, QMD, event-stream, and corpus adapters supervised as subprocesses behind one contract.'
+      description 'Gmail, QMD, event-stream, and corpus adapters supervised as subprocesses behind one contract. QMD optionally searches an HTML text mirror, mapping evidence back to original files.'
       metadata { uid 'recall.external' fractalColor '#B59669' evidence ['cmd/recall-gmail/main.go', 'cmd/recall-qmd/main.go', 'cmd/recall-stream/main.go', 'docs/gmail-adapter.md', 'docs/qmd-adapter.md'] }
     }
     eval = component 'Retrieval benchmark' {
@@ -129,7 +133,9 @@ model {
   recall.docs .reads corpora 'Read the configured Markdown and HTML corpus' { metadata { uid 'docs-corpus' } }
   recall.tasks .reads corpora 'Read the configured tasks store' { metadata { uid 'tasks-corpus' } }
   recall.td .reads corpora 'Read the configured td workspace' { metadata { uid 'td-corpus' } }
-  recall.external .reads corpora 'Read hosted mail, index, and stream services' { metadata { uid 'external-corpus' } }
+  recall.external .reads derivedmirror 'Query validated derived collection; map spans to original HTML' { metadata { uid 'external-derived-read' } }
+  recall.external .calls derivedmirror 'Refresh-only mirror sync, update and embed' { metadata { uid 'external-derived-refresh' } }
+  recall.external .reads corpora 'Read hosted mail, index, and stream services; expand original HTML' { metadata { uid 'external-corpus' } }
   recall.eval .benchmarks recall.app.query 'Score retrieval against labeled packs' { metadata { uid 'eval-benchmarks' } }
   recall.docs.trusttier .reports recall.source 'Offer review tiers to profile rules' { metadata { uid 'tier-rules' } }
 }

@@ -60,7 +60,7 @@ func TestAllowedArgvShapes(t *testing.T) {
 // A search that could rebuild an index as a side effect of a query is the defect
 // this split prevents.
 func TestMaintenanceShapesNeedMaintenanceIntent(t *testing.T) {
-	for _, args := range [][]string{{"update"}, {"embed", "-c", "fixture"}} {
+	for _, args := range [][]string{{"update"}, {"update", "-c", "fixture"}, {"embed", "-c", "fixture"}, {"collection", "add", "/tmp/derived-mirror", "--name", "derived", "--mask", "**/*.md"}} {
 		if err := checkAllowed(args, true); err != nil {
 			t.Errorf("refresh cannot run %v: %v", args, err)
 		}

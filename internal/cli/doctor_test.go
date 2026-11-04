@@ -126,10 +126,12 @@ func TestDoctorPreflightsAdapterDeclaredExecutables(t *testing.T) {
 }
 
 func TestDoctorUsesQmdsCorpusRelativeEffectiveExecutable(t *testing.T) {
+	// This tests executable resolution, not latency. Allow process startup under
+	// the full race suite while the isolated live qmd model proofs are running.
 	const configText = `
 [defaults]
 profile = "work"
-timeout_ms = 2000
+timeout_ms = 10000
 
 [[sources]]
 source_uid = "01UIDQMD"

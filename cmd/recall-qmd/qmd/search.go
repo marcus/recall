@@ -22,6 +22,9 @@ import (
 // actually ABOUT the query, and whether an empty list means "nothing matched" or
 // "the models are not there".
 func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.SearchResponse, error) {
+	if a.hasDerived() {
+		return a.searchDerived(ctx, req)
+	}
 	set, sourceID, location, runner, err := a.session()
 	if err != nil {
 		return adapter.FailedSearch(err), err

@@ -10,6 +10,8 @@ migration guidance.
 
 ### Added
 
+- The qmd adapter can opt into semantic HTML retrieval with `derive_extensions` and `derived_collection`. Refresh builds an incremental Markdown mirror outside the corpus, cleans deleted/excluded files, and updates its embeddings. Queries merge primary and derived hits while preserving original record identities and HTML source-line locators; expansion reads extracted original text. Doctor reports derived health and mirror/exclusion counts, and failed or stale generations report incomplete coverage. See [the qmd guide](docs/qmd-adapter.md). (#10)
+
 - The documents adapter extracts structured HTML from configured `.html` and `.htm` files: visible text, headings, lists, tables, image alt text, and details. Query excerpts and expansion return text with original source-line locators and heading anchors. Robots `noindex` files are excluded and reported by doctor.
 - Documents settings `max_raw_bytes` (16 MiB by default), `exclude_globs`, and ordered `sibling_preference`. HTML `max_file_bytes` measures extracted text, so embedded images do not consume the text allowance. The shared `pkg/document` API supplies extraction, Markdown rendering, and file-selection rules for adapter consumers. See [the documents guide](docs/documents-adapter.md).
 

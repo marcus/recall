@@ -137,6 +137,36 @@ sources = ["docs", "notes-semantic"]
 max_sensitivity = "internal"
 ```
 
+## Semantic HTML through a derived mirror
+
+HTML is opt-in for each qmd source. Configure the documents source with matching extensions and selection rules, and add these settings to its qmd companion:
+
+```toml
+[sources.settings]
+collection = "notes"
+mode = "vector"
+derive_extensions = [".html", ".htm"]
+derived_collection = "notes-html"
+exclude_dirs = [".*", "node_modules"]
+exclude_globs = ["**/mockups/**", "*.template.html"]
+sibling_preference = [".md", ".html", ".htm"]
+exclude_nested_repos = true
+```
+
+Run `recall refresh --source notes-semantic` to build the mirror. Recall creates a missing derived collection only during refresh and refuses an existing collection that points elsewhere. Every health, search, expansion, and refresh operation validates collection paths. No query or handshake creates a collection, rewrites a mirror, updates an index, or embeds files.
+
+The mirror lives at `<recall state dir>/qmd-derived/<source_uid>/<relative original path>.md`, outside the corpus. For example, `guides/storage.html` becomes `guides/storage.html.md`. The source UID comes from the protocol workdir `<state>/adapters/<source_uid>`; standalone protocol clients with another workdir get `<workdir>/qmd-derived`. An overlapping corpus/mirror path or a symlink inside the mirror is refused. Mirror files and the workdir receipt are private, rebuildable state and do not belong in the corpus or version control.
+
+The shared `pkg/document` extractor renders the title, heading hierarchy, lists, and table rows as Markdown. It removes scripts, styles, hidden content and other markup, and honours robots `noindex`. The shared selection rules apply exclusions and ordered sibling preference before extraction; a preferred Markdown sibling prevents an HTML copy from being mirrored. Defaults match the documents adapter: excluded directories `.*` and `node_modules`, nested repositories excluded, no globs or sibling preference, 16 MiB `max_raw_bytes`, and 1 MiB `max_file_bytes` of extracted text. Only `.html` and `.htm` can currently be derived.
+
+Refresh synchronizes mirror content by hash, removes files whose originals disappeared or became excluded, and runs `qmd update -c <derived>` followed by `qmd embed -c <derived>`. The primary collection is also refreshed. Unchanged mirror bytes retain their modification times. A durable receipt is invalidated before maintenance and marked ready only after indexing and embedding finish. A failed or cancelled refresh remains incomplete after a process restart. Qmd 2.5.3 ignores the collection filter on `update` and reindexes all collections in the selected index, including their configured update hooks; `embed` is collection-scoped. Use a project-local qmd index when maintenance must be isolated from other collections.
+
+All four query modes search both collections and interleave their ranked results within the request limit. Derived hits retain the original relative `source_record_id` and configured corpus location, so Recall applies the same fusion identity rules as for Markdown. Mirror line ranges select extracted sections and are translated to original HTML source lines. Expansion re-extracts the original file, and file-opening surfaces receive its original path; neither evidence nor locators cite mirror paths. HTML heading anchors are included in candidate metadata. Qmd normalizes virtual filenames (`b.html.md` becomes `b-html.md`); the adapter maps those handles back to original names and reports collisions as extraction failures.
+
+Health and queries check current source hashes, selection, and mirror hashes against the completed receipt. This adds a read-only corpus scan for an opted-in source. Changed, deleted, excluded, or newly `noindex` HTML is withheld from semantic results until a successful refresh; queries return partial coverage while preserving usable primary results. Expansion can read current extracted original text when embeddings are stale, but refuses files outside the current boundary. Doctor reports `derived_collection`, `derived_health`, `derived_reason` when incomplete, `mirrored_files`, `excluded_files`, `excluded_dirs`, and derived index counts. Qmd exposes index-wide vector counts, so its ordinary count-based embedding coverage limitation still applies.
+
+With `derive_extensions` unset or empty, retrieval, refresh, and the index digest follow the existing single-collection path. With all derived settings unset, protocol transcripts, including the settings schema, remain byte-identical. Opted-in manifests additionally describe the derived settings.
+
 ## Modes
 
 `mode` selects how many of qmd's layers run. It exists so an evaluation can
