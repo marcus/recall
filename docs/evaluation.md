@@ -613,3 +613,25 @@ Delivered alongside the first vertical slice, in this order:
 
 The goal is a trustworthy baseline, not an overnight research loop. The
 holdout, research score, and autonomous loop begin only after step 7.
+
+## Representative environment-local baseline
+
+Use the existing evaluator with a private, frozen pack. Query families are case tags, so `run`, `report`, and `compare` already provide family metrics, population counts, macro averages, and regression checks. `validate` also prints a tag and expected-behavior census (`coverage` in JSON), allowing authors to check representation before retrieval. Tags overlap; their counts need not sum to the case count. Untagged cases remain visible in the census but have no tag-group metric.
+
+Keep the pack, snapshots, judgments, run artifacts, and baseline outside every checkout. Work data stays on the work machine; home data stays on the home machine. Do not copy a real query into a committed fixture, issue, or example. Even `run.json` can contain private tag names and environment metadata; keep the entire output private.
+
+1. In the environment being evaluated, choose an approved private directory and set `pack` and `runs` shell variables to its pack and run subdirectories. Create these with restrictive permissions (`umask 077`). Copy `eval/packs/shapes` to `"$pack"` as a schema/configuration starting point, then replace its synthetic corpus, cases, judgments, manifest identity, and profile with the local snapshot. Remove inherited synthetic assertions and thresholds unless independently justified.
+2. Freeze read-only copies of the permitted source records under the pack's `sources/` directory. Configure `sources/config.toml` to read those copies through `${PACK}` paths, with stable source UIDs and no production index paths, live endpoints, or commands. Network-backed sources require supported protocol replay recordings. This measures snapshot retrieval, not live-source freshness.
+3. Author queries from representative retrieval needs before inspecting their results. Use one domain tag (`work` or `home`) and a query-family tag such as `family:lookup`, `family:decision`, `family:discovery`, `family:temporal`, or `family:no-answer`. Include natural wording, short keywords, exact identifiers, paraphrases, and genuine no-answer cases. Keep related paraphrases in the same development/holdout split. Family coverage is an authoring judgment, not a claim made by the census.
+4. Judge evidence against the frozen corpus independently of the ranked output. Record stable lineage roots, grades, required evidence, forbidden evidence where meaningful, expected behavior, and coverage assertions using the existing case and judgment schemas. Preserve original wording when retrieval fails. Keep a private sampling note describing source selection, omissions, query provenance, and judgment review.
+5. Build the local revision with the repository's normal build target, then use that binary for the commands below. Preserve its revision and dirty-state evidence. Replace `recall` below with the built binary's path if necessary.
+
+```sh
+recall eval validate --pack "$pack" --json
+recall eval run --pack "$pack" --output "$runs/baseline"
+recall eval report "$runs/baseline"
+recall eval run --pack "$pack" --output "$runs/repeat"
+recall eval compare "$runs/baseline" "$runs/repeat" --json
+```
+
+Review gates, per-case misses, every family population, and undefined metrics before accepting the baseline. A failing run is useful diagnostic evidence but is not a passing baseline. Preserve the baseline directory immutably; compare subsequent candidates against it with the same pack content hash. Pack changes require a new baseline. `--cold` declares cache state; it does not flush caches. Do not claim cold-cache measurements without separately establishing that state. No ranking edits are needed to begin this workflow, and synthetic CI packs remain separate populations from representative local evidence.

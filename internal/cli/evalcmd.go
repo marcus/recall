@@ -200,6 +200,7 @@ func evalValidate(env Env, args []string) int {
 		if err := emitJSON(env.Stdout, map[string]any{
 			"pack_id": pack.PackID, "version": pack.Version,
 			"cases": len(cases), "judgments": len(judgments), "content_hash": hash,
+			"coverage": eval.CoverageOf(cases),
 		}); err != nil {
 			fail(env, err)
 			return ExitError
@@ -208,6 +209,7 @@ func evalValidate(env Env, args []string) int {
 	}
 	writeTo(env.Stdout, fmt.Sprintf("%s %s valid — %d cases, %d judgments, content %s\n",
 		pack.PackID, pack.Version, len(cases), len(judgments), hash[:12]))
+	writeTo(env.Stdout, eval.SummarizeCoverage(eval.CoverageOf(cases)))
 	return ExitOK
 }
 
