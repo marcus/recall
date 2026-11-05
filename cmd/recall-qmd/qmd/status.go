@@ -476,10 +476,14 @@ func checkCollectionPath(collection collectionReport, want string) error {
 	if got == canonical(want) {
 		return nil
 	}
-	// Named by base name only. A diagnostic does not need an absolute path, and
-	// this one travels into health reports and committed transcripts.
-	return fmt.Errorf("%w: qmd collection %q indexes %q, but this source is configured at %q; "+
+	// Full paths distinguish mirrors whose only difference is a profile ancestor.
+	return &collectionPathError{fmt.Errorf("%w: qmd collection %q indexes %q, but this source is configured at %q; "+
 		"a search would answer from a corpus this source was not configured for",
 		protocol.ErrSourceUnavailable, sanitizeLine(collection.Name),
-		labelOf(got), labelOf(want))
+		sanitizeLine(got), sanitizeLine(want))}
 }
+
+// Keep both complete paths even when ordinary diagnostics would be clipped.
+type collectionPathError struct{ error }
+
+func (e *collectionPathError) Unwrap() error { return e.error }

@@ -282,8 +282,8 @@ func TestCheckCollectionPathComparesResolvedDirectories(t *testing.T) {
 	if err == nil {
 		t.Fatal("a collection indexing another tree was accepted")
 	}
-	if strings.Contains(err.Error(), "/elsewhere") || strings.Contains(err.Error(), "/store") {
-		t.Errorf("the diagnostic carries an absolute path: %v", err)
+	if !strings.Contains(err.Error(), "/elsewhere/other") || !strings.Contains(err.Error(), "/store/corpus") {
+		t.Errorf("the diagnostic omits full paths: %v", err)
 	}
 	if err := checkCollectionPath(collectionReport{Name: "fixture", Path: "/store/corpus"}, ""); err == nil {
 		t.Fatal("a source with no configured location was accepted")

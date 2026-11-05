@@ -132,6 +132,7 @@ func (r *Registry) handshake(inst *config.SourceInstance) adapter.Config {
 		ProtocolVersionMin: protocol.MinVersion,
 		ProtocolVersionMax: protocol.MaxVersion,
 		Workdir:            r.Workdir(inst),
+		SharedWorkdir:      r.cfg.Paths.SharedSourceDir(string(inst.UID)),
 		SourceID:           inst.ID,
 		Location:           inst.Location,
 		BaseDir:            inst.BaseDir,

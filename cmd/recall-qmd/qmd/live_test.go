@@ -424,7 +424,8 @@ func TestLiveDerivedHTMLParaphrase(t *testing.T) {
 	base := t.TempDir()
 	a := qmd.New(qmd.Options{})
 	defer a.Close()
-	_, err := a.Initialize(t.Context(), adapter.Config{ProtocolVersionMin: 1, ProtocolVersionMax: 1, SourceID: "semantic", Location: root, Workdir: filepath.Join(base, "adapters", "html-proof"), Settings: map[string]any{"collection": "fixture", "mode": "vector", "derive_extensions": []string{".html"}, "derived_collection": "html-proof", "timeout_ms": 120000}})
+	cfg := adapter.Config{ProtocolVersionMin: 1, ProtocolVersionMax: 1, SourceID: "semantic", Location: root, Workdir: filepath.Join(base, "work", "adapters", "html-proof"), SharedWorkdir: filepath.Join(base, "sources", "html-proof"), Settings: map[string]any{"collection": "fixture", "mode": "vector", "derive_extensions": []string{".html"}, "derived_collection": "html-proof", "timeout_ms": 120000}}
+	_, err := a.Initialize(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,6 +459,27 @@ func TestLiveDerivedHTMLParaphrase(t *testing.T) {
 	expanded, err := a.Expand(ctx, recall.ExpandRequest{Locator: found.Locator, Detail: recall.DetailFull})
 	if err != nil || !strings.Contains(expanded.Content, "underground cistern") || strings.Contains(expanded.Content, "<") {
 		t.Fatalf("real expansion = %+v %v", expanded, err)
+	}
+	// A second profile uses the same registered collection and shared receipt.
+	b := qmd.New(qmd.Options{})
+	defer b.Close()
+	cfg.Workdir = filepath.Join(base, "docs", "adapters", "html-proof")
+	if _, err := b.Initialize(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if h, err := b.Refresh(ctx, protocol.RefreshParams{}); err != nil || h.Status != recall.HealthHealthy {
+		t.Fatalf("real second-profile refresh: %+v %v", h, err)
+	}
+	second, err := b.Search(ctx, recall.SearchRequest{Query: query, Limit: 10})
+	if err != nil || second.Outcome != recall.SearchSuccess {
+		t.Fatalf("real second-profile query: %+v %v", second, err)
+	}
+	matched := false
+	for _, c := range second.Candidates {
+		matched = matched || c.SourceRecordID == "b.html"
+	}
+	if !matched {
+		t.Fatalf("second profile missed shared HTML: %+v", second)
 	}
 	t.Logf("real qmd paraphrase %q -> %s, cosine %.4f", query, found.Locator, *found.Relevance)
 }

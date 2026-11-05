@@ -25,6 +25,11 @@
       "type": "string",
       "minLength": 1
     },
+    "shared_workdir": {
+      "description": "Optional writable source-owned state directory shared across profiles, keyed by immutable source identity. Unset retains the adapter legacy layout.",
+      "type": "string",
+      "minLength": 1
+    },
     "source_id": {
       "description": "Display name this instance is configured under. Locator text is <source_id>:<local>. Not identity; the core overwrites the source part of every returned locator.",
       "type": "string",

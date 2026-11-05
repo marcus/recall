@@ -108,7 +108,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	}
 	var derived *derivedPaths
 	if len(set.DeriveExtensions) > 0 {
-		derived, err = newDerivedPaths(cfg.Workdir, location)
+		derived, err = newDerivedPaths(cfg.Workdir, cfg.SharedWorkdir, location)
 		if err != nil {
 			return recall.Manifest{}, err
 		}
@@ -316,7 +316,12 @@ func (a *Adapter) spawn(ctx context.Context, maintenance bool, args ...string) (
 // complete.
 func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 	if a.hasDerived() {
-		return a.healthDerived(ctx)
+		locked, release, err := a.lockDerived(ctx, false)
+		if err != nil {
+			return recall.Health{}, err
+		}
+		defer release()
+		return a.healthDerived(locked)
 	}
 	set, _, location, runner, err := a.session()
 	if err != nil {
@@ -591,13 +596,14 @@ func (a *Adapter) refreshSteps(set Settings) []refreshStep {
 const warmQuery = "recall adapter model warm up"
 
 // safeErr renders an error for a diagnostic a person reads: one line, scrubbed,
-// bounded, and with no absolute path in it.
+// bounded except for collection mismatches, which must show both full paths.
 func safeErr(err error) string {
 	if err == nil {
 		return ""
 	}
 	msg := sanitizeLine(err.Error())
-	if len(msg) > safeDetailLimit {
+	var mismatch *collectionPathError
+	if !errors.As(err, &mismatch) && len(msg) > safeDetailLimit {
 		return msg[:cutRunes(msg, safeDetailLimit)] + "…"
 	}
 	return msg

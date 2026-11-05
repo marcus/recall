@@ -190,7 +190,7 @@ func (m *Message) Validate() error {
 // of the handshake: an adapter that cannot land inside it fails explicitly.
 //
 // Workdir is a writable directory under Recall's state directory. An adapter
-// writes indexes and checkpoints only there.
+// writes indexes and checkpoints there or in the optional SharedWorkdir.
 type InitializeParams struct {
 	// ProtocolVersionMin is the oldest protocol version the caller accepts.
 	ProtocolVersionMin int `json:"protocol_version_min"`
@@ -199,6 +199,11 @@ type InitializeParams struct {
 
 	// Workdir is the adapter's writable state directory.
 	Workdir string `json:"workdir"`
+
+	// SharedWorkdir is optional source-owned state shared by all profiles.
+	// It is keyed by immutable source identity by the core, never inferred from
+	// Workdir. Older clients omit it; adapters then keep their legacy layout.
+	SharedWorkdir string `json:"shared_workdir,omitempty"`
 
 	// SourceID is the display name this instance was configured under. An
 	// adapter needs it because locator text is "<source_id>:<local>" and it

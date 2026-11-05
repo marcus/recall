@@ -155,17 +155,43 @@ exclude_nested_repos = true
 
 Run `recall refresh --source notes-semantic` to build the mirror. Recall creates a missing derived collection only during refresh and refuses an existing collection that points elsewhere. Every health, search, expansion, and refresh operation validates collection paths. No query or handshake creates a collection, rewrites a mirror, updates an index, or embeds files.
 
-The mirror lives at `<recall state dir>/qmd-derived/<source_uid>/<relative original path>.md`, outside the corpus. For example, `guides/storage.html` becomes `guides/storage.html.md`. The source UID comes from the protocol workdir `<state>/adapters/<source_uid>`; standalone protocol clients with another workdir get `<workdir>/qmd-derived`. An overlapping corpus/mirror path or a symlink inside the mirror is refused. Mirror files and the workdir receipt are private, rebuildable state and do not belong in the corpus or version control.
+The mirror lives at `$XDG_STATE_HOME/recall/sources/<source_uid>/qmd-derived/<relative original path>.md`, outside the corpus (the XDG state default is `~/.local/state`). For example, `guides/storage.html` becomes `guides/storage.html.md`. The receipt `qmd-derived.json` and stable lock file `qmd-derived.json.lock` live beside the mirror in the same source directory. All profiles containing that source share these artifacts and one derived qmd collection; ordinary adapter workdirs remain profile-owned. The core passes the source directory explicitly as protocol `shared_workdir`, keyed by immutable source UID rather than display name or profile. Standalone clients that omit it retain the v0.7.0 layout: `<state>/qmd-derived/<source_uid>` for a workdir shaped as `<state>/adapters/<source_uid>`, otherwise `<workdir>/qmd-derived`, with the receipt in the workdir. An overlapping corpus/mirror path or a symlink inside the mirror is refused. These private, rebuildable artifacts do not belong in the corpus or version control.
 
 The shared `pkg/document` extractor renders the title, heading hierarchy, lists, and table rows as Markdown. It removes scripts, styles, hidden content and other markup, and honours robots `noindex`. The shared selection rules apply exclusions and ordered sibling preference before extraction; a preferred Markdown sibling prevents an HTML copy from being mirrored. Defaults match the documents adapter: excluded directories `.*` and `node_modules`, nested repositories excluded, no globs or sibling preference, 16 MiB `max_raw_bytes`, and 1 MiB `max_file_bytes` of extracted text. Only `.html` and `.htm` can currently be derived.
 
 Refresh synchronizes mirror content by hash, removes files whose originals disappeared or became excluded, and runs `qmd update -c <derived>` followed by `qmd embed -c <derived>`. The primary collection is also refreshed. Unchanged mirror bytes retain their modification times. A durable receipt is invalidated before maintenance and marked ready only after indexing and embedding finish. A failed or cancelled refresh remains incomplete after a process restart. Qmd 2.5.3 ignores the collection filter on `update` and reindexes all collections in the selected index, including their configured update hooks; `embed` is collection-scoped. Use a project-local qmd index when maintenance must be isolated from other collections.
+
+Refresh holds an exclusive OS file lock from collection verification through receipt publication and the final health probe. Health, search, and expansion take shared locks through result validation and mapping. Competing profiles and processes using the same shared state wait within their caller deadline; cancellation while waiting leaves the receipt unchanged. Lock files are never removed or replaced. Process exit releases ownership; a running qmd invocation inherits the lock descriptor, so killing only its adapter does not admit another refresh before that invocation exits. A failed or cancelled refresh keeps the shared receipt incomplete, and a later refresh from either profile repairs it. Use a local filesystem supporting advisory file locks. These locks coordinate Recall operations for one source UID and shared state root; they do not coordinate old binaries using profile-owned state, different UIDs/state roots, manual qmd commands, or other collections. Corpus edits are outside the lock and remain subject to the before/after hash checks. Qmd can update other collections in the same index, so this is not an index-wide transaction.
 
 All four query modes search both collections and interleave their ranked results within the request limit. Derived hits retain the original relative `source_record_id` and configured corpus location, so Recall applies the same fusion identity rules as for Markdown. Mirror line ranges select extracted sections and are translated to original HTML source lines. Expansion re-extracts the original file, and file-opening surfaces receive its original path; neither evidence nor locators cite mirror paths. HTML heading anchors are included in candidate metadata. Qmd normalizes virtual filenames (`b.html.md` becomes `b-html.md`); the adapter maps those handles back to original names and reports collisions as extraction failures.
 
 Health and queries check current source hashes, selection, and mirror hashes against the completed receipt. This adds a read-only corpus scan for an opted-in source. Changed, deleted, excluded, or newly `noindex` HTML is withheld from semantic results until a successful refresh; queries return partial coverage while preserving usable primary results. Expansion can read current extracted original text when embeddings are stale, but refuses files outside the current boundary. Doctor reports `derived_collection`, `derived_health`, `derived_reason` when incomplete, `mirrored_files`, `excluded_files`, `excluded_dirs`, and derived index counts. Qmd exposes index-wide vector counts, so its ordinary count-based embedding coverage limitation still applies.
 
 With `derive_extensions` unset or empty, retrieval, refresh, and the index digest follow the existing single-collection path. With all derived settings unset, protocol transcripts, including the settings schema, remain byte-identical. Opted-in manifests additionally describe the derived settings.
+
+## Upgrading from v0.7.0
+
+An existing derived collection may still point at a profile-owned mirror. Recall refuses that path with both full paths and a recovery hint. A v0.7.0 receipt has corpus and settings hashes but no source ownership identity; a similar directory name is not enough proof to repoint a collection safely. Upgrade every Recall/recall-qmd process using this source before recovery, and let any old refresh finish or stop it.
+
+The safe recovery is to choose an unused collection name in the trusted user configuration, keeping `source_uid`, `source_id`, `location`, and the primary `collection` unchanged:
+
+```toml
+[sources.settings]
+collection = "notes"
+mode = "vector"
+derive_extensions = [".html", ".htm"]
+derived_collection = "notes-html-shared"
+```
+
+Check the proposed name with `qmd collection show notes-html-shared` from the corpus directory; proceed only when it reports that exact collection missing. Then run:
+
+```sh
+recall refresh --profile work --source notes-semantic
+recall query "rainwater storage" --profile work
+recall query "rainwater storage" --profile docs
+```
+
+Both profiles now use the one shared mirror, receipt, and new collection. If the chosen name already indexes another path, choose another unused name; Recall will refuse it and will not repoint it. Recovery rebuilds the mirror and embeddings rather than trusting or copying an old receipt. Old collections and profile artifacts are left untouched for operator inspection. They are unused by upgraded clients; remove them only after independently verifying ownership and that no old client still needs them. Deleting only the old Recall mirror or receipt does not repair qmd's registered path.
 
 ## Modes
 
@@ -297,11 +323,8 @@ reading it as "no results" would turn a 2GB download into a successful empty
 search. Paying for the warm-up in a refresh means a query never does.
 
 The index is qmd's, not Recall's. The handshake hands every adapter a writable
-workdir and the contract says an adapter's indexes live there; this one writes
-nothing at all, and the store a refresh advances is qmd's own — `~/.cache/qmd` or
-a project-local `<corpus>/.qmd`. Deleting Recall's state directory therefore
-changes nothing about a qmd source, which is the property that rule protects, but
-Recall also cannot bound where qmd keeps its index.
+workdir; without derived HTML this adapter writes no projection there, and the store a refresh advances is qmd's own — `~/.cache/qmd` or
+a project-local `<corpus>/.qmd`. For opted-in HTML, deleting Recall's shared state requires a refresh to rebuild the mirror and receipt before derived results can serve again. Recall cannot bound where qmd keeps its own index.
 
 Refresh is the only operation that mutates anything. The adapter's argv allowlist
 admits whole invocation shapes rather than subcommands, so `qmd cleanup`, `qmd
@@ -316,7 +339,7 @@ index as a side effect.
 | `qmd` missing or not executable | `unavailable`, reason `unreachable` |
 | non-zero exit | `unavailable`, with the first scrubbed line of output |
 | stdout that is not a JSON array | `failed` — broken contract |
-| collection indexes another directory | `unavailable`, both directories named by base name |
+| collection indexes another directory | `unavailable`, both full paths named |
 | collection absent from the index | `unavailable` |
 | embedding mode over an index with no vectors | `unavailable` |
 | request deadline or `timeout_ms` exceeded | `timeout` |
@@ -336,7 +359,35 @@ success.
 | `mode` | `hybrid` | `bm25` \| `vector` \| `hybrid` \| `full` |
 | `max_candidates` | `25` | Candidate cap before Recall fusion; a request limit below it wins |
 | `timeout_ms` | `45000` | Maximum duration of one qmd invocation |
-| `refresh_timeout_ms` | `900000` | Maximum duration of one refresh, including the model download |
+| `refresh_timeout_ms` | `900000` | Fallback total refresh ceiling when a protocol client supplies no explicit refresh deadline |
+
+### Effective refresh timeout
+
+The source-level `[[sources]].timeout_ms` bounds the entire Recall refresh for that source: initialization, lock waiting, extraction, qmd maintenance, and the final probe. Recall sends that deadline to the adapter. An explicit protocol refresh deadline takes precedence over `settings.refresh_timeout_ms`; raising only that setting does not extend a CLI refresh. Each qmd subprocess is also bounded by `settings.timeout_ms` (45 seconds by default), or the remaining caller deadline, whichever is sooner. When a standalone protocol client omits a refresh deadline, `settings.refresh_timeout_ms` supplies the total ceiling, still bounded by the parent context and per-invocation timeout.
+
+For a cold refresh that takes about 71 seconds, allow sufficient time at both levels. For example, in a complete source entry:
+
+```toml
+[[sources]]
+source_uid = "01EXAMPLEQMD0000"
+source_id = "notes-semantic"
+adapter = "qmd"
+location = "/Users/you/notes"
+location_kind = "path"
+freshness_mode = "indexed"
+sensitivity = "internal"
+timeout_ms = 180000 # total source refresh, including waiting and startup
+
+[sources.settings]
+collection = "notes"
+mode = "vector"
+derive_extensions = [".html"]
+derived_collection = "notes-html-shared"
+timeout_ms = 120000 # each qmd invocation, inside the 180-second total
+refresh_timeout_ms = 900000 # only the no-deadline protocol fallback
+```
+
+Run `recall refresh --profile work --source notes-semantic`. This allows at most 180 seconds overall, with each invocation capped at 120 seconds or the remaining total. A 60-second source timeout still stops a 71-second refresh even with a 15-minute `refresh_timeout_ms`. Query budgets remain separate; increasing the source ceiling does not extend a query's end-to-end latency budget.
 
 `replay` names a directory of recorded qmd output and exists for the conformance
 suite and for committed evaluation packs; it should not be set on a live source.

@@ -51,7 +51,7 @@ Rules:
   tolerate concurrent in-flight requests or declare `max_concurrency: 1` in its
   manifest.
 - `recall/initialize` supplies a writable `workdir` under Recall's state
-  directory. An adapter writes indexes and checkpoints only there.
+  directory. Optional `shared_workdir` supplies a source-owned directory shared across profiles, keyed by immutable source UID. Adapters may store shared projections and checkpoints there; unset retains the legacy workdir behavior. The core supplies both paths explicitly, and adapters must not infer shared state from profile directory names.
 - `recall/initialize` supplies the already-resolved `location`. A source may
   declare `location_kind = "path" | "opaque" | "uri"`; that discriminator is
   authoritative, so slash-bearing mailbox/device identifiers reach the adapter

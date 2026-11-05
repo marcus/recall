@@ -82,6 +82,12 @@ func (p Paths) StateDir(profile string) string {
 	return filepath.Join(p.StateHome, "recall", profile)
 }
 
+// SharedSourceDir is profile-independent rebuildable state for one source.
+// Profile workdirs remain separate; the core supplies this identity explicitly.
+func (p Paths) SharedSourceDir(uid string) string {
+	return filepath.Join(p.StateHome, "recall", "sources", uid)
+}
+
 // CacheDir is where a profile's expansion and health caches live.
 func (p Paths) CacheDir(profile string) string {
 	return filepath.Join(p.CacheHome, "recall", profile)

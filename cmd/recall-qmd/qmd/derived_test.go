@@ -523,3 +523,39 @@ func TestDerivedSettingsValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDerivedInvalidatesReceiptBeforeCollectionCreation(t *testing.T) {
+	a, engine, cfg := derivedFixture(t, "vector")
+	refreshMirror(t, a)
+	// A previously successful collection was removed externally. Re-creating
+	// it may itself index the mirror, so its old ready receipt must be revoked.
+	engine.exists = false
+	previous := engine.runner.fallback
+	sawAdd := false
+	engine.runner.fallback = func(args []string) (qmd.Result, error) {
+		if len(args) > 1 && args[0] == "collection" && args[1] == "add" {
+			sawAdd = true
+			raw, err := os.ReadFile(filepath.Join(cfg.Workdir, "qmd-derived.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var r struct {
+				Ready bool `json:"ready"`
+			}
+			if err := json.Unmarshal(raw, &r); err != nil {
+				t.Fatal(err)
+			}
+			if r.Ready {
+				t.Fatal("collection creation started with an old ready receipt")
+			}
+			return qmd.Result{ExitCode: 1, Stderr: []byte("collection creation interrupted")}, nil
+		}
+		return previous(args)
+	}
+	if h := refreshMirror(t, a); h.Status == recall.HealthHealthy || !sawAdd {
+		t.Fatalf("failed collection recreation: %+v, add=%v", h, sawAdd)
+	}
+	if r, err := searchOnce(t, a, "below ground precipitation"); len(r.Candidates) > 0 {
+		t.Fatalf("incomplete recreated collection served: %+v %v", r, err)
+	}
+}

@@ -502,9 +502,7 @@ source stored it. Sanitize at the edge of your own process:
 Write those character classes as escapes in your source. A file that spells them
 out carries an invisible bidi override and breaks the next tool that reads it.
 
-For diagnostics: a denied source must not leak record existence, and no
-diagnostic needs an absolute path. Name files by base name. Hash anything that
-is a path by nature. A base name is still source-controlled text: pass it
+For diagnostics, a denied source must not leak record existence. Prefer base names for files and opaque hashes for store identities. A collection-path mismatch needs both full configured and actual paths so operators can distinguish ancestors; sanitize those paths and redact them in committed transcripts. A base name is still source-controlled text: pass it
 through the same single-line control stripping as titles before putting it in
 health, an error, or stderr.
 
@@ -654,9 +652,7 @@ tree has an example: `internal/adapters/td/conformance/handshake/response.jsonl`
 carries `workspace_root` and `workspace_location` as absolute paths, declared
 volatile. It replays correctly and it should not have been committed that way.
 
-Two habits avoid it. Name files by base name in every diagnostic. And hash any
-value that is a path by nature, including `store_identity` — the checks that
-consume these compare for equality and never read them.
+Keep ordinary diagnostic filenames to base names and hash path-valued identities such as `store_identity`, which consumers compare for equality. When an operational diagnostic requires full paths, such as a collection mismatch, redact the recorded value itself as well as declaring it volatile.
 
 ### One workdir per case, per run
 

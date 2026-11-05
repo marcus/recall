@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -94,6 +95,11 @@ func (r ExecRunner) Run(ctx context.Context, args ...string) (Result, error) {
 	}
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, r.Binary, args...) //nolint:gosec // binary is explicit user configuration; argv passed checkAllowed
+	// Keep a source lock alive if the adapter crashes while qmd is running.
+	// Close (rather than LOCK_UN) in the parent preserves inherited ownership.
+	if file, ok := ctx.Value(derivedLockKey{}).(*os.File); ok {
+		cmd.ExtraFiles = []*os.File{file}
+	}
 	cmd.Env = r.Env
 	cmd.Dir = r.Dir
 	// Never inherited: qmd prompts for nothing, and a child holding the

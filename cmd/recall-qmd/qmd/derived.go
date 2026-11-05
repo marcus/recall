@@ -3,6 +3,7 @@ package qmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -28,6 +29,8 @@ func (a *Adapter) collectionView(derived bool) (*Adapter, error) {
 	set.DeriveExtensions = nil
 	return &Adapter{opts: Options{Clock: a.now}, ready: true, sourceID: id, location: location, runner: runner, settings: set}, nil
 }
+
+var errDerivedMissing = fmt.Errorf("%w: derived collection missing; run recall refresh", protocol.ErrSourceUnavailable)
 
 // Missing is distinguished from malformed, denied, or unreachable. qmd 2.5.3
 // exits 1 for a missing collection; some recordings use exit 0. Only the exact
@@ -58,10 +61,13 @@ func (a *Adapter) ensureDerived(ctx context.Context, create bool) error {
 		if err != nil {
 			return err
 		}
-		return checkCollectionPath(report, view.location)
+		if err := checkCollectionPath(report, view.location); err != nil {
+			return fmt.Errorf("%w; if upgrading a v0.7.0 profile-owned mirror, choose an unused derived_collection name and run recall refresh --source <source_id>; see docs/qmd-adapter.md#upgrading-from-v070", err)
+		}
+		return nil
 	}
 	if !create {
-		return fmt.Errorf("%w: derived collection missing; run recall refresh", protocol.ErrSourceUnavailable)
+		return errDerivedMissing
 	}
 	if err = os.MkdirAll(view.location, 0o700); err != nil {
 		return err
@@ -175,13 +181,24 @@ func (a *Adapter) refreshDerived(ctx context.Context, p protocol.RefreshParams) 
 	if ctx.Err() != nil {
 		return recall.Health{}, ctx.Err()
 	}
+	ctx, release, err := a.lockDerived(ctx, true)
+	if err != nil {
+		if ctx.Err() == nil {
+			return a.unhealthy(err), nil
+		}
+		return recall.Health{}, err
+	}
+	defer release()
 	primary, err := a.collectionView(false)
 	if err != nil {
 		return recall.Health{}, err
 	}
 	// Refuse a wrong path before any artifact or index mutation.
 	if _, err = primary.verifyCollection(ctx, root); err == nil {
-		err = a.ensureDerived(ctx, true)
+		err = a.ensureDerived(ctx, false)
+		if errors.Is(err, errDerivedMissing) {
+			err = nil // absence permits creation only after durable invalidation
+		}
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -197,7 +214,13 @@ func (a *Adapter) refreshDerived(ctx context.Context, p protocol.RefreshParams) 
 	if err = a.saveReceipt(r); err != nil {
 		return a.unhealthy(err), nil
 	}
-	scan, err := a.scanMirror(ctx)
+	// Collection add can itself index files, so it belongs after invalidation.
+	// Recheck its path under the same lock immediately before maintenance.
+	err = a.ensureDerived(ctx, true)
+	var scan mirrorScan
+	if err == nil {
+		scan, err = a.scanMirror(ctx)
+	}
 	if err == nil {
 		err = a.syncMirror(ctx, scan)
 		r.Entries = scan.Entries
@@ -263,6 +286,11 @@ func (a *Adapter) searchDerived(ctx context.Context, req recall.SearchRequest) (
 		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
 		defer cancel()
 	}
+	ctx, release, err := a.lockDerived(ctx, false)
+	if err != nil {
+		return adapter.FailedSearch(err), err
+	}
+	defer release()
 	primary, err := a.collectionView(false)
 	if err != nil {
 		return adapter.FailedSearch(err), err
@@ -464,6 +492,11 @@ func (a *Adapter) expandDerived(ctx context.Context, req recall.ExpandRequest) (
 		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
 		defer cancel()
 	}
+	ctx, release, err := a.lockDerived(ctx, false)
+	if err != nil {
+		return recall.ExpandResponse{}, err
+	}
+	defer release()
 	ref, err := parseLocal(req.Locator.Local)
 	if err != nil {
 		return recall.ExpandResponse{}, err

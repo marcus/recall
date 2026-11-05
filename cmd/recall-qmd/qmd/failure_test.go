@@ -155,9 +155,9 @@ func TestCollectionMismatchRefusesEverything(t *testing.T) {
 	if !strings.Contains(err.Error(), "indexes") {
 		t.Fatalf("the reason does not name the mismatch: %v", err)
 	}
-	// No absolute path in the diagnostic: base names only.
-	if strings.Contains(err.Error(), root) || strings.Contains(err.Error(), elsewhere) {
-		t.Fatalf("a diagnostic carries an absolute path: %v", err)
+	// Both full paths are required to diagnose profile-only differences.
+	if !strings.Contains(err.Error(), root) || !strings.Contains(err.Error(), elsewhere) {
+		t.Fatalf("a diagnostic omits a path: %v", err)
 	}
 
 	if _, err := a.Expand(context.Background(), recall.ExpandRequest{

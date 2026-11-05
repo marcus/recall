@@ -28,6 +28,7 @@ func TestXDGPathsHonorTheEnvironment(t *testing.T) {
 		{"config file", p.ConfigFile(), filepath.Join(root, "cfg", "recall", "config.toml")},
 		{"adapters dir", p.AdaptersDir(), filepath.Join(root, "cfg", "recall", "adapters.d")},
 		{"state dir", p.StateDir("work"), filepath.Join(root, "state", "recall", "work")},
+		{"shared source dir", p.SharedSourceDir("uid"), filepath.Join(root, "state", "recall", "sources", "uid")},
 		{"cache dir", p.CacheDir("work"), filepath.Join(root, "cache", "recall", "work")},
 	}
 	for _, tt := range tests {

@@ -17,21 +17,24 @@ import (
 	"github.com/marcus/recall/pkg/protocol"
 )
 
-// The protocol workdir is <state>/adapters/<source_uid>. No display name or
-// corpus path participates in mirror identity. Standalone protocol clients may
-// supply another workdir; their mirror stays within that explicit directory.
+// The core supplies SharedWorkdir keyed by immutable source identity. Legacy
+// protocol clients retain their old layout when that optional field is absent.
 type derivedPaths struct{ Mirror, Receipt string }
 
-func newDerivedPaths(workdir, corpus string) (*derivedPaths, error) {
-	if workdir == "" {
+func newDerivedPaths(workdir, sharedWorkdir, corpus string) (*derivedPaths, error) {
+	if workdir == "" && sharedWorkdir == "" {
 		return nil, protocol.Errorf(protocol.CodeInvalidParams, "qmd: derive_extensions requires a workdir")
 	}
-	dir, err := filepath.Abs(workdir)
+	stateDir := workdir
+	if sharedWorkdir != "" {
+		stateDir = sharedWorkdir
+	}
+	dir, err := filepath.Abs(stateDir)
 	if err != nil {
 		return nil, err
 	}
 	mirror := filepath.Join(dir, "qmd-derived")
-	if filepath.Base(filepath.Dir(dir)) == "adapters" {
+	if sharedWorkdir == "" && filepath.Base(filepath.Dir(dir)) == "adapters" {
 		mirror = filepath.Join(filepath.Dir(filepath.Dir(dir)), "qmd-derived", filepath.Base(dir))
 	}
 	if within(canonical(corpus), canonicalFuture(mirror)) || within(canonicalFuture(mirror), canonical(corpus)) {
