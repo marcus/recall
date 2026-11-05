@@ -18,6 +18,10 @@ import (
 
 const DefaultMaxRawBytes int64 = 16 << 20
 
+// HTMLExtractionVersion identifies persisted text produced by ExtractHTML.
+// Consumers must invalidate cached extraction when this version changes.
+const HTMLExtractionVersion = 2
+
 var ErrNoIndex = errors.New("robots noindex")
 
 // Chunk is one heading-bounded section. Source lines are 1-based, inclusive;
@@ -147,11 +151,8 @@ func ExtractHTML(data []byte, filename string, maxRawBytes, maxFileBytes int64) 
 	// robots applies to the document, including when the head has no visible text.
 	var metadata func(*html.Node)
 	metadata = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "template", "script", "style", "svg", "math", "noscript", "iframe":
-				return
-			}
+		if excluded(n) {
+			return
 		}
 		if n.Type == html.ElementNode {
 			if n.Data == "title" && title == "" {
@@ -332,7 +333,7 @@ func excluded(n *html.Node) bool {
 		return true
 	}
 	for _, a := range n.Attr {
-		if a.Key == "hidden" || a.Key == "aria-hidden" && strings.EqualFold(strings.TrimSpace(a.Val), "true") {
+		if a.Key == "data-noindex" || a.Key == "hidden" || a.Key == "aria-hidden" && strings.EqualFold(strings.TrimSpace(a.Val), "true") {
 			return true
 		}
 		if a.Key == "style" {

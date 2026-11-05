@@ -371,7 +371,7 @@ func TestOldDocumentIndexFormatRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = []byte(strings.Replace(string(data), `"format":4`, `"format":3`, 1))
+	data = []byte(strings.Replace(string(data), `"format":5`, `"format":4`, 1))
 	if err := os.WriteFile(file, data, 0o600); err != nil {
 		t.Fatal(err)
 	}

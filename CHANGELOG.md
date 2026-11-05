@@ -10,6 +10,7 @@ migration guidance.
 
 ### Fixed
 
+- HTML elements carrying `data-noindex` exclude their entire parsed subtree from lexical retrieval and derived qmd mirrors, regardless of the attribute value. Excluded content cannot donate headings, terms, alt text, title metadata, or robots directives. Outside text retains its source-line positions. Documents index format 5 rebuilds old generations automatically; derived qmd receipts require explicit refresh after the extraction upgrade. (#12)
 - Qmd HTML mirrors and refresh receipts are keyed by source UID in profile-independent state. Profiles sharing a source now refresh and query one derived collection, with cross-process reader/writer locking, deadline-aware waiting, and incomplete receipts after failed or interrupted maintenance. The optional `shared_workdir` protocol field preserves the legacy layout when unset. (#11)
 - Qmd collection path refusals show both full paths, including long paths. The qmd guide documents safe recovery from v0.7.0 profile-owned collections using an unused derived collection name, and the actual source and per-invocation refresh timeout ceilings. Existing collections are never automatically repointed. (#11)
 

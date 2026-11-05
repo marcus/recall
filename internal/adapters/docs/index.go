@@ -32,8 +32,9 @@ import (
 // either the previous generation or the new one, never a half-written index —
 // which is why an interrupted build costs freshness and nothing else.
 const (
-	// Format 4 adds structured HTML, source anchors and explicit exclusions.
-	indexFormat  = 4
+	// Format 5 rebuilds HTML text and metadata with subtree opt-outs, even when
+	// source bytes have not changed since a format-4 generation was published.
+	indexFormat  = 5
 	indexFile    = "index.jsonl"
 	currentFile  = "current"
 	genPrefix    = "gen-"

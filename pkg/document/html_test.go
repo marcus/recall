@@ -112,3 +112,63 @@ func TestHTMLBlockDetailsAndSourceOffsets(t *testing.T) {
 		}
 	}
 }
+
+func TestHTMLDataNoIndexSubtrees(t *testing.T) {
+	raw, err := os.ReadFile("testdata/noindex.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := document.ExtractHTML(raw, "proposal.html", 0, 10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := document.HTML{Title: "Proposal", SourceLines: 19, Chunks: []document.Chunk{
+		{Heading: "# Design", HeadingPath: []string{"Design"}, Level: 1, Anchor: "proposal", StartLine: 3, EndLine: 11, Body: []string{"Outside orchard."}},
+		{Heading: "## Decision ready", HeadingPath: []string{"Design", "Decision ready"}, Level: 2, Anchor: "decision", StartLine: 12, EndLine: 19, Body: []string{"Outside evidence.", "", "- Keep apples", "", "Crop | Yield", "Pears | Plenty", "", "Visible blossom"}},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("extraction:\n%#v\nchunks: %#v\ntext: %s", got, got.Chunks, got.Markdown())
+	}
+}
+
+func TestHTMLDataNoIndexPresenceAndMetadata(t *testing.T) {
+	for _, marker := range []string{"data-noindex", `data-noindex=""`, `data-noindex="false"`, `DATA-NOINDEX="true"`, `data-noindex="anything"`} {
+		t.Run(marker, func(t *testing.T) {
+			for _, raw := range []string{
+				"<head " + marker + "><title>mocktitle</title><meta name=robots content=noindex></head><body><h1>Outside</h1></body>",
+				"<head><title " + marker + ">mocktitle</title><meta " + marker + " name=robots content=noindex></head><h1>Outside</h1>",
+				"<div " + marker + "><title>mocktitle</title><meta name=robots content=noindex><h1>mockheading</h1></div><h1>Outside</h1>",
+				"<h1 " + marker + ">mockheading</h1><h1>Outside</h1>",
+			} {
+				got, err := document.ExtractHTML([]byte(raw), "x.html", 0, 10000)
+				if err != nil || got.Title != "Outside" || strings.Contains(got.Markdown(), "mock") || len(got.Chunks) != 1 {
+					t.Fatalf("%s: %#v, %v", raw, got, err)
+				}
+			}
+			got, err := document.ExtractHTML([]byte("<h1 "+marker+">mockheading</h1><p>Outside</p>"), "fallback.html", 0, 10000)
+			if err != nil || got.Title != "fallback.html" || strings.Contains(got.Markdown(), "mock") || got.Chunks[0].Heading != "" {
+				t.Fatalf("filename fallback: %#v, %v", got, err)
+			}
+			// A marker is local; an unmarked robots directive still excludes the file.
+			_, err = document.ExtractHTML([]byte("<div "+marker+">mock</div><meta name=robots content=noindex><p>Outside</p>"), "x.html", 0, 10000)
+			if !errors.Is(err, document.ErrNoIndex) {
+				t.Fatalf("unmarked robots: %v", err)
+			}
+		})
+	}
+}
+
+func TestHTMLDataNoIndexUsesParsedTree(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		// The heading implicitly closes p, so it is outside the marked subtree.
+		{`<p data-noindex>mockbody<h1>Outside</h1><p>Evidence</p>`, "# Outside\n\n# Outside\nEvidence\n"},
+		// Invalid table text is foster-parented outside the marked table.
+		{`<h1>Outside</h1><table data-noindex>Outside text<tr><td>mockcell</td></tr></table>`, "# Outside\n\n# Outside\nOutside text\n"},
+		{`<h1>Outside</h1><ul><li data-noindex>mockitem<li>Visible</ul>`, "# Outside\n\n# Outside\n- Visible\n"},
+	} {
+		got, err := document.ExtractHTML([]byte(tc.raw), "x.html", 0, 10000)
+		if err != nil || got.Markdown() != tc.want {
+			t.Fatalf("%s: %q, %v", tc.raw, got.Markdown(), err)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package qmd_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/marcus/recall/internal/lineage"
 	"github.com/marcus/recall/internal/ranking"
 	"github.com/marcus/recall/pkg/adapter"
+	"github.com/marcus/recall/pkg/document"
 	"github.com/marcus/recall/pkg/protocol"
 	"github.com/marcus/recall/pkg/recall"
 )
@@ -558,4 +560,117 @@ func TestDerivedInvalidatesReceiptBeforeCollectionCreation(t *testing.T) {
 	if r, err := searchOnce(t, a, "below ground precipitation"); len(r.Candidates) > 0 {
 		t.Fatalf("incomplete recreated collection served: %+v %v", r, err)
 	}
+}
+
+func TestSharedDerivedDataNoIndexRefresh(t *testing.T) {
+	initial, _, cfg := derivedFixture(t, "vector")
+	initial.Close()
+	cfg.SharedWorkdir = filepath.Join(t.TempDir(), "sources", "uid")
+	e := newMirrorEngine(cfg.Location, filepath.Join(cfg.SharedWorkdir, "qmd-derived"))
+	a := qmd.New(qmd.Options{Runner: e.runner})
+	defer a.Close()
+	if _, err := a.Initialize(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	marked := strings.Replace(reservoirHTML, "\n\n\n", "\n<div data-noindex=\"false\"><h1>Mockheading</h1><p>mockbody</p><img alt=\"mockalt\"><ul><li>mocklist</li></ul><table><tr><td>mockcell</td></tr></table>\n</div>\n", 1)
+	visible := strings.Replace(marked, ` data-noindex="false"`, "", 1)
+	writeDerived(t, cfg.Location, "b.html", visible)
+	refreshMirror(t, a)
+	for _, body := range []string{marked, visible, marked} {
+		writeDerived(t, cfg.Location, "b.html", body)
+		// A second profile shares the receipt and mirror, but cannot cite the
+		// previous embedding or silently refresh it when the source changes.
+		otherCfg := cfg
+		otherCfg.Workdir = t.TempDir()
+		other := qmd.New(qmd.Options{Runner: e.runner})
+		if _, err := other.Initialize(t.Context(), otherCfg); err != nil {
+			t.Fatal(err)
+		}
+		calls := len(e.runner.invocations())
+		r, err := searchOnce(t, other, "precipitation")
+		if err != nil || r.Outcome != recall.SearchPartial || len(r.Candidates) != 0 {
+			t.Fatalf("stale shared mirror: %+v, %v", r, err)
+		}
+		for _, args := range e.runner.invocations()[calls:] {
+			if args[0] == "update" || args[0] == "embed" {
+				t.Fatalf("query refreshed mirror: %v", args)
+			}
+		}
+		if h := refreshMirror(t, other); h.Status != recall.HealthHealthy {
+			t.Fatalf("refresh: %+v", h)
+		}
+		raw, err := os.ReadFile(filepath.Join(e.mirror, "b.html.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		hidden := body == marked
+		for _, text := range []string{string(raw), e.indexed["b.html.md"]} {
+			for _, term := range []string{"Mockheading", "mockbody", "mockalt", "mocklist", "mockcell"} {
+				if strings.Contains(text, term) == hidden {
+					t.Fatalf("hidden=%v, term %s in mirror/index: %s", hidden, term, text)
+				}
+			}
+			if !strings.Contains(text, "underground cistern") {
+				t.Fatalf("outside evidence lost: %s", text)
+			}
+		}
+		if hidden {
+			c := requireMirrorHit(t, a)
+			if c.Locator.Local != "b.html#L8-L12" || c.Title != "Rainwater reservoir" {
+				t.Fatalf("outside mapping changed: %+v", c)
+			}
+			expanded, err := other.Expand(t.Context(), recall.ExpandRequest{Locator: c.Locator, Detail: recall.DetailFull})
+			if err != nil || strings.Contains(expanded.Content, "mock") || !strings.Contains(expanded.Content, "underground cistern") {
+				t.Fatalf("expand: %+v, %v", expanded, err)
+			}
+		}
+		other.Close()
+	}
+
+	// Simulate the v0.7.0 settings digest (before extraction versioning), with
+	// identical file bytes and mirror hashes. Even an unchanged extraction
+	// must be re-embedded explicitly under the new extraction contract.
+	receiptPath := filepath.Join(cfg.SharedWorkdir, "qmd-derived.json")
+	raw, err := os.ReadFile(receiptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	legacyValues := []any{[]string{".html"}, "html-view", document.Selection{ExcludeDirs: []string{".*", "node_modules"}, ExcludeNestedRepos: true, ExcludeGlobs: []string{"**/mockups/**", "*.template.html"}, SiblingPreference: []string{".md", ".html"}}, int64(16 << 20), int64(1 << 20)}
+	legacySettings, err := json.Marshal(legacyValues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, _, ok := strings.Cut(receipt["config"].(string), " derived=")
+	if !ok {
+		t.Fatal("missing derived settings digest")
+	}
+	versioned, err := json.Marshal(append(legacyValues, document.HTMLExtractionVersion))
+	if err != nil || receipt["config"] != fmt.Sprintf("%s derived=%x", current, sha256.Sum256(versioned)) {
+		t.Fatalf("legacy settings fixture does not match current settings: %v", err)
+	}
+	receipt["config"] = fmt.Sprintf("%s derived=%x", current, sha256.Sum256(legacySettings))
+	raw, err = json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(receiptPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := qmd.New(qmd.Options{Runner: e.runner})
+	defer restarted.Close()
+	if _, err := restarted.Initialize(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	r, err := searchOnce(t, restarted, "precipitation")
+	if err != nil || r.Outcome != recall.SearchPartial || len(r.Candidates) != 0 {
+		t.Fatalf("old extraction receipt served: %+v, %v", r, err)
+	}
+	if h := refreshMirror(t, restarted); h.Status != recall.HealthHealthy {
+		t.Fatalf("upgrade refresh: %+v", h)
+	}
+	requireMirrorHit(t, restarted)
 }

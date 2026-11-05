@@ -194,3 +194,86 @@ func TestHTMLEmptyHeadingDoesNotPanic(t *testing.T) {
 		t.Fatal("empty heading lost the document title")
 	}
 }
+
+func TestHTMLDataNoIndexRefresh(t *testing.T) {
+	raw, err := os.ReadFile("../../../pkg/document/testdata/noindex.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := string(raw)
+	visible := strings.ReplaceAll(strings.ReplaceAll(marked, ` data-noindex="false"`, ""), " data-noindex", "")
+	root := writtenCorpus(t, map[string]string{"proposal.html": visible, "ordinary.md": "# Stable\nmarkdownproof"})
+	a, workdir := newAdapter(t, root, htmlSettings())
+	for _, body := range []string{marked, visible, marked} {
+		if err := os.WriteFile(filepath.Join(root, "proposal.html"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.Refresh(t.Context(), protocol.RefreshParams{}); err != nil {
+			t.Fatal(err)
+		}
+		hidden := body == marked
+		for _, q := range []string{"mockheading", "mockbody", "mockalt", "mocklist", "mockcell", "mocknested", "mockinline", "mockitem", "mockli", "mockspan", "mocktableheading", "mocktd", "mockrow", "mockimage"} {
+			if got := len(search(t, a, q).Candidates); (got == 0) != hidden {
+				t.Fatalf("hidden=%v, query %s: %d matches", hidden, q, got)
+			}
+		}
+		if len(search(t, a, "markdownproof").Candidates) != 1 {
+			t.Fatal("Markdown behavior changed")
+		}
+		if !hidden {
+			continue
+		}
+		if h := health(t, a); h.Status != recall.HealthHealthy || h.Diagnostics["chunk_count"] != 3 {
+			t.Fatalf("hidden chunks: %+v", h)
+		}
+		for _, q := range []string{"evidence", "apples", "Pears", "blossom"} {
+			resp := search(t, a, q)
+			if len(resp.Candidates) != 1 || resp.Candidates[0].Locator.Local != "proposal.html#L12-L19" {
+				t.Fatalf("outside query %s: %+v", q, resp)
+			}
+			c := resp.Candidates[0]
+			if c.Title != "Proposal > Design > Decision ready" || c.Metadata["anchor"] != "decision" {
+				t.Fatalf("outside heading: %+v", c)
+			}
+			expanded, err := a.Expand(t.Context(), expandReq(c.Locator, recall.DetailFull, 0))
+			if err != nil || strings.Contains(expanded.Content, "mock") || !strings.Contains(expanded.Content, "Crop | Yield") {
+				t.Fatalf("outside expansion: %+v, %v", expanded, err)
+			}
+		}
+		index, err := os.ReadFile(filepath.Join(workdir, "index", currentGeneration(t, workdir), "index.jsonl"))
+		if err != nil || strings.Contains(string(index), "mock") {
+			t.Fatalf("excluded text persisted: %s, %v", index, err)
+		}
+	}
+}
+
+func TestHTMLDataNoIndexUpgradeRebuildsUnchangedSource(t *testing.T) {
+	root := writtenCorpus(t, map[string]string{"proposal.html": "<h1>Design</h1><div data-noindex><h1>Mockheading</h1></div><p>outsideword</p>"})
+	a, workdir := newAdapter(t, root, htmlSettings())
+	before := health(t, a).IndexGeneration
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(workdir, "index", before, "index.jsonl")
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a persisted v0.7.0 generation with leaked terms. The source
+	// bytes, revision, settings, and watermark remain unchanged throughout.
+	legacy := strings.ReplaceAll(strings.Replace(string(raw), `"format":5`, `"format":4`, 1), "outsideword", "mockheading")
+	if legacy == string(raw) || !strings.Contains(legacy, `"mockheading":1`) {
+		t.Fatal("legacy fixture did not contain the excluded posting")
+	}
+	if err := os.WriteFile(file, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	next := docs.New()
+	defer next.Close()
+	if _, err := next.Initialize(t.Context(), config(root, workdir, htmlSettings())); err != nil {
+		t.Fatal(err)
+	}
+	if health(t, next).IndexGeneration == before || len(search(t, next, "mockheading").Candidates) != 0 || len(search(t, next, "outsideword").Candidates) != 1 {
+		t.Fatal("legacy generation was served instead of rebuilt")
+	}
+}

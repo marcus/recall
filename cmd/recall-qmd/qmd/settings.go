@@ -304,7 +304,7 @@ func settingsSchema() map[string]any {
 func (s Settings) settingsDigest() string {
 	digest := fmt.Sprintf("mode=%s collection=%s limit=%d", s.Mode, s.Collection, s.MaxCandidates)
 	if len(s.DeriveExtensions) > 0 {
-		data, _ := json.Marshal([]any{s.DeriveExtensions, s.DerivedCollection, s.Selection, s.MaxRawBytes, s.MaxTextBytes})
+		data, _ := json.Marshal([]any{s.DeriveExtensions, s.DerivedCollection, s.Selection, s.MaxRawBytes, s.MaxTextBytes, document.HTMLExtractionVersion})
 		digest += fmt.Sprintf(" derived=%x", sha256.Sum256(data))
 	}
 	return digest
