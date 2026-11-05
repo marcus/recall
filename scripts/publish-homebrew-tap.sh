@@ -265,12 +265,18 @@ validate_formula() {
   # tree. Use a disposable local tap so the candidate is checked as the formula
   # Homebrew will actually load, then remove it even when validation fails.
   (
-    local validation_repo
-    trap 'brew untap --force "$validation_tap" >/dev/null 2>&1 || true' EXIT
+    local validation_repo formula_trusted=false
+    trap 'if $formula_trusted; then brew untrust --formula "$validation_tap/recall" >/dev/null 2>&1 || true; fi; brew untap --force "$validation_tap" >/dev/null 2>&1 || true' EXIT
     brew tap-new --no-git "$validation_tap" >/dev/null
     validation_repo=$(brew --repository "$validation_tap")
     mkdir -p "$validation_repo/Formula"
     cp "$formula" "$validation_repo/Formula/recall.rb"
+    # Newer Homebrew requires explicit trust before loading local formulae.
+    # Trust only this verified candidate, and revoke it with the temporary tap.
+    if brew help trust >/dev/null 2>&1; then
+      brew trust --formula "$validation_tap/recall" >/dev/null
+      formula_trusted=true
+    fi
     brew style --formula "$validation_tap/recall"
     brew audit --strict --online --formula "$validation_tap/recall"
   )
