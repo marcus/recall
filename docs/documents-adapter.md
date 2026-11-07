@@ -61,3 +61,7 @@ These settings participate in the settings digest. Changing one rebuilds the gen
 - `Selection.Validate()`, `DirectoryReason(root, rel)`, and `Select(eligiblePaths)` share directory pruning, globs, and sibling preference. `GlobReason(rel)` and `MatchGlob(pattern, rel)` expose the path-matching rule. `Select` returns sorted selected paths and exclusions without mutating its input. Callers must enumerate only regular, extension-eligible files and leave the explicitly configured root unpruned.
 
 The documents adapter uses this API for HTML indexing, query excerpts, and expansion. Semantic derived-text synchronization is separate work; the qmd adapter's behavior is unchanged.
+
+## Extracting without an index
+
+`recall extract report.html --json` reads one regular HTML file through the same bounded extractor, without loading configuration or writing an index. It returns `title`, `text`, `headings`, `noindex` and `extractionVersion`. Each heading section has `heading`, `level`, optional `anchor`, `text`, and inclusive original `startLine` / `endLine`; a preamble has level 0 and an empty heading. Robots noindex returns empty metadata and text with `noindex: true`. The raw UTF-8 input limit is 16 MiB; invalid, binary or nonregular inputs fail with exit 1. Human output carries the title and extracted text, or `noindex`.

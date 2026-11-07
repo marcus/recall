@@ -185,6 +185,8 @@ func Run(ctx context.Context, env Env) int {
 		return runQuery(ctx, env, args)
 	case "expand":
 		return runExpand(ctx, env, args)
+	case "extract":
+		return runExtract(env, args)
 	case "refresh":
 		return runRefresh(ctx, env, args)
 	case "sources":
@@ -234,6 +236,7 @@ commands:
   init --docs DIR   create a first user configuration
   query <text>      search and fuse configured sources
   expand <locator>  retrieve evidence from a locator
+  extract <file>    extract HTML title, headings and text without an index
   refresh           update one source, or every eligible checkpoint-capable source
   sources           list source instances, capabilities, health, and freshness
   doctor            validate configuration, trust boundary, access, health,
