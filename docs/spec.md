@@ -384,8 +384,13 @@ this source's timeout. The probe limit has a ceiling of its own because the
 slowest probe decides when every search starts; a large `timeout_ms` usually
 means search or refresh is slow, not health. A source whose health really is
 slower sets `probe_timeout_ms`. A probe that runs out of time reports
-`probe_timeout`. The plan reports each source's `timeout` as the time it was
-granted from `planned`.
+`probe_timeout`, with diagnostics naming the `probe_limit` and the `bound` that
+fired: `probe` (the limit above), `adapter_call` (one subprocess call ran out
+the adapter's own per-call limit; `call`, `call_limit`, and the `setting` that
+controls it are named), or `adapter` (another deadline the adapter set, with
+`detail`). A source excluded as `unhealthy` carries its own health diagnostics.
+The plan reports each source's `timeout` as the time it was granted from
+`planned`.
 
 A source whose deadline has already elapsed is skipped and reported; coverage
 becomes degraded. Late results are discarded, never attached to a later

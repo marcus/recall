@@ -6,6 +6,13 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Fixed
+
+- A td or tasks call that runs out of time during the plan-time probe is reported as `probe_timeout`, not `unhealthy` with no diagnostics. The diagnostics name the bound that fired: `adapter_call` with the call, its limit, and `settings.timeout_ms` when the adapter's own per-call limit ended it, or `probe` when the source's probe limit did. Other `unhealthy` exclusions now carry the source's health diagnostics. (#17)
+- The td and tasks per-call default of 5 s no longer cuts short a caller that set its own deadline. Unset, `[sources.settings] timeout_ms` now leaves each call to the request deadline, so raising the source's `timeout_ms` alone is enough; the 5 s default still bounds a standalone caller with no deadline. An explicit `settings.timeout_ms` applies as before. (#17)
+
 ## [0.8.1] - 2026-11-10
 
 ### Fixed

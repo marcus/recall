@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/adapters/td"
+	"github.com/marcus/recall/pkg/adapter"
 	"github.com/marcus/recall/pkg/protocol"
 	"github.com/marcus/recall/pkg/recall"
 )
@@ -174,4 +175,32 @@ func TestAMissingBinaryIsUnreachable(t *testing.T) {
 	if resp.Outcome != recall.SearchUnavailable {
 		t.Errorf("outcome = %q, want unavailable", resp.Outcome)
 	}
+}
+
+// #17. A td call that runs out of time during the health probe is a timeout,
+// returned as an error the planner can classify, not an unavailable source.
+func TestAProbeThatRunsOutOfTimeIsATimeout(t *testing.T) {
+	t.Run("per-call limit", func(t *testing.T) {
+		a := newAdapter(t, wedgedCLI{}, map[string]any{"timeout_ms": 25})
+		_, err := a.Health(t.Context())
+		var call *adapter.CallTimeoutError
+		if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &call) {
+			t.Fatalf("err = %v, want the per-call timeout", err)
+		}
+		if call.Setting != "settings.timeout_ms" {
+			t.Errorf("setting = %q, want settings.timeout_ms", call.Setting)
+		}
+	})
+	t.Run("caller deadline", func(t *testing.T) {
+		// Unconfigured, the 5s default must not cut short a caller that set
+		// its own, longer deadline, nor outlast a shorter one.
+		a := newAdapter(t, wedgedCLI{}, nil)
+		ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+		defer cancel()
+		_, err := a.Health(ctx)
+		var call *adapter.CallTimeoutError
+		if !errors.Is(err, context.DeadlineExceeded) || errors.As(err, &call) {
+			t.Fatalf("err = %v, want the caller's deadline", err)
+		}
+	})
 }

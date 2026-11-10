@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marcus/recall/pkg/adapter"
 	"github.com/marcus/recall/pkg/protocol"
 )
 
@@ -130,9 +131,10 @@ func checkReadOnly(args []string) error {
 
 // run invokes the CLI under the adapter's per-invocation timeout.
 //
-// The timeout composes with the caller's deadline rather than replacing it:
-// whichever is sooner wins, so a request budget is never overrun by a source
-// that decided its own.
+// A configured settings.timeout_ms composes with the caller's deadline rather
+// than replacing it: whichever is sooner wins, so a request budget is never
+// overrun by a source that decided its own. Unconfigured, [DefaultTimeout]
+// applies only to a caller with no deadline of its own (#17).
 func (a *Adapter) run(ctx context.Context, args ...string) (Result, error) {
 	if err := checkReadOnly(args); err != nil {
 		return Result{}, err
@@ -141,9 +143,8 @@ func (a *Adapter) run(ctx context.Context, args ...string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return runner.Run(ctx, args...)
+	return adapter.BoundCall(ctx, "tasks "+args[0], "settings.timeout_ms", timeout, DefaultTimeout,
+		func(ctx context.Context) (Result, error) { return runner.Run(ctx, args...) })
 }
 
 // decodeJSON turns a finished invocation into a parsed value.

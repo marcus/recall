@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marcus/recall/pkg/adapter"
 	"github.com/marcus/recall/pkg/protocol"
 )
 
@@ -191,9 +192,10 @@ func isBoolFlag(arg string) bool {
 
 // run invokes td under the adapter's per-invocation timeout.
 //
-// The timeout composes with the caller's deadline rather than replacing it:
-// whichever is sooner wins, so a request budget is never overrun by a source
-// that decided its own.
+// A configured settings.timeout_ms composes with the caller's deadline rather
+// than replacing it: whichever is sooner wins, so a request budget is never
+// overrun by a source that decided its own. Unconfigured, [DefaultTimeout]
+// applies only to a caller with no deadline of its own (#17).
 func (a *Adapter) run(ctx context.Context, args ...string) (Result, error) {
 	if err := checkReadOnly(args); err != nil {
 		return Result{}, err
@@ -202,17 +204,22 @@ func (a *Adapter) run(ctx context.Context, args ...string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	if root, ok := ctx.Value(pinnedRootKey{}).(string); ok {
-		pinned, ok := runner.(PinnedRunner)
-		if !ok {
+	root, pin := ctx.Value(pinnedRootKey{}).(string)
+	var pinned PinnedRunner
+	if pin {
+		var ok bool
+		if pinned, ok = runner.(PinnedRunner); !ok {
 			return Result{}, fmt.Errorf("%w: td runner cannot pin --work-dir to a verified store",
 				protocol.ErrSourceUnavailable)
 		}
-		return pinned.RunPinned(ctx, root, args...)
 	}
-	return runner.Run(ctx, args...)
+	return adapter.BoundCall(ctx, "td "+args[0], "settings.timeout_ms", timeout, DefaultTimeout,
+		func(ctx context.Context) (Result, error) {
+			if pin {
+				return pinned.RunPinned(ctx, root, args...)
+			}
+			return runner.Run(ctx, args...)
+		})
 }
 
 type pinnedRootKey struct{}

@@ -632,6 +632,7 @@ func (r *Registry) consider(
 	} else {
 		health, err = a.Health(probeCtx)
 	}
+	probeExpired := errors.Is(probeCtx.Err(), context.DeadlineExceeded)
 	cancelProbe()
 	// A probe that ran out of time is classified by its error, not by whether
 	// probeCtx has expired: an adapter may bound itself by the search deadline
@@ -646,10 +647,12 @@ func (r *Registry) consider(
 		return excludeAfterHandshake(ReasonBudgetExhausted)
 	case timedOut:
 		v := excludeAfterHandshake(ReasonProbeTimeout)
-		v.diagnostics = map[string]any{"probe_limit": probeLimit.Sub(probeStart).String()}
+		v.diagnostics = probeTimeoutDiagnostics(err, probeExpired, probeLimit.Sub(probeStart))
 		return v
 	case err != nil || !health.Usable():
-		return excludeAfterHandshake(ReasonUnhealthy)
+		v := excludeAfterHandshake(ReasonUnhealthy)
+		v.diagnostics = unhealthyDiagnostics(health, err)
+		return v
 	}
 	// A source that cannot honor a historical boundary is excluded and said so.
 	// Letting it answer from current state would be a wrong answer wearing the
@@ -836,4 +839,47 @@ func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 		})
 	}
 	return out
+}
+
+// probeTimeoutDiagnostics says which bound ended a probe, so the person reading
+// it knows which setting to change (#17). "probe" is the plan's probe limit
+// (the source's timeout_ms or probe_timeout_ms). "adapter_call" is one
+// subprocess call running out the adapter's own per-call limit, named with the
+// setting that controls it. "adapter" is any other deadline the adapter set
+// itself, such as td's search deadline during a prepared probe.
+func probeTimeoutDiagnostics(err error, probeExpired bool, limit time.Duration) map[string]any {
+	d := map[string]any{"probe_limit": limit.String()}
+	var call *adapter.CallTimeoutError
+	switch {
+	case errors.As(err, &call):
+		d["bound"] = "adapter_call"
+		d["call"] = call.Call
+		d["call_limit"] = call.Limit.String()
+		d["setting"] = call.Setting
+	case probeExpired:
+		d["bound"] = "probe"
+	default:
+		d["bound"] = "adapter"
+		d["detail"] = err.Error()
+	}
+	return d
+}
+
+// unhealthyDiagnostics keeps what the source said about itself, so an
+// unhealthy exclusion is never reported with no evidence.
+func unhealthyDiagnostics(health recall.Health, err error) map[string]any {
+	d := map[string]any{}
+	for k, v := range health.Diagnostics {
+		d[k] = v
+	}
+	if health.Status != "" {
+		d["status"] = string(health.Status)
+	}
+	if err != nil {
+		d["detail"] = err.Error()
+	}
+	if len(d) == 0 {
+		return nil
+	}
+	return d
 }
