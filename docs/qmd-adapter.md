@@ -163,7 +163,7 @@ Derived receipts include the HTML extraction version in their configuration dige
 
 Refresh synchronizes mirror content by hash, removes files whose originals disappeared or became excluded, and runs `qmd update -c <derived>` followed by `qmd embed -c <derived>`. The primary collection is also refreshed. Unchanged mirror bytes retain their modification times. A durable receipt is invalidated before maintenance and marked ready only after indexing and embedding finish. A failed or cancelled refresh remains incomplete after a process restart. Qmd 2.5.3 ignores the collection filter on `update` and reindexes all collections in the selected index, including their configured update hooks; `embed` is collection-scoped. Use a project-local qmd index when maintenance must be isolated from other collections.
 
-Refresh holds an exclusive OS file lock from collection verification through receipt publication and the final health probe. Health, search, and expansion take shared locks through result validation and mapping. Competing profiles and processes using the same shared state wait within their caller deadline; cancellation while waiting leaves the receipt unchanged. Lock files are never removed or replaced. Process exit releases ownership; a running qmd invocation inherits the lock descriptor, so killing only its adapter does not admit another refresh before that invocation exits. A failed or cancelled refresh keeps the shared receipt incomplete, and a later refresh from either profile repairs it. Use a local filesystem supporting advisory file locks. These locks coordinate Recall operations for one source UID and shared state root; they do not coordinate old binaries using profile-owned state, different UIDs/state roots, manual qmd commands, or other collections. Corpus edits are outside the lock and remain subject to the before/after hash checks. Qmd can update other collections in the same index, so this is not an index-wide transaction.
+Refresh holds an exclusive OS file lock from collection verification through receipt publication and the final health probe. Health, search, and expansion take shared locks through result validation and mapping. Competing profiles and processes using the same shared state wait within their caller deadline; cancellation while waiting leaves the receipt unchanged. Lock files are never removed or replaced. Process exit releases ownership; a running qmd invocation inherits the lock descriptor, so killing only its adapter does not admit another refresh before that invocation exits. A failed or cancelled refresh keeps the shared receipt incomplete, and a later refresh from either profile repairs it. Use a local filesystem supporting advisory file locks. These derived locks coordinate Recall operations for one source UID and shared state root. Index writes are additionally serialized by the index-wide maintenance lock described under [Refresh, and the cold start](#refresh-and-the-cold-start), taken after the derived lock, from collection creation through the last `embed`. Neither lock coordinates old binaries, manual qmd commands, or other programs writing the index. Corpus edits are outside the lock and remain subject to the before/after hash checks.
 
 All four query modes search both collections and interleave their ranked results within the request limit. Derived hits retain the original relative `source_record_id` and configured corpus location, so Recall applies the same fusion identity rules as for Markdown. Mirror line ranges select extracted sections and are translated to original HTML source lines. Expansion re-extracts the original file, and file-opening surfaces receive its original path; neither evidence nor locators cite mirror paths. HTML heading anchors are included in candidate metadata. Qmd normalizes virtual filenames (`b.html.md` becomes `b-html.md`); the adapter maps those handles back to original names and reports collisions as extraction failures.
 
@@ -333,6 +333,21 @@ admits whole invocation shapes rather than subcommands, so `qmd cleanup`, `qmd
 collection remove`, `qmd init`, and `qmd mcp` are unreachable, and `qmd update`
 and `qmd embed` are reachable only from a refresh — a query cannot rebuild an
 index as a side effect.
+
+Every write to one qmd index is serialized. `qmd update` reindexes every
+collection in the index it opens, not only the source's own, so two sources whose
+collections share an index used to race when they refreshed together, and one
+failed with an `ON CONFLICT(collection, path)` error from qmd. A refresh now
+takes an exclusive OS file lock keyed on the index file `qmd status` reports,
+and holds it from the first maintenance command through the last. Sources,
+profiles, and adapter processes on the same index wait for each other within
+their refresh deadline; a refresh whose deadline expires while waiting fails
+with that deadline, like any other cancellation. A running qmd inherits the
+lock, so killing only its adapter does not admit another writer early. When qmd
+does not report its index path, every such refresh shares one lock. The lock
+files live in `recall/qmd-index-locks` under the user cache directory
+(`~/Library/Caches` on macOS), or in `$RECALL_QMD_LOCK_DIR` when set, and are
+never removed. Searches and health probes take no index lock.
 
 ## Failure taxonomy
 

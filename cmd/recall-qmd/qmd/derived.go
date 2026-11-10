@@ -214,6 +214,19 @@ func (a *Adapter) refreshDerived(ctx context.Context, p protocol.RefreshParams) 
 	if err = a.saveReceipt(r); err != nil {
 		return a.unhealthy(err), nil
 	}
+	// Collection add, update, and embed all write qmd's index, which other
+	// sources may share, so they run under the index-wide maintenance lock
+	// (#16). It is taken after the derived lock, never before it.
+	ctx, releaseIndex, err := a.lockIndex(ctx, a.resolveIndexPath(ctx))
+	if err != nil {
+		if ctx.Err() != nil {
+			return recall.Health{}, ctx.Err()
+		}
+		r.Failure = safeErr(err)
+		_ = a.saveReceipt(r)
+		return a.unhealthy(err), nil
+	}
+	defer releaseIndex()
 	// Collection add can itself index files, so it belongs after invalidation.
 	// Recheck its path under the same lock immediately before maintenance.
 	err = a.ensureDerived(ctx, true)

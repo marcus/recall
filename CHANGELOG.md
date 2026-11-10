@@ -6,6 +6,12 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Fixed
+
+- Two qmd sources whose collections share one qmd index no longer race when refreshed together. `qmd update` rewrites every collection in its index, so concurrent refreshes failed with an `ON CONFLICT(collection, path)` error from qmd. Refresh now holds an exclusive lock keyed on the index file across all maintenance, shared by every source, profile, and adapter process on that index; waiting is bounded by the refresh deadline. Lock files live under the user cache directory, or `$RECALL_QMD_LOCK_DIR`. (#16)
+
 ## [0.8.0] - 2026-11-10
 
 ### Added

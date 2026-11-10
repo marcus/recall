@@ -45,6 +45,9 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(dir)
 		os.Exit(1)
 	}
+	// A refresh case takes qmd's index maintenance lock; keep it out of the
+	// user's cache directory.
+	os.Setenv("RECALL_QMD_LOCK_DIR", filepath.Join(dir, "locks"))
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

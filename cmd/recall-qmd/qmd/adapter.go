@@ -31,6 +31,10 @@ type Options struct {
 	// Clock replaces the wall clock. A nil value prefers a replay pack's stated
 	// clock and falls back to time.Now.
 	Clock func() time.Time
+
+	// LockDir is where index maintenance locks live. Empty uses
+	// $RECALL_QMD_LOCK_DIR, then the user cache directory.
+	LockDir string
 }
 
 // Adapter is a qmd collection as a Recall source.
@@ -477,9 +481,24 @@ func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall
 	// coverage; the two are reported separately.
 	before, _, beforeErr := a.probeIndex(ctx, location)
 
+	// Every source on this index meets on one lock for the whole maintenance
+	// sequence: `qmd update` rewrites every collection in the index, so two
+	// concurrent refreshes race on the same rows (#16).
+	indexPath := before.IndexPath
+	if indexPath == "" {
+		indexPath = a.resolveIndexPath(ctx)
+	}
+	mctx, release, err := a.lockIndex(ctx, indexPath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return recall.Health{}, err
+		}
+		return a.unhealthy(err), nil
+	}
+	defer release() // a cancelled step returns early; Close is idempotent here
 	failure := ""
 	for _, step := range a.refreshSteps(set) {
-		res, err := a.runMaintenance(ctx, step.args...)
+		res, err := a.runMaintenance(mctx, step.args...)
 		if err != nil {
 			// Cancellation and an expired deadline are not index health: the
 			// caller abandoned this maintenance operation, and the host needs
@@ -495,6 +514,7 @@ func (a *Adapter) Refresh(ctx context.Context, p protocol.RefreshParams) (recall
 			break
 		}
 	}
+	release()
 
 	a.mu.Lock()
 	a.lastRefresh = failure

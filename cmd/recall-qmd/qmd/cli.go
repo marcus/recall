@@ -95,10 +95,10 @@ func (r ExecRunner) Run(ctx context.Context, args ...string) (Result, error) {
 	}
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, r.Binary, args...) //nolint:gosec // binary is explicit user configuration; argv passed checkAllowed
-	// Keep a source lock alive if the adapter crashes while qmd is running.
+	// Keep every held lock (source and index) alive if the adapter crashes while qmd is running.
 	// Close (rather than LOCK_UN) in the parent preserves inherited ownership.
-	if file, ok := ctx.Value(derivedLockKey{}).(*os.File); ok {
-		cmd.ExtraFiles = []*os.File{file}
+	if held := heldLocks(ctx); len(held) > 0 {
+		cmd.ExtraFiles = append([]*os.File(nil), held...)
 	}
 	cmd.Env = r.Env
 	cmd.Dir = r.Dir
