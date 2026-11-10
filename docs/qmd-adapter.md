@@ -344,10 +344,19 @@ profiles, and adapter processes on the same index wait for each other within
 their refresh deadline; a refresh whose deadline expires while waiting fails
 with that deadline, like any other cancellation. A running qmd inherits the
 lock, so killing only its adapter does not admit another writer early. When qmd
-does not report its index path, every such refresh shares one lock. The lock
-files live in `recall/qmd-index-locks` under the user cache directory
+does not report its index path, the refresh runs no maintenance and reports the
+source unavailable, because it cannot meet the lock a sibling source holds. The
+lock files live in `recall/qmd-index-locks` under the user cache directory
 (`~/Library/Caches` on macOS), or in `$RECALL_QMD_LOCK_DIR` when set, and are
-never removed. Searches and health probes take no index lock.
+never removed. Every process writing one index must resolve the same lock
+directory: two adapters with different `$RECALL_QMD_LOCK_DIR`, `HOME`, or
+`XDG_CACHE_HOME` values, or running as different users, do not block each other.
+Searches and health probes take no index lock.
+
+qmd passes the lock descriptor to anything it starts, including collection
+update hooks. A hook that leaves a background process running keeps the index
+locked after qmd exits, and every later refresh on that index then times out
+waiting. To find the holder, run `lsof` on the files in the lock directory.
 
 ## Failure taxonomy
 

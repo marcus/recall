@@ -3,6 +3,7 @@ package qmd_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -110,6 +111,31 @@ func TestRefreshWaitingOnIndexLockHonorsDeadline(t *testing.T) {
 	openGate()
 	if err := <-done; err != nil {
 		t.Fatalf("lock holder: %v", err)
+	}
+}
+
+// A source that cannot learn its index path must not fall back to a lock no
+// sibling on the real index would meet; it refuses maintenance instead (#16).
+func TestRefreshRefusesMaintenanceWithoutIndexPath(t *testing.T) {
+	root := corpus(t)
+	runner := healthyRunner(root, "[]")
+	var kept []string
+	for line := range strings.SplitSeq(statusText(root, "fixture", 2, 2, 2), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "Index:") {
+			kept = append(kept, line)
+		}
+	}
+	runner.byKey["status"] = qmd.Result{Stdout: []byte(strings.Join(kept, "\n"))}
+	a := newAdapter(t, root, baseSettings(), runner)
+	h, err := a.Refresh(t.Context(), protocol.RefreshParams{})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if h.Status != recall.HealthUnavailable {
+		t.Errorf("status = %q, want unavailable: %v", h.Status, h.Diagnostics)
+	}
+	if n := countRuns(runner, "update") + countRuns(runner, "embed"); n != 0 {
+		t.Fatalf("ran %d maintenance commands without the index lock", n)
 	}
 }
 

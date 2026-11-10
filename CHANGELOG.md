@@ -10,7 +10,7 @@ migration guidance.
 
 ### Fixed
 
-- Two qmd sources whose collections share one qmd index no longer race when refreshed together. `qmd update` rewrites every collection in its index, so concurrent refreshes failed with an `ON CONFLICT(collection, path)` error from qmd. Refresh now holds an exclusive lock keyed on the index file across all maintenance, shared by every source, profile, and adapter process on that index; waiting is bounded by the refresh deadline. Lock files live under the user cache directory, or `$RECALL_QMD_LOCK_DIR`. (#16)
+- Two qmd sources whose collections share one qmd index no longer race when refreshed together. `qmd update` rewrites every collection in its index, so concurrent refreshes failed with an `ON CONFLICT(collection, path)` error from qmd. Refresh now holds an exclusive lock keyed on the index file across all maintenance, shared by every source, profile, and adapter process on that index; waiting is bounded by the refresh deadline. A source whose index path qmd does not report skips maintenance and is reported unavailable rather than risking the race. Lock files live under the user cache directory, or `$RECALL_QMD_LOCK_DIR`. (#16)
 
 ## [0.8.0] - 2026-11-10
 

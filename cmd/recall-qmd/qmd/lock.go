@@ -85,10 +85,10 @@ func (a *Adapter) lockDerived(ctx context.Context, exclusive bool) (context.Cont
 // LockDirEnv overrides where index maintenance locks live.
 const LockDirEnv = "RECALL_QMD_LOCK_DIR"
 
-// unknownIndex keys the maintenance lock when qmd did not say which index it
-// opened. Every such refresh then serializes with every other one, which costs
-// throughput and never correctness.
-const unknownIndex = "unknown-index"
+// errUnknownIndex refuses maintenance when qmd did not say which index it
+// opened. A fallback key would not meet the lock a sibling source took under
+// the real index path, so the two could race again (#16).
+var errUnknownIndex = errors.New("qmd status did not report the index path; refusing maintenance without the index lock")
 
 // indexLockFile names the maintenance lock for one qmd index.
 //
@@ -111,12 +111,11 @@ func (a *Adapter) indexLockFile(indexPath string) (string, error) {
 		}
 		dir = filepath.Join(cache, "recall", "qmd-index-locks")
 	}
-	key := unknownIndex
-	if indexPath != "" {
-		sum := sha256.Sum256([]byte(canonical(indexPath)))
-		key = hex.EncodeToString(sum[:8])
+	if indexPath == "" {
+		return "", errUnknownIndex
 	}
-	return filepath.Join(dir, key+".lock"), nil
+	sum := sha256.Sum256([]byte(canonical(indexPath)))
+	return filepath.Join(dir, hex.EncodeToString(sum[:8])+".lock"), nil
 }
 
 // lockIndex takes the exclusive maintenance lock for one qmd index. Waiting is
@@ -140,8 +139,8 @@ func (a *Adapter) lockIndex(ctx context.Context, indexPath string) (context.Cont
 	return withHeldLock(ctx, f), func() { _ = f.Close() }, nil
 }
 
-// resolveIndexPath asks qmd which index it opens. An unreadable answer is ""
-// and the caller falls back to [unknownIndex].
+// resolveIndexPath asks qmd which index it opens. An unreadable answer is "",
+// which [Adapter.lockIndex] refuses with [errUnknownIndex].
 func (a *Adapter) resolveIndexPath(ctx context.Context) string {
 	set, _, _, _, err := a.session()
 	if err != nil {
