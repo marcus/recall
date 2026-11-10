@@ -144,3 +144,20 @@ func TestCollectionMismatchKeepsLongFullPaths(t *testing.T) {
 		t.Fatalf("full paths clipped: %s", message)
 	}
 }
+
+func TestExecRunnerPassesEveryHeldLock(t *testing.T) {
+	dir := t.TempDir()
+	ctx := t.Context()
+	for _, name := range []string{"a.lock", "b.lock"} {
+		f, err := acquireFlock(t.Context(), filepath.Join(dir, name), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		ctx = withHeldLock(ctx, f)
+	}
+	res, err := (ExecRunner{Binary: "/bin/sh"}).Run(ctx, "-c", "[ -e /dev/fd/3 ] && [ -e /dev/fd/4 ]")
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("child did not inherit both locks: exit %d, %v", res.ExitCode, err)
+	}
+}
