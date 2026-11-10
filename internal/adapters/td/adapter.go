@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -648,6 +649,11 @@ func (a *Adapter) probeHealth(ctx context.Context) (recall.Health, workspace, er
 
 	info, res, err := a.probeWorkspace(ctx)
 	if err != nil {
+		// Running out of time says nothing about the store. Returned as an
+		// error so the caller reports a timeout, not an unhealthy source (#17).
+		if isContextErr(err) {
+			return recall.Health{}, workspace{}, err
+		}
 		return adapter.Unhealthy(err), workspace{}, nil
 	}
 	ws := configured
@@ -842,10 +848,9 @@ func (s settings) binary() string {
 }
 
 func (s settings) timeout() time.Duration {
-	if s.TimeoutMS > 0 {
-		return time.Duration(s.TimeoutMS) * time.Millisecond
-	}
-	return DefaultTimeout
+	// Zero leaves the call to the caller's deadline, or to [DefaultTimeout]
+	// when there is none; see [adapter.BoundCall].
+	return time.Duration(max(s.TimeoutMS, 0)) * time.Millisecond
 }
 
 func (s settings) maxCandidates() int {
@@ -980,7 +985,7 @@ func settingsSchema() map[string]any {
 			"labels": stringList("Restrict this source to issues carrying this label. Configure at most one; td intersects repeated labels.", nil),
 			"timeout_ms": map[string]any{
 				"type": "integer", "minimum": 1,
-				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins.",
+				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins. Unset, each call is bounded by the request deadline alone, or by 5s when the caller sets none.",
 			},
 			"max_candidates": map[string]any{
 				"type": "integer", "minimum": 1,
@@ -1006,4 +1011,8 @@ func settingsSchema() map[string]any {
 // let a caller believe a stale index had been rebuilt.
 func (a *Adapter) Refresh(ctx context.Context, _ protocol.RefreshParams) (recall.Health, error) {
 	return a.Health(ctx)
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }

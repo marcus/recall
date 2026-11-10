@@ -59,6 +59,9 @@ type fake struct {
 	// healthDelay models a probe that is slow but finishes: it returns after
 	// this long unless its context ends first.
 	healthDelay time.Duration
+	// probeUnderSearchDeadline bounds a prepared probe by the search
+	// deadline, as td's PrepareSearch does.
+	probeUnderSearchDeadline bool
 
 	// searchPanic, probePanic, and initializePanic model the one failure an
 	// adapter cannot report for itself: a bug in its own code. Each is the
@@ -202,6 +205,11 @@ func (f *preparedFake) PrepareSearch(
 ) (recall.Health, adapter.SearchPreparation, error) {
 	f.prepareCalls++
 	f.preparedRequest = req
+	if f.probeUnderSearchDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
+		defer cancel()
+	}
 	health, err := f.Health(ctx)
 	if err == nil && f.searchInPrepare {
 		searchCtx, cancel := context.WithDeadline(ctx, req.Deadline)
@@ -1812,6 +1820,81 @@ func TestSlowProbeIsReportedAsProbeTimeoutWithinTheRequestBudget(t *testing.T) {
 	rep := reportFor(t, resp, "docs")
 	if rep.Outcome != recall.SearchSkipped || rep.Reason != "probe_timeout" {
 		t.Errorf("docs = %s (%s), want skipped (probe_timeout)", rep.Outcome, rep.Reason)
+	}
+	if rep.Diagnostics["bound"] != "probe" {
+		t.Errorf("diagnostics = %v, want bound=probe", rep.Diagnostics)
+	}
+}
+
+// #17. A probe ended by the adapter's own per-call limit is a probe_timeout
+// that names the call and the setting to raise, not an unhealthy source with
+// no diagnostics.
+func TestProbeEndedByAdapterCallLimitNamesTheSetting(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].healthErr = &adapter.CallTimeoutError{
+			Call: "td info", Limit: 5 * time.Second, Setting: "settings.timeout_ms",
+			Err: context.DeadlineExceeded,
+		}
+	})
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "docs")
+	if rep.Outcome != recall.SearchSkipped || rep.Reason != "probe_timeout" {
+		t.Fatalf("docs = %s (%s), want skipped (probe_timeout)", rep.Outcome, rep.Reason)
+	}
+	want := map[string]any{"bound": "adapter_call", "call": "td info", "call_limit": "5s", "setting": "settings.timeout_ms"}
+	for k, v := range want {
+		if rep.Diagnostics[k] != v {
+			t.Errorf("diagnostics[%s] = %v, want %v (all: %v)", k, rep.Diagnostics[k], v, rep.Diagnostics)
+		}
+	}
+}
+
+// #17. td bounds its prepared probe by the search deadline, which is the
+// source's timeout_ms. When that runs out first, the diagnostics name it, not
+// an anonymous adapter deadline.
+func TestPreparedProbeEndedBySearchDeadlineNamesTimeout(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].prepared = true
+		f["faketasks"].probeUnderSearchDeadline = true
+		f["faketasks"].healthWait = true // runs past tasks' 2000ms timeout_ms
+	})
+	req := query("anything")
+	req.Budget.LatencyMS = 10_000
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Reason != "probe_timeout" {
+		t.Fatalf("tasks = %s (%s), want probe_timeout", rep.Outcome, rep.Reason)
+	}
+	if rep.Diagnostics["bound"] != "search_deadline" || rep.Diagnostics["setting"] != "timeout_ms" ||
+		rep.Diagnostics["search_limit"] != "2s" {
+		t.Errorf("diagnostics = %v, want bound=search_deadline, setting=timeout_ms, search_limit=2s", rep.Diagnostics)
+	}
+}
+
+// #17. An unhealthy exclusion carries what the source said about itself.
+func TestUnhealthyExclusionKeepsSourceDiagnostics(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].health = recall.Health{
+			Status: recall.HealthUnavailable, Coverage: recall.IndexUnknown,
+			Diagnostics: map[string]any{"reason": "unavailable"},
+		}
+	})
+	resp, err := h.app.Query(context.Background(), query("anything"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "docs")
+	if rep.Reason != "unhealthy" {
+		t.Fatalf("docs reason = %q, want unhealthy", rep.Reason)
+	}
+	if rep.Diagnostics["reason"] != "unavailable" || rep.Diagnostics["status"] != "unavailable" {
+		t.Errorf("diagnostics = %v, want the source's own reason and status", rep.Diagnostics)
 	}
 }
 

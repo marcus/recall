@@ -187,7 +187,11 @@ func (r *runtime) status(ctx context.Context, profile config.Profile, member boo
 	if s.FreshnessPolicy == "" {
 		s.FreshnessPolicy = manifest.FreshnessPolicy
 	}
-	s.Health = &health
+	if health.Status != "" {
+		// A probe that only returned an error, such as a timeout, has no
+		// health to show; its error says why.
+		s.Health = &health
+	}
 	if err != nil {
 		s.Error = err.Error()
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -290,6 +291,11 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 	listArgs := listArgs(set.Scope, nil)
 	res, err := a.run(ctx, listArgs...)
 	if err != nil {
+		// Running out of time says nothing about the store. Returned as an
+		// error so the caller reports a timeout, not an unhealthy source (#17).
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return recall.Health{}, err
+		}
 		return adapter.Unhealthy(err), nil
 	}
 	var records []taskRecord
@@ -386,10 +392,9 @@ func (s settings) binary() string {
 }
 
 func (s settings) timeout() time.Duration {
-	if s.TimeoutMS > 0 {
-		return time.Duration(s.TimeoutMS) * time.Millisecond
-	}
-	return DefaultTimeout
+	// Zero leaves the call to the caller's deadline, or to [DefaultTimeout]
+	// when there is none; see [adapter.BoundCall].
+	return time.Duration(max(s.TimeoutMS, 0)) * time.Millisecond
 }
 
 func (s settings) maxCandidates() int {
@@ -642,7 +647,7 @@ func settingsSchema() map[string]any {
 			},
 			"timeout_ms": map[string]any{
 				"type": "integer", "minimum": 1,
-				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins.",
+				"description": "Per-invocation timeout. Composes with the request deadline; the sooner wins. Unset, each call is bounded by the request deadline alone, or by 5s when the caller sets none.",
 			},
 			"max_candidates": map[string]any{
 				"type": "integer", "minimum": 1,
