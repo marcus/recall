@@ -206,8 +206,8 @@ scoped it away, because it is disabled, or because the profile ceiling sits
 below its classification is the configured system working as asked. Reporting
 that as degraded would make every well-configured query look impaired and the
 signal would stop meaning anything. A source that was eligible and could not
-answer — unhealthy, denied, out of budget, or unable to honor `as_of` —
-degrades coverage. Both are reported in `source_outcomes` either way.
+answer — unhealthy, denied, out of budget, unable to finish its health probe
+in time (`probe_timeout`), or unable to honor `as_of` — degrades coverage. Both are reported in `source_outcomes` either way.
 
 Built-in adapters may overlap a request's health work with retrieval when
 their source-specific contract can do so safely. That does not reverse the

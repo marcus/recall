@@ -297,7 +297,8 @@ pack that needs it:
 
 - **An exclusion reason cannot be asserted.** `expected_source_outcomes` takes
   an outcome, so `unhealthy`, `denied`, `sensitivity_ceiling`,
-  `as_of_unsupported`, and `budget_exhausted` all flatten to `skipped` —
+  `as_of_unsupported`, `budget_exhausted`, and `probe_timeout` all flatten to
+  `skipped` —
   including the `as_of` case whose entire point is *which* reason was reported.
 - **A match signal cannot be asserted.** The near-miss category exists to prove
   a substring does not exact-match, but `exact_identifier` is only observable

@@ -233,7 +233,13 @@ func (c *Conn) Health(ctx context.Context) (recall.Health, error) {
 		health.ColdStart = c.coldStart
 		c.coldReported = true
 	}
-	c.cached, c.cachedAt = healthEntry{health: health, err: err}, time.Now()
+	// A probe that ran out of time is not cached. It says how long this caller
+	// was willing to wait, not what state the source is in, and caching it
+	// would let one short-budget request report the source unusable to every
+	// request for the next TTL, whatever budget those carried.
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		c.cached, c.cachedAt = healthEntry{health: health, err: err}, time.Now()
+	}
 	c.mu.Unlock()
 
 	return health, err

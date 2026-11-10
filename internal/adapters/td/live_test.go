@@ -293,6 +293,12 @@ func issueID(t *testing.T, payload string) string {
 	return id
 }
 
+// liveTimeoutMS replaces td's 5s per-invocation default in these tests. They
+// run the real td binary and assert identity and content, not latency; on a
+// loaded machine (load average ~50) a td call crosses 5s and the tests failed
+// with deadline_exceeded on whichever call was slowest.
+const liveTimeoutMS = 60_000
+
 func newLiveAdapter(t *testing.T, binary, sourceID, root string) *td.Adapter {
 	t.Helper()
 	a := td.New(td.Options{})
@@ -551,6 +557,9 @@ func health(t *testing.T, a *td.Adapter) recall.Health {
 func newLiveAdapterWith(t *testing.T, binary, sourceID, root string, settings map[string]any) *td.Adapter {
 	t.Helper()
 	settings["binary"] = binary
+	if _, ok := settings["timeout_ms"]; !ok {
+		settings["timeout_ms"] = liveTimeoutMS
+	}
 	a := td.New(td.Options{})
 	if _, err := a.Initialize(context.Background(), adapter.Config{
 		ProtocolVersionMin: protocol.MinVersion,

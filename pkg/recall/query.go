@@ -286,7 +286,7 @@ type SourceReport struct {
 	Outcome SearchOutcome `json:"outcome"`
 
 	// Reason explains a non-success outcome in terms a person can act on:
-	// as_of_unsupported, budget_exhausted, denied, unreachable.
+	// as_of_unsupported, budget_exhausted, probe_timeout, denied, unreachable.
 	Reason string `json:"reason,omitempty"`
 
 	// Candidates is the number of candidates returned by the source.

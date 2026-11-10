@@ -6,6 +6,17 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- `recall extract <file.html> [--json]` runs Recall's HTML extractor on one file without configuration or an index, returning the title, text, heading sections with original source lines and anchors, and the robots `noindex` flag. See [the documents guide](docs/documents-adapter.md).
+
+### Fixed
+
+- The plan-time health probe is bounded by the source's own `timeout_ms` (never less than the previous 5 s) and capped by what remains of the request budget, instead of a fixed 5 s that neither setting reached. With `defaults.budget_ms` or `--budget-ms` above 5 s, subprocess sources such as qmd, with or without a derived mirror, and external adapters with a cold first probe now get that longer probe, so they are no longer dropped from a full query on a busy machine. Under the default 5 s budget the probe limit is effectively unchanged. Probes of in-process built-ins, which previously had no deadline, are now bounded too. (#13, #14)
+- A probe that runs out of time is reported as `skipped` with reason `probe_timeout`, with the `probe_limit` it was given, instead of `unhealthy`. A probe ended by the caller's own deadline is reported as `budget_exhausted`. Both still degrade coverage. A timed-out probe is no longer cached, so one short-budget request cannot mark a source unusable for the next 30 s. (#14)
+
 ## [0.7.1] - 2026-11-04
 
 ### Fixed

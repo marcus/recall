@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -26,6 +27,14 @@ const (
 	ReasonAsOfUnsupported    = "as_of_unsupported"
 	ReasonRecordTypeMismatch = recall.SkipRecordTypeMismatch
 	ReasonBudgetExhausted    = "budget_exhausted"
+
+	// ReasonProbeTimeout is a source whose plan-time health probe did not
+	// finish inside the time the plan could give it. It is not
+	// [ReasonUnhealthy]: "the source is broken" and "we did not wait long
+	// enough to find out" are different facts, acted on differently — one
+	// wants a fix, the other a larger budget or a quieter machine. It degrades
+	// coverage like every reason outside the closed non-degrading set.
+	ReasonProbeTimeout       = "probe_timeout"
 	ReasonAdapterUnavailable = "adapter_unavailable"
 	ReasonStoreConflict      = "store_identity_conflict"
 
@@ -553,15 +562,31 @@ func (r *Registry) consider(
 	var preparation adapter.SearchPreparation
 	canSearchCurrent := req.AsOf == nil || manifest.AsOfSupport.Honors()
 	canSearchTypes := typesOverlap(req, inst, manifest)
+	probeStart := now()
+	probeLimit := probeDeadline(probeStart, budget.Add(-reserve), inst.Timeout)
+	probeCtx, cancelProbe := context.WithDeadline(ctx, probeLimit)
 	if prepared, ok := a.(adapter.PreparedSearcher); ok &&
 		deadline.After(now()) && canSearchCurrent && canSearchTypes {
-		health, preparation, err = prepared.PrepareSearch(ctx, searchReq)
+		health, preparation, err = prepared.PrepareSearch(probeCtx, searchReq)
 	} else {
-		health, err = a.Health(ctx)
+		health, err = a.Health(probeCtx)
 	}
+	cancelProbe()
+	// A probe that ran out of time is classified by its error, not by whether
+	// probeCtx has expired: an adapter may bound itself by the search deadline
+	// (td's PrepareSearch does), which ends before probeCtx, and an external
+	// adapter's *protocol.CallTimeout unwraps to the context's cause.
+	timedOut := err != nil && errors.Is(err, context.DeadlineExceeded)
 	switch {
 	case err != nil && health.Status == recall.HealthDenied:
 		return excludeAfterHandshake(ReasonDenied)
+	case timedOut && ctx.Err() != nil:
+		// The caller's own deadline ended the probe, not the plan's limit.
+		return excludeAfterHandshake(ReasonBudgetExhausted)
+	case timedOut:
+		v := excludeAfterHandshake(ReasonProbeTimeout)
+		v.diagnostics = map[string]any{"probe_limit": probeLimit.Sub(probeStart).String()}
+		return v
 	case err != nil || !health.Usable():
 		return excludeAfterHandshake(ReasonUnhealthy)
 	}
@@ -655,6 +680,27 @@ func typesOverlap(req recall.QueryRequest, inst *config.SourceInstance, m recall
 		}
 	}
 	return false
+}
+
+// probeDeadline bounds the plan-time health probe.
+//
+// The probe used to run with no deadline of its own, so the adapter layer gave
+// it a fixed [adapter.DefaultProbeTimeout]. Neither the source's timeout_ms nor
+// the request's budget reached it, and a source whose probe is a subprocess or
+// two — qmd, or an external adapter's cold first probe — crossed that fixed
+// limit whenever the machine was busy and was dropped as unhealthy (#13, #14).
+//
+// The probe now gets the larger of the source's own timeout and the old fixed
+// limit — never less than it had before, so a source on the 2s inherited
+// timeout is not newly starved — capped by what remains of the request once
+// fusion's reserve is held back. A probe that cannot finish inside the request
+// leaves nothing to search with, so waiting past it buys nothing.
+func probeDeadline(now, usable time.Time, timeout time.Duration) time.Time {
+	limit := max(timeout, adapter.DefaultProbeTimeout)
+	if own := now.Add(limit); own.Before(usable) {
+		return own
+	}
+	return usable
 }
 
 // sourceDeadline is the earlier of the source's own timeout and what remains of

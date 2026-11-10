@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/marcus/recall/internal/config"
+	"github.com/marcus/recall/pkg/adapter"
 )
 
 func TestResolveQueryBudget(t *testing.T) {
@@ -66,6 +67,34 @@ func TestResolveQueryBudget(t *testing.T) {
 			if got != tt.want {
 				t.Fatalf("resolveQueryBudget(%d, %+v) = %v, want %v",
 					tt.latencyMS, tt.defaults, got, tt.want)
+			}
+		})
+	}
+}
+
+// #13, #14: the plan-time probe gets the source's own timeout, never less than
+// the old fixed probe limit, and never more than the request has left.
+func TestProbeDeadline(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(1_000, 0)
+	tests := []struct {
+		name    string
+		usable  time.Duration
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{"long source timeout inside a long request", 60 * time.Second, 30 * time.Second, 30 * time.Second},
+		{"short inherited timeout keeps the old floor", 60 * time.Second, 2 * time.Second, adapter.DefaultProbeTimeout},
+		{"request budget caps a long source timeout", 8 * time.Second, 180 * time.Second, 8 * time.Second},
+		{"request budget caps the floor too", time.Second, 2 * time.Second, time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := probeDeadline(now, now.Add(tt.usable), tt.timeout).Sub(now)
+			if got != tt.want {
+				t.Fatalf("probeDeadline(usable %s, timeout %s) = %s, want %s",
+					tt.usable, tt.timeout, got, tt.want)
 			}
 		})
 	}

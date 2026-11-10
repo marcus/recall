@@ -49,6 +49,12 @@ type fake struct {
 	searchCalls      int
 	healthCalls      int
 
+	// healthWait models a probe slower than any budget the plan can give it:
+	// it blocks until its context ends. healthHadDeadline records whether the
+	// planner bounded it at all.
+	healthWait        bool
+	healthHadDeadline bool
+
 	// searchPanic, probePanic, and initializePanic model the one failure an
 	// adapter cannot report for itself: a bug in its own code. Each is the
 	// value the adapter panics with, so a test can recognise it in what recall
@@ -122,8 +128,13 @@ func (f *fake) Expand(context.Context, recall.ExpandRequest) (recall.ExpandRespo
 	return f.evidence, f.expandErr
 }
 
-func (f *fake) Health(context.Context) (recall.Health, error) {
+func (f *fake) Health(ctx context.Context) (recall.Health, error) {
 	f.healthCalls++
+	_, f.healthHadDeadline = ctx.Deadline()
+	if f.healthWait {
+		<-ctx.Done()
+		return recall.Health{}, ctx.Err()
+	}
 	if f.probePanic != "" {
 		panic(f.probePanic)
 	}
@@ -1741,5 +1752,32 @@ func TestARefreshPanicFailsThatSourceInsteadOfKillingTheProcess(t *testing.T) {
 					resp.Outcome)
 			}
 		})
+	}
+}
+
+// #14. A plan-time probe that runs out of time is reported as probe_timeout,
+// not unhealthy, and it is bounded by the request rather than left to a fixed
+// limit the request never sees.
+func TestSlowProbeIsReportedAsProbeTimeoutWithinTheRequestBudget(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["fakedocs"].healthWait = true
+	})
+
+	req := query("anything")
+	req.Budget.LatencyMS = 300
+	start := time.Now()
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("query took %s: the probe was not bounded by the 300ms request budget", elapsed)
+	}
+	if !h.fakes["fakedocs"].healthHadDeadline {
+		t.Error("the plan-time probe carried no deadline")
+	}
+	rep := reportFor(t, resp, "docs")
+	if rep.Outcome != recall.SearchSkipped || rep.Reason != "probe_timeout" {
+		t.Errorf("docs = %s (%s), want skipped (probe_timeout)", rep.Outcome, rep.Reason)
 	}
 }
