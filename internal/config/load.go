@@ -504,6 +504,10 @@ func (c *Config) applyRaw(f sourceFile, key string, inst *SourceInstance, raw ra
 		inst.Timeout = time.Duration(*raw.TimeoutMS) * time.Millisecond
 		set("timeout_ms")
 	}
+	if raw.ProbeTimeoutMS != nil {
+		inst.ProbeTimeout = time.Duration(*raw.ProbeTimeoutMS) * time.Millisecond
+		set("probe_timeout_ms")
+	}
 	for _, k := range slices.Sorted(maps.Keys(raw.Settings)) {
 		if inst.Settings == nil {
 			inst.Settings = map[string]any{}

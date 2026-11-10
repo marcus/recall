@@ -292,6 +292,15 @@ func (a *App) searchOne(ctx context.Context, t source.Target) searchResult {
 		res.timeout = &recall.TimeoutDetail{
 			Budget: t.TimeoutBudget, Limit: t.TimeoutLimit, Deadline: &deadline,
 		}
+	case reportedTimeout && ctx.Err() == nil && !t.Request.Deadline.IsZero() &&
+		t.Request.Deadline.Before(t.Deadline) && !a.now().Before(t.Request.Deadline):
+		// A prepared search ran under the request's own deadline, which the
+		// planner leaves earlier than the one bounding collection. A timeout
+		// it stored is that budget firing, not the adapter's own (#15).
+		deadline := t.Request.Deadline
+		res.timeout = &recall.TimeoutDetail{
+			Budget: t.TimeoutBudget, Limit: t.TimeoutLimit, Deadline: &deadline,
+		}
 	case reportedTimeout:
 		if ctx.Err() == nil {
 			res.timeout = &recall.TimeoutDetail{Budget: recall.TimeoutAdapterInternal}

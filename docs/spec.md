@@ -370,8 +370,22 @@ failure is explicit. Expansion re-checks permissions.
 ```text
 deadline        = start + budget.latency_ms
 fusion_reserve  = configured, default 25ms
-source_deadline = min(source.timeout_ms, deadline - fusion_reserve - now)
+probe_limit     = min(source.probe_timeout_ms
+                      or clamp(source.timeout_ms, 5s, 10s),
+                      deadline - fusion_reserve - now)
+source_deadline = min(source.timeout_ms, deadline - fusion_reserve - planned)
 ```
+
+Every eligible source's health is probed in parallel, and searches start once
+every probe has returned (`planned`). A source's own `timeout_ms` is therefore
+counted from when planning finishes, not from when it began: time spent waiting
+for another source's probe is charged to the shared request budget, never to
+this source's timeout. The probe limit has a ceiling of its own because the
+slowest probe decides when every search starts; a large `timeout_ms` usually
+means search or refresh is slow, not health. A source whose health really is
+slower sets `probe_timeout_ms`. A probe that runs out of time reports
+`probe_timeout`. The plan reports each source's `timeout` as the time it was
+granted from `planned`.
 
 A source whose deadline has already elapsed is skipped and reported; coverage
 becomes degraded. Late results are discarded, never attached to a later
@@ -706,6 +720,8 @@ intent_priors       bounded adjustments per named query class
 freshness_policy    expected refresh or verification behavior
 sensitivity         classification floor for this source
 timeout_ms          per-source query budget
+probe_timeout_ms    optional plan-time health probe limit; unset means
+                    timeout_ms clamped to 5–10s
 settings            adapter-owned, schema-validated
 ```
 

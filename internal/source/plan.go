@@ -179,7 +179,12 @@ type Target struct {
 	// TimeoutLimit is that budget's configured duration before the fusion
 	// reserve is applied.
 	TimeoutLimit time.Duration
-	Limit        int
+	// Granted is how long this source was given to search, measured from the
+	// moment planning finished. It is what a plan reports as the source's
+	// timeout: Deadline rendered against a later clock reads as negative once
+	// the search is over.
+	Granted time.Duration
+	Limit   int
 
 	// Health is what the source reported when eligibility was decided, carried
 	// so that the probe deciding eligibility is the only health probe a request
@@ -313,6 +318,7 @@ func (r *Registry) BuildPlan(ctx context.Context, req recall.QueryRequest, opt P
 	}
 	wg.Wait()
 	refuseDuplicateStores(instances, verdicts)
+	anchorDeadlines(verdicts, now(), plan.Deadline, queryBudget, reserve)
 
 	for i, inst := range instances {
 		if v := verdicts[i]; v.reason != "" {
@@ -501,6 +507,58 @@ type verdict struct {
 	reason         string
 	relevanceBasis recall.RelevanceBasis
 	diagnostics    map[string]any
+	// prepared marks a target whose Request was handed to PrepareSearch. The
+	// adapter may already have searched under that request's deadline, and may
+	// match its result to that exact request, so [anchorDeadlines] leaves the
+	// request and the budget it ran under alone.
+	prepared bool
+}
+
+// anchorDeadlines starts every admitted source's search clock when planning
+// finishes, not when it began (#15).
+//
+// Searches start only once every probe has returned, so a deadline counted
+// from the start of planning charged each source for the slowest OTHER
+// source's probe. A lexical source with timeout_ms = 15000 that waited 15 s at
+// the barrier for a slow qmd probe reached its search with nothing left and
+// reported timeout at 0 ms. Waiting on someone else is not this source being
+// slow, so only the request budget — which every source shares — is charged
+// for it.
+//
+// A source that reaches this point with the request budget already spent is
+// excluded as budget_exhausted rather than asked and guaranteed to time out.
+func anchorDeadlines(
+	verdicts []verdict,
+	release, deadline time.Time,
+	queryBudget, reserve time.Duration,
+) {
+	for i := range verdicts {
+		v := &verdicts[i]
+		if v.reason != "" || v.target.Instance == nil {
+			continue
+		}
+		at, budget, limit := sourceDeadline(
+			release, deadline, queryBudget, reserve, v.target.Instance.Timeout)
+		if !at.After(release) {
+			// The budget is already spent. Asking anyway would guarantee a
+			// timeout and charge the caller for it.
+			*v = verdict{reason: ReasonBudgetExhausted, relevanceBasis: v.relevanceBasis}
+			continue
+		}
+		v.target.Deadline = at
+		if v.prepared {
+			// The search may have run inside PrepareSearch, under the deadline
+			// set before the probe; that is the budget that applied to it and
+			// the one a timeout it returns is attributed to. The later
+			// deadline only bounds collecting the result, so a finished
+			// preparation is not thrown away for having waited at the barrier.
+			continue
+		}
+		v.target.TimeoutBudget = budget
+		v.target.TimeoutLimit = limit
+		v.target.Granted = at.Sub(release)
+		v.target.Request.Deadline = at
+	}
 }
 
 // consider handshakes one source, probes it, and decides whether it may answer.
@@ -538,8 +596,9 @@ func (r *Registry) consider(
 	if err != nil {
 		return excludeAfterHandshake(ReasonAdapterUnavailable)
 	}
+	searchStart := now()
 	deadline, timeoutBudget, timeoutLimit := sourceDeadline(
-		now(), budget, queryBudget, reserve, inst.Timeout)
+		searchStart, budget, queryBudget, reserve, inst.Timeout)
 	searchReq := recall.SearchRequest{
 		Query:    req.Query,
 		AsOf:     req.AsOf,
@@ -560,14 +619,16 @@ func (r *Registry) consider(
 	}
 	var health recall.Health
 	var preparation adapter.SearchPreparation
+	prepared := false
 	canSearchCurrent := req.AsOf == nil || manifest.AsOfSupport.Honors()
 	canSearchTypes := typesOverlap(req, inst, manifest)
 	probeStart := now()
-	probeLimit := probeDeadline(probeStart, budget.Add(-reserve), inst.Timeout)
+	probeLimit := probeDeadline(probeStart, budget.Add(-reserve), inst.Timeout, inst.ProbeTimeout)
 	probeCtx, cancelProbe := context.WithDeadline(ctx, probeLimit)
-	if prepared, ok := a.(adapter.PreparedSearcher); ok &&
+	if preparer, ok := a.(adapter.PreparedSearcher); ok &&
 		deadline.After(now()) && canSearchCurrent && canSearchTypes {
-		health, preparation, err = prepared.PrepareSearch(probeCtx, searchReq)
+		health, preparation, err = preparer.PrepareSearch(probeCtx, searchReq)
+		prepared = true
 	} else {
 		health, err = a.Health(probeCtx)
 	}
@@ -600,12 +661,10 @@ func (r *Registry) consider(
 		return excludeAfterHandshake(ReasonRecordTypeMismatch)
 	}
 
-	if !deadline.After(now()) {
-		// The budget is already spent. Asking anyway would guarantee a timeout
-		// and charge the caller for it.
-		return excludeAfterHandshake(ReasonBudgetExhausted)
-	}
+	// Whether any budget is left is decided in [anchorDeadlines], once every
+	// probe has returned and the search clock actually starts.
 	return verdict{
+		prepared:       prepared,
 		relevanceBasis: manifest.RelevanceBasis,
 		target: Target{
 			Instance:      inst,
@@ -613,6 +672,7 @@ func (r *Registry) consider(
 			Deadline:      deadline,
 			TimeoutBudget: timeoutBudget,
 			TimeoutLimit:  timeoutLimit,
+			Granted:       deadline.Sub(searchStart),
 			Limit:         perSource,
 			Health:        health,
 			Request:       searchReq,
@@ -690,18 +750,29 @@ func typesOverlap(req recall.QueryRequest, inst *config.SourceInstance, m recall
 // two — qmd, or an external adapter's cold first probe — crossed that fixed
 // limit whenever the machine was busy and was dropped as unhealthy (#13, #14).
 //
-// The probe now gets the larger of the source's own timeout and the old fixed
-// limit — never less than it had before, so a source on the 2s inherited
-// timeout is not newly starved — capped by what remains of the request once
-// fusion's reserve is held back. A probe that cannot finish inside the request
-// leaves nothing to search with, so waiting past it buys nothing.
-func probeDeadline(now, usable time.Time, timeout time.Duration) time.Time {
-	limit := max(timeout, adapter.DefaultProbeTimeout)
+// A source's explicit probe_timeout_ms wins. Otherwise the probe gets its own
+// timeout_ms, never less than the old fixed limit — so a source on the 2s
+// inherited timeout is not newly starved — and never more than
+// [DefaultProbeCeiling]. The ceiling exists because every search waits for the
+// slowest probe (#15): a qmd source whose timeout_ms is sized for a slow
+// refresh let its probe hold the whole plan for most of the request. Either way
+// the limit is capped by what remains of the request once fusion's reserve is
+// held back. A probe that cannot finish inside the request leaves nothing to
+// search with, so waiting past it buys nothing.
+func probeDeadline(now, usable time.Time, timeout, explicit time.Duration) time.Time {
+	limit := explicit
+	if limit <= 0 {
+		limit = max(adapter.DefaultProbeTimeout, min(timeout, DefaultProbeCeiling))
+	}
 	if own := now.Add(limit); own.Before(usable) {
 		return own
 	}
 	return usable
 }
+
+// DefaultProbeCeiling is the most a probe gets from a source's timeout_ms
+// alone. A source whose health genuinely takes longer sets probe_timeout_ms.
+const DefaultProbeCeiling = 10 * time.Second
 
 // sourceDeadline is the earlier of the source's own timeout and what remains of
 // the request budget once fusion's reserve is held back.
@@ -750,7 +821,7 @@ func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 			RelevanceBasis: t.Manifest.RelevanceBasis,
 			Eligible:       true,
 			Limit:          t.Limit,
-			Timeout:        time.Until(t.Deadline),
+			Timeout:        t.Granted,
 			Prior:          t.Instance.BasePrior,
 		})
 	}

@@ -6,6 +6,13 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Fixed
+
+- One slow health probe no longer uses up every other source's search time. Searches still start once every probe has returned, but each source's `timeout_ms` is now counted from then, not from the start of planning, so a fast source waiting on a slow qmd probe no longer reports `timeout` after 0 ms. A source whose own probe ran longer than its `timeout_ms`, but inside the probe limit, is now searched rather than skipped as `budget_exhausted`. td, which searches while it is probed, keeps the deadline it searched under, and a timeout there is reported against its `timeout_ms` rather than as adapter-internal. The `--explain` plan reports the time each source was granted instead of a negative value. (#15)
+- By default the plan-time probe now gets the source's `timeout_ms` clamped between 5 s and 10 s, so a qmd source whose `timeout_ms` is sized for slow refreshes cannot hold every search for most of the request. A source whose health check really takes longer sets the new per-source `probe_timeout_ms`, still capped by the request budget. (#15)
+
 ## [0.8.0] - 2026-11-10
 
 ### Added

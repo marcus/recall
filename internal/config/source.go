@@ -286,6 +286,13 @@ type SourceInstance struct {
 
 	Timeout time.Duration `json:"timeout_ns"`
 
+	// ProbeTimeout bounds the plan-time health probe when set. Zero means the
+	// planner's default: the source's Timeout, never below 5s and never above
+	// the default probe ceiling. A large timeout_ms usually says that search or
+	// refresh is slow, not that health is, so it does not by itself let one
+	// source's probe hold the whole plan.
+	ProbeTimeout time.Duration `json:"probe_timeout_ns,omitempty"`
+
 	// Settings is adapter-owned. This package carries it, bounds nothing inside
 	// it, and leaves schema validation to the handshake, where the adapter's
 	// declared settings schema is known.

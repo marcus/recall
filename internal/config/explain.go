@@ -215,6 +215,11 @@ func explainSource(s *SourceInstance) SourceView {
 			"base_dir":               newField(s.BaseDir, s.Origin("location")),
 		},
 	}
+	if s.ProbeTimeout > 0 {
+		// Shown only when set. Unset is not "no limit" — it is timeout_ms
+		// clamped by the planner — so a 0 here would misstate it.
+		v.Fields["probe_timeout_ms"] = newField(s.ProbeTimeout.Milliseconds(), s.Origin("probe_timeout_ms"))
+	}
 	if s.RecordTypes != nil {
 		types := make([]string, 0, len(s.RecordTypes))
 		for _, rt := range s.RecordTypes {

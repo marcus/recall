@@ -95,6 +95,18 @@ timeout_ms = -1
 			wantIn:  []string{"positive"},
 		},
 		{
+			// Omitting probe_timeout_ms is how a source takes the default; an
+			// explicit zero is a mistake, not a request for no probe.
+			name: "zero probe timeout",
+			project: `
+[[sources]]
+source_id = "clara-docs"
+probe_timeout_ms = 0
+`,
+			wantKey: "sources[0].probe_timeout_ms",
+			wantIn:  []string{"positive"},
+		},
+		{
 			// The adapter declares what it can serve. Catching this at load is
 			// the difference between a configuration error and a source that
 			// looks healthy and fails at query time.

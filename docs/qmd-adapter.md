@@ -391,6 +391,12 @@ refresh_timeout_ms = 900000 # only the no-deadline protocol fallback
 
 Run `recall refresh --profile work --source notes-semantic`. This allows at most 180 seconds overall, with each invocation capped at 120 seconds or the remaining total. A 60-second source timeout still stops a 71-second refresh even with a 15-minute `refresh_timeout_ms`. Query budgets remain separate; increasing the source ceiling does not extend a query's end-to-end latency budget.
 
+A large source `timeout_ms` also does not lengthen the query-time health probe beyond 10 seconds, because every source's search waits for the slowest probe. If `qmd status` and `collection show` take longer than that on a busy machine, typically with a derived mirror, set `probe_timeout_ms` on the source and a `--budget-ms` or `defaults.budget_ms` that leaves room for it:
+
+```toml
+probe_timeout_ms = 20000 # query-time health probe only
+```
+
 `replay` names a directory of recorded qmd output and exists for the conformance
 suite and for committed evaluation packs; it should not be set on a live source.
 A replaying source verifies no store and publishes no `store_identity`.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,10 @@ type fake struct {
 	healthWait        bool
 	healthHadDeadline bool
 
+	// healthDelay models a probe that is slow but finishes: it returns after
+	// this long unless its context ends first.
+	healthDelay time.Duration
+
 	// searchPanic, probePanic, and initializePanic model the one failure an
 	// adapter cannot report for itself: a bug in its own code. Each is the
 	// value the adapter panics with, so a test can recognise it in what recall
@@ -70,6 +75,15 @@ type fake struct {
 	prepareCalls        int
 	preparedSearchCalls int
 	sawOwnPreparation   bool
+	preparedRequest     recall.SearchRequest
+	sawPreparedRequest  bool
+
+	// searchInPrepare models td: the search runs inside PrepareSearch, bounded
+	// by the request's deadline, and SearchPrepared only hands back what it
+	// stored.
+	searchInPrepare bool
+	storedResponse  recall.SearchResponse
+	storedErr       error
 
 	// project is the project this fake serves, and sawProject is what the last
 	// search was actually asked for. Together they are how an end-to-end test
@@ -135,6 +149,13 @@ func (f *fake) Health(ctx context.Context) (recall.Health, error) {
 		<-ctx.Done()
 		return recall.Health{}, ctx.Err()
 	}
+	if f.healthDelay > 0 {
+		select {
+		case <-time.After(f.healthDelay):
+		case <-ctx.Done():
+			return recall.Health{}, ctx.Err()
+		}
+	}
 	if f.probePanic != "" {
 		panic(f.probePanic)
 	}
@@ -177,10 +198,16 @@ type preparedFake struct {
 
 func (f *preparedFake) PrepareSearch(
 	ctx context.Context,
-	_ recall.SearchRequest,
+	req recall.SearchRequest,
 ) (recall.Health, adapter.SearchPreparation, error) {
 	f.prepareCalls++
+	f.preparedRequest = req
 	health, err := f.Health(ctx)
+	if err == nil && f.searchInPrepare {
+		searchCtx, cancel := context.WithDeadline(ctx, req.Deadline)
+		f.storedResponse, f.storedErr = f.Search(searchCtx, req)
+		cancel()
+	}
 	return health, adapter.SearchPreparation{State: f.fake}, err
 }
 
@@ -191,6 +218,12 @@ func (f *preparedFake) SearchPrepared(
 ) (recall.SearchResponse, error) {
 	f.preparedSearchCalls++
 	f.sawOwnPreparation = preparation.State == f.fake
+	// A real prepared searcher (td) matches its result to the exact request it
+	// prepared, so the core must hand back that request unchanged.
+	f.sawPreparedRequest = reflect.DeepEqual(req, f.preparedRequest)
+	if f.searchInPrepare {
+		return f.storedResponse, f.storedErr
+	}
 	return f.Search(ctx, req)
 }
 
@@ -1779,5 +1812,74 @@ func TestSlowProbeIsReportedAsProbeTimeoutWithinTheRequestBudget(t *testing.T) {
 	rep := reportFor(t, resp, "docs")
 	if rep.Outcome != recall.SearchSkipped || rep.Reason != "probe_timeout" {
 		t.Errorf("docs = %s (%s), want skipped (probe_timeout)", rep.Outcome, rep.Reason)
+	}
+}
+
+// #15. Searches start only once every probe has returned. A source's search
+// clock starts then, not when planning began, so a fast source is not charged
+// for another source's slow probe and does not reach its search with its
+// deadline already gone.
+func TestSlowProbeDoesNotSpendAnotherSourcesTimeout(t *testing.T) {
+	for _, prepared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("prepared=%t", prepared), func(t *testing.T) {
+			h := newHarness(t, func(f map[string]*fake) {
+				// Longer than tasks' 2000ms timeout_ms, inside docs' 5s probe.
+				f["fakedocs"].healthDelay = 2300 * time.Millisecond
+				f["faketasks"].prepared = prepared
+				// Any search delay makes the fake honor an expired deadline,
+				// as a real adapter does.
+				f["faketasks"].delay = time.Millisecond
+			})
+
+			req := query("anything")
+			req.Budget.LatencyMS = 10_000
+			resp, err := h.app.Query(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []string{"docs", "tasks"} {
+				if rep := reportFor(t, resp, id); rep.Outcome != recall.SearchSuccess {
+					t.Errorf("%s = %s (%s), want success", id, rep.Outcome, rep.Reason)
+				}
+			}
+			if prepared && !h.fakes["faketasks"].sawPreparedRequest {
+				t.Error("the prepared request was changed between PrepareSearch and SearchPrepared")
+			}
+			for _, p := range resp.Plan.Sources {
+				if p.SourceID != "tasks" {
+					continue
+				}
+				if p.Timeout != 2*time.Second {
+					t.Errorf("plan timeout for tasks = %s, want the 2s it was granted", p.Timeout)
+				}
+			}
+		})
+	}
+}
+
+// #15. A source that searches during preparation (td) ran under the deadline
+// set before its probe. The planner leaves that deadline alone, and a timeout
+// the preparation stored is attributed to the source's own timeout_ms, not to
+// the adapter.
+func TestPreparedSearchTimeoutKeepsItsSourceLimit(t *testing.T) {
+	h := newHarness(t, func(f map[string]*fake) {
+		f["faketasks"].prepared = true
+		f["faketasks"].searchInPrepare = true
+		f["faketasks"].delay = 5 * time.Second // past tasks' 2000ms timeout_ms
+	})
+
+	req := query("anything")
+	req.Budget.LatencyMS = 10_000
+	resp, err := h.app.Query(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reportFor(t, resp, "tasks")
+	if rep.Outcome != recall.SearchTimeout {
+		t.Fatalf("tasks = %s (%s), want timeout", rep.Outcome, rep.Reason)
+	}
+	if rep.Timeout == nil || rep.Timeout.Budget != recall.TimeoutSourceLimit ||
+		rep.Timeout.Limit != 2*time.Second {
+		t.Errorf("tasks timeout = %+v, want source_limit 2s", rep.Timeout)
 	}
 }

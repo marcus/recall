@@ -223,6 +223,10 @@ func (c *Config) validateSource(s *SourceInstance) error {
 			"source %q: timeout must be positive; a source with no time to answer reports "+
 				"timeout, never empty success", s.ID))
 	}
+	if _, declared := s.origins["probe_timeout_ms"]; declared && s.ProbeTimeout <= 0 {
+		p.add(invalidErrorf(origin("probe_timeout_ms"), key("probe_timeout_ms"),
+			"source %q: probe_timeout_ms must be positive; omit it to use the default", s.ID))
+	}
 	if !s.Sensitivity.Valid() {
 		p.add(invalidErrorf(origin("sensitivity"), key("sensitivity"),
 			"source %q: unknown sensitivity", s.ID))

@@ -74,6 +74,7 @@ type rawSource struct {
 	IntentPriors    map[string]float64   `toml:"intent_priors"`
 	Sensitivity     *string              `toml:"sensitivity"`
 	TimeoutMS       *int                 `toml:"timeout_ms"`
+	ProbeTimeoutMS  *int                 `toml:"probe_timeout_ms"`
 	Settings        map[string]any       `toml:"settings"`
 	Secrets         map[string]rawSecret `toml:"secrets"`
 }
