@@ -638,7 +638,8 @@ func (r *Registry) consider(
 	// probeCtx has expired: an adapter may bound itself by the search deadline
 	// (td's PrepareSearch does), which ends before probeCtx, and an external
 	// adapter's *protocol.CallTimeout unwraps to the context's cause.
-	timedOut := err != nil && errors.Is(err, context.DeadlineExceeded)
+	timedOut := err != nil && (errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, protocol.ErrDeadlineExceeded))
 	switch {
 	case err != nil && health.Status == recall.HealthDenied:
 		return excludeAfterHandshake(ReasonDenied)
@@ -647,7 +648,13 @@ func (r *Registry) consider(
 		return excludeAfterHandshake(ReasonBudgetExhausted)
 	case timedOut:
 		v := excludeAfterHandshake(ReasonProbeTimeout)
-		v.diagnostics = probeTimeoutDiagnostics(err, probeExpired, probeLimit.Sub(probeStart))
+		v.diagnostics = probeTimeoutDiagnostics(err, probeTimeoutBounds{
+			probeExpired:  probeExpired,
+			probeLimit:    probeLimit.Sub(probeStart),
+			searchExpired: prepared && !now().Before(deadline),
+			searchBudget:  timeoutBudget,
+			searchLimit:   timeoutLimit,
+		})
 		return v
 	case err != nil || !health.Usable():
 		v := excludeAfterHandshake(ReasonUnhealthy)
@@ -841,14 +848,27 @@ func (p Plan) AsPlan(fusion recall.FusionRules) recall.Plan {
 	return out
 }
 
+// probeTimeoutBounds is what the planner knows about the deadlines a probe ran
+// under when it timed out.
+type probeTimeoutBounds struct {
+	probeExpired  bool
+	probeLimit    time.Duration
+	searchExpired bool // a prepared probe also ran under the search deadline
+	searchBudget  recall.TimeoutBudget
+	searchLimit   time.Duration
+}
+
 // probeTimeoutDiagnostics says which bound ended a probe, so the person reading
-// it knows which setting to change (#17). "probe" is the plan's probe limit
-// (the source's timeout_ms or probe_timeout_ms). "adapter_call" is one
-// subprocess call running out the adapter's own per-call limit, named with the
-// setting that controls it. "adapter" is any other deadline the adapter set
-// itself, such as td's search deadline during a prepared probe.
-func probeTimeoutDiagnostics(err error, probeExpired bool, limit time.Duration) map[string]any {
-	d := map[string]any{"probe_limit": limit.String()}
+// it knows which setting to change (#17):
+//   - "adapter_call": one subprocess call ran out the adapter's own per-call
+//     limit, named with the setting that controls it.
+//   - "probe": the plan's probe limit (timeout_ms clamped, or probe_timeout_ms).
+//   - "search_deadline": a prepared probe, which also searches (td), ran out
+//     the search deadline it was given: the source's timeout_ms, or the
+//     request budget when that was sooner.
+//   - "adapter": any other deadline the adapter set itself, with its detail.
+func probeTimeoutDiagnostics(err error, b probeTimeoutBounds) map[string]any {
+	d := map[string]any{"probe_limit": b.probeLimit.String()}
 	var call *adapter.CallTimeoutError
 	switch {
 	case errors.As(err, &call):
@@ -856,8 +876,15 @@ func probeTimeoutDiagnostics(err error, probeExpired bool, limit time.Duration) 
 		d["call"] = call.Call
 		d["call_limit"] = call.Limit.String()
 		d["setting"] = call.Setting
-	case probeExpired:
+	case b.probeExpired:
 		d["bound"] = "probe"
+	case b.searchExpired:
+		d["bound"] = "search_deadline"
+		d["search_limit"] = b.searchLimit.String()
+		d["setting"] = "timeout_ms"
+		if b.searchBudget != recall.TimeoutSourceLimit {
+			d["setting"] = "budget_ms"
+		}
 	default:
 		d["bound"] = "adapter"
 		d["detail"] = err.Error()

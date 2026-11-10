@@ -387,8 +387,10 @@ slower sets `probe_timeout_ms`. A probe that runs out of time reports
 `probe_timeout`, with diagnostics naming the `probe_limit` and the `bound` that
 fired: `probe` (the limit above), `adapter_call` (one subprocess call ran out
 the adapter's own per-call limit; `call`, `call_limit`, and the `setting` that
-controls it are named), or `adapter` (another deadline the adapter set, with
-`detail`). A source excluded as `unhealthy` carries its own health diagnostics.
+controls it are named), `search_deadline` (a source that searches while it is
+probed, such as td, ran out its search deadline; `search_limit` and the
+`setting`, `timeout_ms` or `budget_ms`, are named), or `adapter` (another
+deadline the adapter set, with `detail`). A source excluded as `unhealthy` carries its own health diagnostics.
 The plan reports each source's `timeout` as the time it was granted from
 `planned`.
 
