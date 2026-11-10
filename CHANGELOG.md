@@ -6,7 +6,7 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
-## [Unreleased]
+## [0.8.1] - 2026-11-10
 
 ### Fixed
 
