@@ -60,3 +60,12 @@ encoding; `--explain` chooses the diagnostic tier.
 Exit `2` is a supported statement about the searched corpus. Exits `3` and `4`
 are coverage failures; do not report them as “no results.” Exit `1` means no
 corpus claim was made at all.
+
+## Changing Recall
+
+The eval packs guard the output, budget and ranking contracts in
+`docs/spec.md`. Keep `make eval` passing. Change a baseline only for a
+deliberate ranking or admission change, in the same commit as that change,
+following [Evaluation baselines](CONTRIBUTING.md#evaluation-baselines); never
+regenerate one just to make CI green. Get ranking changes reviewed even when
+the packs pass.
