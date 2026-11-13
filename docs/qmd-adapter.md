@@ -549,3 +549,11 @@ RECALL_QMD_HTTP_PACKAGE=/absolute/path/to/node_modules/@tobilu/qmd \
 
 External qmd CLI tests require `RECALL_QMD_LIVE=1`; model-backed cases additionally
 require cached models or `RECALL_QMD_LIVE_MODELS=1`. They never use a home index.
+
+HTTP embedding maintenance can reuse exact inference results from qmd's existing
+`llm_cache` when retrying a partially embedded document. Cache keys pin the full
+embedding contract and formatted input, and cached vectors are validated before
+use. Queries always call the provider, so a cache cannot conceal an unavailable
+service. Upstream qmd occasionally trims this table to 1,000 entries; this is a
+bounded retry acceleration, not a guarantee that arbitrarily old chunks survive
+forever. The compatibility smoke checks the cache exports before index work.

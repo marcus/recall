@@ -70,6 +70,7 @@ export function createHTTPInference(config, cache) {
       // Persist validated inference results before qmd starts inserting its
       // chunk batch. An interrupted large document can reuse these exact
       // inputs even though qmd regenerates every chunk of a partial document.
+      // qmd may prune its cache to 1000 entries, so this is bounded reuse.
       for (const i of missing) cache?.set(keys[i], JSON.stringify(results[i]));
       return results;
     },
@@ -105,7 +106,7 @@ async function main(config, args) {
   const llm = await mod('llm');
   const collections = await mod('collections');
   const formatter = await import(pathToFileURL(join(config.package, 'dist/cli/formatter.js')).href);
-  for (const name of ['createStore', 'getEmbeddingFingerprint', 'getStoreCollection', 'getStoreCollections', 'upsertStoreCollection', 'reindexCollection', 'generateEmbeddings', 'searchVec', 'getStatus']) {
+  for (const name of ['createStore', 'getEmbeddingFingerprint', 'getStoreCollection', 'getStoreCollections', 'upsertStoreCollection', 'reindexCollection', 'generateEmbeddings', 'searchVec', 'getStatus', 'getCachedResult', 'setCachedResult']) {
     if (typeof qmd[name] !== 'function') throw new Error('HTTP inference qmd API compatibility check failed');
   }
   if (llm.formatQueryForEmbedding('probe', 'recall-http-probe') !== 'task: search result | query: probe' || llm.formatDocForEmbedding('text', 'title', 'recall-http-probe') !== 'title: title | text: text' || qmd.CHUNK_SIZE_TOKENS !== 900 || qmd.CHUNK_OVERLAP_TOKENS !== 135) throw new Error('HTTP inference qmd embedding format compatibility check failed');

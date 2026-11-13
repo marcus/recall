@@ -22,3 +22,10 @@ Gap: no independent review or decision to adopt. Parent is measuring whether a
 600-second bounded managed-GPU build eliminates the practical pressure. Keep
 this separate until a concrete remaining need justifies the cache. Do not
 install or merge it merely because tests pass.
+
+Parent independently inspected the cache delta and requested two final details:
+include getCachedResult/setCachedResult in the preflight export guard, and state
+that upstream occasionally prunes llm_cache to 1,000 entries. Both are addressed.
+This is bounded recent-chunk reuse, not infinite resumability. Parent will review
+the final commit after the installed baseline completes GPU staging; do not
+install during that live pass. Related decision task: td-849ab9.
