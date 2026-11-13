@@ -3,11 +3,14 @@ package qmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,6 +29,10 @@ func TestHTTPInferenceQMDJourney(t *testing.T) {
 	}
 	var calls atomic.Int32
 	var fail atomic.Bool
+	var pauseAt atomic.Int32
+	var track atomic.Bool
+	var completedInputs sync.Map
+	blocked := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if fail.Load() {
@@ -59,10 +66,20 @@ func TestHTTPInferenceQMDJourney(t *testing.T) {
 			}
 			result["content"] = text.String()
 		case "/v1/embeddings":
+			if pauseAt.Load() > 0 && pauseAt.Add(-1) == 0 {
+				close(blocked)
+				<-r.Context().Done()
+				return
+			}
 			data := []any{}
 			for i, text := range body.Input {
 				if !strings.HasPrefix(text, "title: ") && !strings.HasPrefix(text, "task: search result | query: ") {
 					t.Errorf("unformatted inference text")
+				}
+				if track.Load() && strings.HasPrefix(text, "title: ") {
+					if _, exists := completedInputs.LoadOrStore(text, true); exists {
+						t.Error("completed partial-document chunk repeated inference after restart")
+					}
 				}
 				vector := []float64{1, 0, 0}
 				if strings.Contains(text, "bicycle") {
@@ -176,4 +193,35 @@ func TestHTTPInferenceQMDJourney(t *testing.T) {
 	if !found {
 		t.Fatalf("derived original missing: %+v", response)
 	}
+	// Interrupt a real qmd document after its first 32-chunk batch, then prove
+	// the next process reuses those exact inference results from qmd's cache.
+	var large strings.Builder
+	large.WriteString("# Large document\n")
+	for i := 0; i < 1800; i++ {
+		fmt.Fprintf(&large, "Unique evidence line %d contains water storage information.\n", i)
+	}
+	if err := os.WriteFile(filepath.Join(root, "large.md"), []byte(large.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	track.Store(true)
+	pauseAt.Store(3)
+	interrupted, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { _, err := a.Refresh(interrupted, protocol.RefreshParams{}); done <- err }()
+	select {
+	case <-blocked:
+		stop()
+	case <-ctx.Done():
+		stop()
+		t.Fatal("partial document did not reach the controlled interruption")
+	}
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted refresh: %v", err)
+	}
+	pauseAt.Store(0)
+	health, err = a.Refresh(ctx, protocol.RefreshParams{})
+	if err != nil || health.Status != recall.HealthHealthy {
+		t.Fatalf("resumed document: %+v %v", health, err)
+	}
+
 }

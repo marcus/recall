@@ -92,3 +92,27 @@ test('OpenAI v1 base URL is accepted without doubling the version path', async t
   });
   await createHTTPInference(config(root+'/v1')).embed('formatted');
 });
+
+
+test('durable embedding cache resumes partial documents without repeating inference', async t => {
+  const calls = [];
+  const url = await server(t,(req,body)=> {
+    calls.push(body.input);
+    return {model:body.model,data:body.input.map((_,index)=>({index,embedding:[1,0,0]}))};
+  });
+  const values = new Map();
+  const cache = {get:key=>values.get(key),set:(key,value)=>values.set(key,value)};
+  const first = createHTTPInference(config(url),cache);
+  await first.embed('title: A | text: chunk one');
+  const restarted = createHTTPInference(config(url),cache);
+  const results = await restarted.embedBatch(['title: A | text: chunk one','title: A | text: chunk two']);
+  assert.equal(results.length,2);
+  assert.deepEqual(calls,[['title: A | text: chunk one'],['title: A | text: chunk two']]);
+  const changedModel = createHTTPInference(config(url,{model:'different-immutable-model'}),cache);
+  await changedModel.embed('title: A | text: chunk one');
+  assert.equal(calls.length,3);
+  // Corrupt local cache data must never bypass the response contract.
+  for (const key of values.keys()) values.set(key,JSON.stringify({model:first.embedModelName,embedding:[9,0,0]}));
+  await restarted.embed('title: A | text: chunk one');
+  assert.equal(calls.length,4);
+});

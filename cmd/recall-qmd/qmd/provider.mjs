@@ -14,7 +14,7 @@ export function embeddingContract(config) {
   return {model: config.model, dimensions: config.dimensions, format: formatVersion, tokenizer: tokenizerVersion};
 }
 
-export function createHTTPInference(config) {
+export function createHTTPInference(config, cache) {
   const metadata = config.rook ? {metadata: {rook: {localOnly: true, priority: 'background', maxWaitSeconds: 0}}} : {};
   async function post(root, path, body) {
     const headers = {'Content-Type': 'application/json'};
@@ -39,23 +39,38 @@ export function createHTTPInference(config) {
   }
   const contract = embeddingContract(config);
   const storageModel = 'recall-http-' + createHash('sha256').update(JSON.stringify(contract)).digest('hex');
+  function validVector(vector) {
+    return Array.isArray(vector) && vector.length === config.dimensions && vector.every(x => typeof x === 'number' && Number.isFinite(x)) && Math.abs(Math.hypot(...vector) - 1) <= 0.01;
+  }
   return {
     embedModelName: storageModel,
     async embed(text) { return (await this.embedBatch([text]))[0]; },
     async embedBatch(texts) {
       if (texts.length === 0) return [];
-      const data = await post(config.url, '/v1/embeddings', {model: config.model, input: texts, encoding_format: 'float'});
-      if (!Array.isArray(data.data) || data.data.length !== texts.length) throw new Error('HTTP inference embedding count mismatch');
+      const keys = texts.map(text => createHash('sha256').update(JSON.stringify({contract, operation: 'embedding', text})).digest('hex'));
+      const results = keys.map(key => {
+        if (!cache) return undefined;
+        try {
+          const value = JSON.parse(cache.get(key) || 'null');
+          if (value?.model === storageModel && validVector(value.embedding)) return value;
+        } catch {}
+        return undefined;
+      });
+      const missing = texts.map((_, i) => i).filter(i => !results[i]);
+      if (missing.length === 0) return results;
+      const data = await post(config.url, '/v1/embeddings', {model: config.model, input: missing.map(i => texts[i]), encoding_format: 'float'});
+      if (!Array.isArray(data.data) || data.data.length !== missing.length) throw new Error('HTTP inference embedding count mismatch');
       const seen = new Set();
-      const results = Array(texts.length);
       for (const row of data.data) {
-        if (!Number.isInteger(row.index) || row.index < 0 || row.index >= texts.length || seen.has(row.index)) throw new Error('HTTP inference embedding indices are invalid');
+        if (!Number.isInteger(row.index) || row.index < 0 || row.index >= missing.length || seen.has(row.index)) throw new Error('HTTP inference embedding indices are invalid');
         seen.add(row.index);
-        if (!Array.isArray(row.embedding) || row.embedding.length !== config.dimensions || row.embedding.some(x => typeof x !== 'number' || !Number.isFinite(x))) throw new Error('HTTP inference embedding dimensions or values are invalid');
-        const norm = Math.hypot(...row.embedding);
-        if (!Number.isFinite(norm) || Math.abs(norm - 1) > 0.01) throw new Error('HTTP inference embedding must be L2 normalized');
-        results[row.index] = {embedding: row.embedding, model: storageModel};
+        if (!validVector(row.embedding)) throw new Error('HTTP inference embedding dimensions, values, or L2 normalization are invalid');
+        results[missing[row.index]] = {embedding: row.embedding, model: storageModel};
       }
+      // Persist validated inference results before qmd starts inserting its
+      // chunk batch. An interrupted large document can reuse these exact
+      // inputs even though qmd regenerates every chunk of a partial document.
+      for (const i of missing) cache?.set(keys[i], JSON.stringify(results[i]));
       return results;
     },
     async tokenize(content) {
@@ -105,10 +120,11 @@ async function main(config, args) {
   const source = collections.loadConfig();
   const collectionName = args[0] === 'collection' ? args[2] : args[args.indexOf('-c') + 1];
   const definitions = source.collections || {};
-  const provider = createHTTPInference(config);
+  let store;
+  const cache = args[0] === 'embed' ? {get: key => qmd.getCachedResult(store.db, key), set: (key, value) => qmd.setCachedResult(store.db, key, value)} : undefined;
+  const provider = createHTTPInference(config, cache);
   const pin = JSON.stringify({...embeddingContract(config), qmdFingerprint: qmd.getEmbeddingFingerprint(provider.embedModelName)});
   const maintenance = args[0] === 'update' || args[0] === 'embed' || (args[0] === 'collection' && args[1] === 'add');
-  let store;
   try {
     // Health and queries never create a new index, register a collection, or pin it.
     if (existsSync(config.index)) {
