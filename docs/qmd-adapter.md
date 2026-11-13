@@ -484,7 +484,7 @@ inference_api_key_env = "INFERENCE_API_KEY" # optional; variable name, never a k
 # inference_rook = true
 ```
 
-`inference_url` is the service root. The bridge posts standard OpenAI requests
+`inference_url` accepts a service root or an OpenAI `/v1` base URL. The bridge posts standard OpenAI requests
 to `/v1/embeddings`: `model`, an array of already formatted `input` strings, and
 `encoding_format: "float"`. The response must echo the exact immutable model
 identity and contain one indexed vector per input, with finite numbers, the

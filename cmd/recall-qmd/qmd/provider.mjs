@@ -25,7 +25,8 @@ export function createHTTPInference(config) {
     }
     let response;
     try {
-      response = await fetch(root + path, {method: 'POST', headers, body: JSON.stringify({...body, ...metadata}), signal: AbortSignal.timeout(45000), redirect: 'error'});
+      const endpoint = root.endsWith('/v1') && path.startsWith('/v1/') ? root + path.slice(3) : root + path;
+      response = await fetch(endpoint, {method: 'POST', headers, body: JSON.stringify({...body, ...metadata}), signal: AbortSignal.timeout(45000), redirect: 'error'});
     } catch {
       throw new Error('HTTP inference provider is unreachable');
     }
@@ -212,6 +213,7 @@ if (process.env.RECALL_QMD_INFERENCE) {
     // Known local diagnostics are safe; upstream errors can contain corpus text.
     const message = error instanceof Error ? error.message : '';
     console.error(message.startsWith('HTTP inference') || message.startsWith('configured qmd') || message.startsWith('unsupported qmd') ? message : 'qmd HTTP inference bridge failed; check package, index and collection configuration');
+    if (process.argv[1] === 'check-compatibility') console.log(JSON.stringify({compatible: false, error: message.startsWith('HTTP inference') ? message : 'qmd package compatibility check failed'}));
     process.exitCode = 1;
   }
 }

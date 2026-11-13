@@ -23,7 +23,7 @@ func TestInferenceRequiresExplicitCompleteOptIn(t *testing.T) {
 		remove bool
 	}{
 		{"inference_provider", "rook", false}, {"inference_provider", nil, true},
-		{"inference_dimensions", 0, false}, {"inference_dimensions", 1.5, false},
+		{"inference_dimensions", nil, true}, {"inference_dimensions", 0, false}, {"inference_dimensions", 1.5, false},
 		{"inference_model", "", false}, {"inference_index", "relative.sqlite", false},
 		{"inference_qmd_package", "relative", false},
 		{"inference_url", "http://secret:password@host", false},

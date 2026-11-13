@@ -400,6 +400,7 @@ func (s Settings) schema() map[string]any {
 	schema := settingsSchema()
 	props := schema["properties"].(map[string]any)
 	if s.Inference != nil {
+		schema["required"] = []any{"collection", "inference_provider", "inference_url", "inference_model", "inference_dimensions", "inference_qmd_package", "inference_index"}
 		for _, key := range []string{"inference_provider", "inference_url", "inference_tokenizer_url", "inference_model", "inference_qmd_package", "inference_index", "inference_node", "inference_api_key_env"} {
 			props[key] = map[string]any{"type": "string"}
 		}

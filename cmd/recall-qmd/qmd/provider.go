@@ -48,6 +48,7 @@ func parseInference(raw map[string]any, mode Mode, replay string) (*HTTPInferenc
 	}
 	p := &HTTPInference{}
 	p.Collection, _ = raw["collection"].(string)
+	p.Collection = strings.TrimSpace(p.Collection)
 	var err error
 	for key, dst := range map[string]*string{"inference_url": &p.URL, "inference_tokenizer_url": &p.TokenizerURL, "inference_model": &p.Model, "inference_qmd_package": &p.Package, "inference_index": &p.Index, "inference_api_key_env": &p.APIKeyEnv, "inference_node": &p.Node} {
 		if *dst, err = stringSetting(raw, key, ""); err != nil {
@@ -72,6 +73,9 @@ func parseInference(raw map[string]any, mode Mode, replay string) (*HTTPInferenc
 	}
 	if p.Dimensions, err = intSetting(raw, "inference_dimensions", 0, 1); err != nil {
 		return nil, err
+	}
+	if p.Dimensions < 1 {
+		return nil, protocol.Errorf(protocol.CodeInvalidParams, "qmd: inference_dimensions is required and must be positive")
 	}
 	if p.Dimensions > 65536 {
 		return nil, protocol.Errorf(protocol.CodeInvalidParams, "qmd: inference_dimensions must be at most 65536")

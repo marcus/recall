@@ -83,3 +83,12 @@ test('index pin refuses adoption and model changes even during refresh',()=> {
     assert.throws(()=>verifyPin(previous,wanted,vectors,maintenance),/contract mismatch/);
   }
 });
+
+
+test('OpenAI v1 base URL is accepted without doubling the version path', async t => {
+  const root = await server(t,(req,body)=> {
+    assert.equal(req.url,'/v1/embeddings');
+    return {model:body.model,data:[{index:0,embedding:[1,0,0]}]};
+  });
+  await createHTTPInference(config(root+'/v1')).embed('formatted');
+});

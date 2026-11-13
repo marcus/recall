@@ -39,3 +39,10 @@ Pins are verified through a read-only SQLite handle before schema initialization
 Default tests use mocked inference. Existing external-model tests now explicitly
 require RECALL_QMD_LIVE=1. qmd 2.8 preserves punctuation in filenames; derived
 mapping accepts current physical paths and old normalized handles safely.
+
+Independent Sol-high review of 6199a23 found one missing-field validation gap:
+omitted dimensions defaulted to zero. Fixed by rejecting absent dimensions
+before index creation and declaring all provider requirements in the manifest.
+CLI/MCP mocked-service proof passed with identical locators and original evidence
+in /Volumes/Swift/proofs/recall/2026-11-13-http-mock-surfaces. Live backend proof
+awaits parent readiness. Endpoint config accepts a root or OpenAI /v1 base URL.
