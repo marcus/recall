@@ -40,8 +40,11 @@ bodies. It added 2,445 vectors at about 11.7 chunks/sec. The 19 derived HTML
 documents were added only at activation, preserving the live local receipt while
 Markdown staged. That final refresh took 11.58 seconds. The active source reports
 healthy/complete coverage over 709 documents and 2,628 vectors across 685 bodies.
-Normal placement/schedule restoration and the final CPU-cold proof belong to
-parent Robison; this child ended inference before that restoration.
+Parent Robison restored and verified CPU-only placement (no GPU layers or
+offload), re-registered scheduled refresh, and passed the final ordinary CLI
+query with caller credentials unset, scheduled PATH and the default query
+budget: answered/complete in 4.415 seconds. This child ended inference before
+that restoration.
 
 Validation: independent Sol-high review approved b7d20ac after fixing the only
 finding, omitted dimensions defaulting to zero. Full race suite, lint, vet, and
