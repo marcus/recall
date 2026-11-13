@@ -29,12 +29,15 @@ import (
 //     testdata/corpus in a temporary directory. Nothing touches the developer's
 //     own qmd index or collections, which is also why [qmd.ExecRunner] anchors
 //     its working directory on the corpus rather than inheriting Recall's.
-//   - The model-backed modes run only when the models are already on the
+//   - Live tests require RECALL_QMD_LIVE=1. Model-backed modes run only when the models are already on the
 //     machine. A first `qmd embed` downloads about 2GB, and a test suite must
 //     never be the thing that starts that.
 
 func qmdBinary(t *testing.T) string {
 	t.Helper()
+	if os.Getenv("RECALL_QMD_LIVE") != "1" {
+		t.Skip("set RECALL_QMD_LIVE=1 to run external qmd integration tests")
+	}
 	path, err := exec.LookPath("qmd")
 	if err != nil {
 		t.Skip("qmd is not on PATH; the fixture suites cover the same code paths")

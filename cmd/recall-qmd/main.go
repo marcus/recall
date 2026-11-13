@@ -31,8 +31,20 @@ import (
 func main() { os.Exit(run()) }
 
 func run() int {
+	checkPackage := flag.String("check-inference-package", "", "check qmd HTTP provider compatibility without inference or index writes; emits JSON")
+	node := flag.String("node", "node", "Node executable for the compatibility check")
 	version := flag.Bool("version", false, "print the adapter identity and exit")
 	flag.Parse()
+	if *checkPackage != "" {
+		result, err := qmd.CheckInferencePackage(context.Background(), *checkPackage, *node)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		_, _ = os.Stdout.Write(result.Stdout)
+		_, _ = os.Stderr.Write(result.Stderr)
+		return result.ExitCode
+	}
 	if *version {
 		if _, err := fmt.Fprintf(os.Stdout, "%s %s\n", qmd.AdapterID, buildinfo.Version); err != nil {
 			return 1

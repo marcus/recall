@@ -432,3 +432,120 @@ but query expansion is a language model and nothing guarantees that. Committed
 evaluation packs therefore set `replay` and replay recorded output rather than
 spawning qmd. The recording format and how to regenerate it are documented in
 `cmd/recall-qmd/conformance/record-qmd-fixtures.sh`.
+
+## Optional HTTP inference (including Rook)
+
+Recall works without Rook. Leave every `inference_*` setting unset to keep the
+original qmd executable, models, index discovery, and search behavior. Recall
+never discovers or probes Rook on that path. The HTTP path is an explicit source
+setting and does not introduce a dependency in Recall's core, CLI, or MCP.
+
+The first HTTP path supports **vector search without query expansion**. This is
+an intentional difference from the installed qmd CLI: qmd 2.8.3 `vsearch` also
+runs its expansion model, despite the embeddings-only shorthand above. The HTTP
+path calls qmd's cosine vector search directly and keeps its 0.3 admission floor.
+It never loads a local model. `hybrid`, `full`, `bm25`, and `replay` with HTTP
+inference are refused at configuration time. Expansion and reranking through a
+remote provider require a separate completed contract before those modes can be
+enabled. Existing local qmd modes retain their current semantics.
+
+The bridge calls the installed qmd modules for indexing, token chunking, vector
+storage/search and snippets. There is no fork or second search/index engine.
+Currently supported: qmd >=2.8 and <3, tested with 2.8.3. Before opening an index,
+the bridge also checks required exports, exact embedding prefixes, chunking
+constants, and the snippet formatter. An incompatible package makes the source
+unavailable. After updating qmd, run this cheap check, which needs no inference,
+network access, model files, corpus or index:
+
+```sh
+recall-qmd --check-inference-package /absolute/path/to/node_modules/@tobilu/qmd
+```
+
+The result is JSON, including `compatible`, `qmd_version`, `tested_version`, and
+`format`. `--node /absolute/path/to/node` selects a different Node executable.
+Use this smoke after weekly qmd updates before treating the provider as ready.
+Standalone qmd configurations do not need this bridge or Node preflight.
+
+Example settings for a source whose existing qmd collection is named `notes`:
+
+```toml
+[sources.settings]
+collection = "notes"
+mode = "vector"
+inference_provider = "openai"
+inference_url = "https://inference.example"
+inference_tokenizer_url = "https://tokenizer.example" # defaults to inference_url
+inference_model = "embeddinggemma-300m-q8-0-CONTENT_DIGEST"
+inference_dimensions = 768
+inference_qmd_package = "/absolute/path/to/node_modules/@tobilu/qmd"
+inference_index = "/absolute/path/to/a-new-provider-index.sqlite"
+inference_api_key_env = "INFERENCE_API_KEY" # optional; variable name, never a key
+# inference_node = "node"
+# inference_rook = true
+```
+
+`inference_url` is the service root. The bridge posts standard OpenAI requests
+to `/v1/embeddings`: `model`, an array of already formatted `input` strings, and
+`encoding_format: "float"`. The response must echo the exact immutable model
+identity and contain one indexed vector per input, with finite numbers, the
+configured dimensions, and L2 normalization. The service must not add prefixes.
+The current formatting contract is `qmd-gemma-v1`:
+
+- Query: `task: search result | query: QUERY`
+- Document: `title: TITLE | text: CHUNK`, using `none` when no title exists.
+
+Token chunking uses the same model remotely. `/v1/tokenize` accepts
+`{model, content}` and returns `{model, tokens}`; `/v1/detokenize` accepts
+`{model, tokens}` and returns `{model, content}`. No special tokens are added by
+the service. The embedding model and tokenizer must share the immutable model
+identity. This first version uses Gemma formatting for any explicitly configured
+model; other model prompt formats need a new named formatting contract.
+
+For Rook, set `inference_rook = true`. The adapter adds
+`metadata.rook = {localOnly: true, priority: "background", maxWaitSeconds: 0}` to
+embedding and tokenizer requests. This keeps requests local and prevents an
+implicit paid fallback. Generic HTTP providers receive no Rook metadata. The
+optional API key is read only from the named environment variable and sent as a
+Bearer header to the configured services. Inject it into Recall's process with
+your local secret manager; never store it in the TOML file. Redirects are refused
+so credentials and corpus text cannot follow a service to another address.
+Provider errors report safe status/contract messages, never response bodies.
+
+### Index transition
+
+Choose an unused, explicit `inference_index`. The bridge reads the collection
+from qmd's project-local configuration, or its ordinary global configuration;
+it initializes only the selected primary collection and Recall's opted-in
+derived collection. Explicit refresh uses qmd's indexing routines for those
+collections and honours their ignore patterns. This bridge does not run qmd
+collection update shell hooks. Existing non-provider qmd refresh behavior stays
+unchanged.
+
+Run `recall refresh --source notes-semantic` to build the new index. Health and
+query never create a missing provider index. Refresh pins the exact immutable
+model, dimensions, formatting, tokenizer version and qmd embedding fingerprint
+in the index's `store_config`. A mismatched pin, unpinned existing vectors,
+foreign embedding identities or a wrong vector-table dimension are refused
+before qmd can migrate, repair or replace that index. Refresh never clears or
+adopts incompatible vectors. Choose another unused index and explicitly refresh
+when changing embedding spaces. Endpoint and credential changes alone do not
+change the embedding space.
+
+Keep the original index and model files until the new provider path has passed
+a dedicated small-corpus proof and the intended corpus has been explicitly
+reindexed. Query and expand a known locator before switching profiles. Failed
+provider requests remain coverage failures; they cannot become an empty search
+success. The same source adapter serves CLI, HTTP and MCP through Recall's
+existing shared application layer. Ranking, fusion, evidence expansion and
+locator contracts are unchanged.
+
+The default test suite mocks HTTP and does not load local models. To run the
+upstream qmd SDK journey with mocked inference over a temporary corpus/index:
+
+```sh
+RECALL_QMD_HTTP_PACKAGE=/absolute/path/to/node_modules/@tobilu/qmd \
+  go test ./cmd/recall-qmd/qmd -run TestHTTPInferenceQMDJourney -count=1
+```
+
+External qmd CLI tests require `RECALL_QMD_LIVE=1`; model-backed cases additionally
+require cached models or `RECALL_QMD_LIVE_MODELS=1`. They never use a home index.

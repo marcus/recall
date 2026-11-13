@@ -6,6 +6,16 @@ Before 1.0, minor releases may contain breaking changes to the public Go
 adapter SDK under `pkg/`. Each such change will be called out here with
 migration guidance.
 
+## [Unreleased]
+
+### Added
+
+- Optional qmd HTTP inference with explicit provider configuration, remote tokenization, Rook request metadata, and a dedicated embedding-contract-pinned index. The first path provides vector search without expansion; local qmd configurations keep their existing behavior. `recall-qmd --check-inference-package` checks upstream API and formatting compatibility without inference or index writes.
+
+### Fixed
+
+- Derived HTML hits map back to original documents with both qmd 2.8 preserved filenames and older normalized handles. External qmd CLI tests now require an explicit opt-in and no longer load cached models during ordinary test runs.
+
 ## [0.8.2] - 2026-11-10
 
 ### Fixed

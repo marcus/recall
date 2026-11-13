@@ -27,14 +27,15 @@ import (
 // replay a semantic score over that snapshot, so edits/deletions cannot pass
 // merely by returning today's file without exercising refresh.
 type mirrorEngine struct {
-	root, mirror string
-	runner       *fakeRunner
-	exists       bool
-	wrong        string
-	fail         string
-	indexed      map[string]string
-	onSearch     func()
-	primaryHit   bool
+	root, mirror  string
+	runner        *fakeRunner
+	exists        bool
+	wrong         string
+	fail          string
+	indexed       map[string]string
+	onSearch      func()
+	primaryHit    bool
+	preservePaths bool
 }
 
 func newMirrorEngine(root, mirror string) *mirrorEngine {
@@ -109,7 +110,11 @@ func newMirrorEngine(root, mirror string) *mirrorEngine {
 			var hits []map[string]any
 			for rel, text := range e.indexed {
 				if strings.HasPrefix(rel, "b.html") {
-					hits = append(hits, map[string]any{"docid": "#semantic", "score": 0.48, "file": "qmd://html-view/" + strings.ReplaceAll(rel, ".html.md", "-html.md"), "line": 3, "title": "Rainwater reservoir", "snippet": fmt.Sprintf("@@ -3,%d @@\n%s", max(1, strings.Count(text, "\n")-2), strings.TrimPrefix(text, "# Rainwater reservoir\n\n"))})
+					virtual := strings.ReplaceAll(rel, ".html.md", "-html.md")
+					if e.preservePaths {
+						virtual = rel
+					}
+					hits = append(hits, map[string]any{"docid": "#semantic", "score": 0.48, "file": "qmd://html-view/" + virtual, "line": 3, "title": "Rainwater reservoir", "snippet": fmt.Sprintf("@@ -3,%d @@\n%s", max(1, strings.Count(text, "\n")-2), strings.TrimPrefix(text, "# Rainwater reservoir\n\n"))})
 				}
 			}
 			if hits == nil {
@@ -673,4 +678,16 @@ func TestSharedDerivedDataNoIndexRefresh(t *testing.T) {
 		t.Fatalf("upgrade refresh: %+v", h)
 	}
 	requireMirrorHit(t, restarted)
+}
+
+func TestDerivedQMD28PreservedFilenameMapsToOriginal(t *testing.T) {
+	a, engine, _ := derivedFixture(t, "vector")
+	engine.preservePaths = true
+	if health := refreshMirror(t, a); health.Status != recall.HealthHealthy {
+		t.Fatalf("refresh: %+v", health)
+	}
+	hit := requireMirrorHit(t, a)
+	if hit.SourceRecordID != "b.html" || strings.Contains(hit.Locator.Local, ".html.md") {
+		t.Fatalf("physical mirror path leaked: %+v", hit)
+	}
 }

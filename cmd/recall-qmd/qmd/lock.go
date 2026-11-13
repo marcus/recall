@@ -146,6 +146,9 @@ func (a *Adapter) resolveIndexPath(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
+	if set.Inference != nil {
+		return set.Inference.Index
+	}
 	res, err := a.run(ctx, "status")
 	if err != nil {
 		return ""

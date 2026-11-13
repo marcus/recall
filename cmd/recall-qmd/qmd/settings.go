@@ -80,6 +80,7 @@ const (
 
 // Settings is the validated adapter-owned configuration block.
 type Settings struct {
+	Inference         *HTTPInference
 	Binary            string
 	Collection        string
 	Mode              Mode
@@ -104,6 +105,7 @@ func parseSettings(raw map[string]any, baseDir string) (Settings, error) {
 		RefreshTimeout: defaultRefreshTimeout,
 	}
 	allowed := map[string]bool{
+		"inference_tokenizer_url": true, "inference_provider": true, "inference_url": true, "inference_model": true, "inference_dimensions": true, "inference_qmd_package": true, "inference_index": true, "inference_node": true, "inference_api_key_env": true, "inference_rook": true,
 		"binary": true, "collection": true, "mode": true, "max_candidates": true,
 		"timeout_ms": true, "refresh_timeout_ms": true, "replay": true,
 		"derive_extensions": true, "derived_collection": true, "exclude_dirs": true, "exclude_globs": true, "sibling_preference": true, "exclude_nested_repos": true, "max_raw_bytes": true, "max_file_bytes": true,
@@ -194,6 +196,9 @@ func parseSettings(raw map[string]any, baseDir string) (Settings, error) {
 				"qmd: relative replay path requires base_dir")
 		}
 		set.Replay = filepath.Join(baseDir, set.Replay)
+	}
+	if set.Inference, err = parseInference(raw, set.Mode, set.Replay); err != nil {
+		return Settings{}, err
 	}
 	if err := set.parseDerived(raw); err != nil {
 		return Settings{}, err
@@ -303,6 +308,9 @@ func settingsSchema() map[string]any {
 // about where this instance found it.
 func (s Settings) settingsDigest() string {
 	digest := fmt.Sprintf("mode=%s collection=%s limit=%d", s.Mode, s.Collection, s.MaxCandidates)
+	if s.Inference != nil {
+		digest += " provider=" + s.Inference.identity() + " expansion=none"
+	}
 	if len(s.DeriveExtensions) > 0 {
 		data, _ := json.Marshal([]any{s.DeriveExtensions, s.DerivedCollection, s.Selection, s.MaxRawBytes, s.MaxTextBytes, document.HTMLExtractionVersion})
 		digest += fmt.Sprintf(" derived=%x", sha256.Sum256(data))
@@ -390,10 +398,17 @@ func (s *Settings) parseDerived(raw map[string]any) error {
 
 func (s Settings) schema() map[string]any {
 	schema := settingsSchema()
+	props := schema["properties"].(map[string]any)
+	if s.Inference != nil {
+		for _, key := range []string{"inference_provider", "inference_url", "inference_tokenizer_url", "inference_model", "inference_qmd_package", "inference_index", "inference_node", "inference_api_key_env"} {
+			props[key] = map[string]any{"type": "string"}
+		}
+		props["inference_dimensions"] = map[string]any{"type": "integer", "minimum": 1}
+		props["inference_rook"] = map[string]any{"type": "boolean"}
+	}
 	if !s.derivedSettings {
 		return schema
 	}
-	props := schema["properties"].(map[string]any)
 	for _, key := range []string{"derive_extensions", "exclude_dirs", "exclude_globs", "sibling_preference"} {
 		props[key] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 	}

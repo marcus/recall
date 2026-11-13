@@ -421,7 +421,7 @@ func (a *Adapter) mapDerived(c recall.Candidate, scan mirrorScan) (recall.Candid
 	}
 	rel := ""
 	for original, entry := range scan.Entries {
-		if entry.QMDPath == ref.Path {
+		if entry.QMDPath == ref.Path || original+".md" == ref.Path {
 			if rel != "" {
 				return c, fmt.Errorf("ambiguous derived virtual path")
 			}

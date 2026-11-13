@@ -118,6 +118,9 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 		}
 	}
 	set.Binary = effectiveBinary(set.Binary, location)
+	if set.Inference != nil {
+		set.Inference.Node = effectiveBinary(set.Inference.Node, location)
+	}
 
 	runner := a.opts.Runner
 	if runner == nil {
@@ -126,7 +129,11 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 				return recall.Manifest{}, err
 			}
 		} else {
-			runner = ExecRunner{Binary: set.Binary, Timeout: set.Timeout, Dir: location}
+			if set.Inference != nil {
+				runner = inferenceRunner{ExecRunner: ExecRunner{Timeout: set.Timeout, Dir: location}, provider: *set.Inference}
+			} else {
+				runner = ExecRunner{Binary: set.Binary, Timeout: set.Timeout, Dir: location}
+			}
 		}
 	}
 
@@ -180,6 +187,9 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 			Command: set.Binary,
 			Purpose: "search and refresh the configured qmd collection",
 		}}
+	}
+	if set.Inference != nil && a.opts.Runner == nil {
+		manifest.ExecutableRequirements = []recall.ExecutableRequirement{{Name: "node", Command: set.Inference.Node, Purpose: "run the explicitly configured qmd HTTP inference bridge"}}
 	}
 	return manifest, nil
 }
