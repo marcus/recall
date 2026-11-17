@@ -90,6 +90,16 @@ install: build-all
 		echo "installed $$c -> $(PREFIX)/bin"; \
 	done
 
+# Antfly Lite is an optional source build for macOS arm64. The portable
+# release and Homebrew package do not need its native runtime.
+.PHONY: install-antfly
+install-antfly:
+	@test "$$($(GO) env GOOS)/$$($(GO) env GOARCH)/$$($(GO) env CGO_ENABLED)" = darwin/arm64/1 || \
+		{ echo "recall-antfly requires macOS arm64 with cgo enabled" >&2; exit 1; }
+	$(GO) build -ldflags '$(LDFLAGS)' -o $(BIN)/recall-antfly ./internal/semantic/cmd/recall-antfly
+	@mkdir -p '$(PREFIX)/bin'
+	install -m 0755 $(BIN)/recall-antfly '$(PREFIX)/bin/recall-antfly'
+
 uninstall:
 	@for c in $(COMMANDS); do \
 		rm -f '$(PREFIX)/bin/'"$$c" || exit 1; \
