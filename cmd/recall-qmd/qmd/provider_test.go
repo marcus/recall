@@ -92,7 +92,7 @@ func TestHTTPInferenceContracts(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, node, "--test", "provider_http_test.mjs")
+	command := exec.CommandContext(ctx, node, "--test", "provider_http_test.mjs", "provider_package_test.mjs")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("HTTP inference contracts: %v\n%s", err, output)

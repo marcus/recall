@@ -453,7 +453,11 @@ The bridge calls the installed qmd modules for indexing, token chunking, vector
 storage/search and snippets. There is no fork or second search/index engine.
 Currently supported: qmd >=2.8 and <3, tested with 2.8.3. Before opening an index,
 the bridge also checks required exports, exact embedding prefixes, chunking
-constants, and the snippet formatter. An incompatible package makes the source
+constants, and the snippet formatter. Package symlinks are resolved to one
+canonical root for module imports and native dependency resolution. The
+preflight opens SQLite in memory, loads qmd's vector extension, and executes a
+vector operation, catching missing dependencies, native bindings, and extension
+failures without writing an index. An incompatible package makes the source
 unavailable. After updating qmd, run this cheap check, which needs no inference,
 network access, model files, corpus or index:
 
@@ -511,6 +515,34 @@ your local secret manager; never store it in the TOML file. Redirects are refuse
 so credentials and corpus text cannot follow a service to another address.
 Provider errors report safe status/contract messages, never response bodies.
 
+### Keeping existing pointers when replacing QMD
+
+Keep the configured source identity (`source_uid` and `source_id`) and corpus
+root when changing retrieval engines. QMD-issued Recall local locators use
+`relative/path.md#L<start>-L<end>` and `relative/page.html#L<start>-L<end>`.
+Both `L` prefixes are required. HTML ranges refer to original HTML source lines,
+not extracted Markdown lines or qmd's normalized virtual filenames. HTML heading
+anchors are metadata, not an additional QMD locator syntax. A replacement must
+continue accepting these local parts even if it emits a new locator shape.
+
+The compatibility behavior currently lives in `qmd.parseLocal`, `qmd.render`,
+`qmd.expandDerived`, and `qmd.renderDerivedHTML`. For HTML, use the shared
+`document.ExtractHTML` chunks and select those overlapping the original source
+range; reapply noindex, exclusions and sibling preference before serving text.
+Missing files or ranges starting past EOF expire rather than resolve to a nearby
+record. A surviving range whose end exceeds EOF is served with `file_end`
+truncation. Preserve detail levels, byte budgets and truncation reporting.
+
+`qmd.fileRevision` is `file:` plus the first 12 lowercase hexadecimal characters
+of SHA-256 over the original file bytes, for Markdown and HTML expansion and for
+mapped HTML candidates. Markdown search candidates instead carry
+`qmd.sourceWatermark` (`collection=NAME files=N pattern=PATTERN`), which is a
+collection observation, not a document revision. A replacement should report
+its own honest search watermark and retain content-derived evidence revisions;
+it must not reinterpret the old collection watermark as a content hash. Reading
+existing pointers should require the original corpus and selection rules, not
+QMD's vectors, mirrors, normalized filenames or an available inference service.
+
 ### Index transition
 
 Choose an unused, explicit `inference_index`. The bridge reads the collection
@@ -540,7 +572,8 @@ existing shared application layer. Ranking, fusion, evidence expansion and
 locator contracts are unchanged.
 
 The default test suite mocks HTTP and does not load local models. To run the
-upstream qmd SDK journey with mocked inference over a temporary corpus/index:
+upstream qmd SDK journey with mocked inference over a temporary corpus/index
+and a symlink to the installed package (including the SQLite preflight):
 
 ```sh
 RECALL_QMD_HTTP_PACKAGE=/absolute/path/to/node_modules/@tobilu/qmd \

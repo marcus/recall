@@ -27,6 +27,17 @@ func TestHTTPInferenceQMDJourney(t *testing.T) {
 	if packagePath == "" {
 		t.Skip("set RECALL_QMD_HTTP_PACKAGE to an installed qmd package for the upstream SDK proof")
 	}
+	// Keep the configured spelling outside the package's node_modules tree.
+	// ESM import canonicalization alone must not hide broken CJS resolution.
+	linkedPackage := filepath.Join(t.TempDir(), "qmd")
+	if err := os.Symlink(packagePath, linkedPackage); err != nil {
+		t.Fatal(err)
+	}
+	packagePath = linkedPackage
+	preflight, err := CheckInferencePackage(t.Context(), packagePath, "")
+	if err != nil || preflight.ExitCode != 0 || !strings.Contains(string(preflight.Stdout), `"compatible":true`) {
+		t.Fatalf("symlink package preflight: %+v %v", preflight, err)
+	}
 	var calls atomic.Int32
 	var fail atomic.Bool
 	var pauseAt atomic.Int32

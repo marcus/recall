@@ -1,6 +1,6 @@
 // HTTP inference is deliberately isolated from Recall core and qmd's local CLI.
 // qmd owns chunking, corpus indexing, vector storage/search, and snippets.
-import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -96,23 +96,36 @@ export function verifyPin(previous, wanted, vectors, maintenance) {
 }
 
 async function main(config, args) {
-  const pkg = JSON.parse(readFileSync(join(config.package, 'package.json'), 'utf8'));
+  // Node canonicalizes ESM imports, but createRequire resolves relative to its
+  // supplied filename. Use one canonical root for both, including mise/pnpm links.
+  const packageRoot = realpathSync(config.package);
+  const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   // These are upstream module seams, not a fork or a second retrieval engine.
   // Refuse an unaudited API family rather than falling back to local models.
   if (pkg.name !== '@tobilu/qmd' || !/^2\.(?:[89]|[1-9][0-9])\./.test(pkg.version)) throw new Error('HTTP inference bridge requires qmd >=2.8 <3; verify compatibility before upgrading this bridge');
   if (args[0] === '--version') { console.log(`qmd ${pkg.version}`); return; }
-  const mod = name => import(pathToFileURL(join(config.package, 'dist', name + '.js')).href);
+  const mod = name => import(pathToFileURL(join(packageRoot, 'dist', name + '.js')).href);
   const qmd = await mod('store');
   const llm = await mod('llm');
   const collections = await mod('collections');
-  const formatter = await import(pathToFileURL(join(config.package, 'dist/cli/formatter.js')).href);
+  const formatter = await import(pathToFileURL(join(packageRoot, 'dist/cli/formatter.js')).href);
   for (const name of ['createStore', 'getEmbeddingFingerprint', 'getStoreCollection', 'getStoreCollections', 'upsertStoreCollection', 'reindexCollection', 'generateEmbeddings', 'searchVec', 'getStatus', 'getCachedResult', 'setCachedResult']) {
     if (typeof qmd[name] !== 'function') throw new Error('HTTP inference qmd API compatibility check failed');
   }
   if (llm.formatQueryForEmbedding('probe', 'recall-http-probe') !== 'task: search result | query: probe' || llm.formatDocForEmbedding('text', 'title', 'recall-http-probe') !== 'title: title | text: text' || qmd.CHUNK_SIZE_TOKENS !== 900 || qmd.CHUNK_OVERLAP_TOKENS !== 135) throw new Error('HTTP inference qmd embedding format compatibility check failed');
   const sample = JSON.parse(formatter.formatSearchResults([{displayPath: 'notes/probe.md', docid: '123456', title: 'Probe', body: '# Probe\nEvidence text\n', score: 0.75}], 'json', {query: 'Evidence'}))[0];
   if (sample.file !== 'notes/probe.md' || sample.score !== 0.75 || !sample.snippet?.startsWith('@@ -')) throw new Error('HTTP inference qmd formatter compatibility check failed');
+  const Database = createRequire(join(packageRoot, 'package.json'))('better-sqlite3');
+  const dbModule = await mod('db');
+  if (typeof dbModule.loadSqliteVec !== 'function') throw new Error('HTTP inference qmd SQLite compatibility check failed');
   if (args[0] === 'check-compatibility') {
+    // Exercise native bindings and the same vector loader as read-only queries.
+    // An in-memory database needs no corpus, config, persistent index or inference.
+    const db = new Database(':memory:');
+    try {
+      dbModule.loadSqliteVec(db);
+      if (db.prepare("SELECT vec_length('[1,0,0]') AS dimensions").get().dimensions !== 3) throw new Error('HTTP inference qmd SQLite vector compatibility check failed');
+    } finally { db.close(); }
     console.log(JSON.stringify({compatible: true, qmd_version: pkg.version, tested_version: '2.8.3', format: formatVersion, expansion: 'none'}));
     return;
   }
@@ -131,7 +144,6 @@ async function main(config, args) {
     if (existsSync(config.index)) {
       // Check ownership with a truly read-only handle before qmd's schema
       // initialization can migrate or repair a pre-existing index.
-      const Database = createRequire(join(config.package, 'package.json'))('better-sqlite3');
       const db = new Database(config.index, {readonly: true, fileMustExist: true});
       try {
         const vectors = db.prepare('SELECT COUNT(*) AS n FROM content_vectors').get().n;
@@ -142,7 +154,6 @@ async function main(config, args) {
         const foreign = db.prepare('SELECT COUNT(*) AS n FROM content_vectors WHERE model != ? OR embed_fingerprint != ?').get(provider.embedModelName, qmd.getEmbeddingFingerprint(provider.embedModelName)).n;
         if (foreign) throw new Error('HTTP inference index contains incompatible embedding identities; choose a new dedicated index');
         if (!maintenance) {
-          const dbModule = await mod('db');
           dbModule.loadSqliteVec(db);
           store = {db, close: () => db.close(), getStatus: model => qmd.getStatus(db, model), searchVec: (query, model, limit, collection) => qmd.searchVec(db, query, model, limit, collection, undefined, undefined, provider)};
         }
