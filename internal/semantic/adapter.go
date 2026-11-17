@@ -132,7 +132,7 @@ func (a *Adapter) Initialize(_ context.Context, cfg adapter.Config) (recall.Mani
 	if err != nil {
 		return recall.Manifest{}, err
 	}
-	fingerprint, err := json.Marshal([]any{indexFormat, document.HTMLExtractionVersion, root, docSettings, url, model, dimensions})
+	fingerprint, err := json.Marshal([]any{indexFormat, document.HTMLExtractionVersion, root, docSettings, model, dimensions})
 	if err != nil {
 		return recall.Manifest{}, err
 	}

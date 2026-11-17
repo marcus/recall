@@ -94,7 +94,7 @@ func (a *Adapter) published() (*generation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open records for %s: %w", id, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var g generation
 	if err := json.NewDecoder(f).Decode(&g); err != nil {
 		return nil, fmt.Errorf("read records for %s: %w", id, err)
@@ -115,7 +115,7 @@ func (a *Adapter) cachedVectors(g *generation) (map[string][]float32, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var vectors map[string][]float32
 	err = gob.NewDecoder(f).Decode(&vectors)
 	return vectors, err
@@ -144,7 +144,7 @@ func writeSynced(file string, encode func(*os.File) error) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := encode(f); err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func syncDirectory(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return f.Sync()
 }
 
@@ -172,7 +172,7 @@ func (a *Adapter) publish(ctx context.Context, g *generation) (bool, error) {
 		return false, err
 	}
 	staging := filepath.Join(a.dir, "next-"+g.ID)
-	defer os.Remove(staging)
+	defer func() { _ = os.Remove(staging) }()
 	if err := writeSynced(staging, func(f *os.File) error {
 		_, err := fmt.Fprintln(f, g.ID)
 		return err

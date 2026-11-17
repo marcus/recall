@@ -28,6 +28,12 @@ func (a *Adapter) Health(ctx context.Context) (recall.Health, error) {
 	}
 	defer lock.close()
 	g, loadErr := a.published()
+	if loadErr == nil {
+		loadErr = a.checkReadable(g)
+		if loadErr != nil {
+			g = nil
+		}
+	}
 	return a.health(current, scanErr, g, loadErr), nil
 }
 
@@ -53,7 +59,7 @@ func (a *Adapter) health(current docs.SemanticScan, scanErr error, g *generation
 	h.IndexWatermark = g.Watermark
 	h.IndexGeneration = g.ID
 	h.IndexModel = a.model
-	h.IndexConfig = a.config
+	h.IndexConfig = fmt.Sprintf("%s:floor=%.4f", a.config, a.floor)
 	h.LastSuccess = &g.Built
 	h.Diagnostics["chunk_count"] = len(g.Chunks)
 	h.FailedCount = int64(g.Failed)
@@ -96,7 +102,7 @@ func (a *Adapter) Refresh(ctx context.Context, params protocol.RefreshParams) (r
 	if err != nil {
 		return a.health(current, err, old, loadErr), nil
 	}
-	if !params.Full && old != nil && old.Watermark == current.Watermark && old.Failed == 0 {
+	if !params.Full && old != nil && old.Watermark == current.Watermark && old.Failed == 0 && a.checkReadable(old) == nil {
 		h := a.health(current, nil, old, nil)
 		h.CheckpointProgress = recall.CheckpointUnchanged
 		return h, nil
@@ -107,19 +113,22 @@ func (a *Adapter) Refresh(ctx context.Context, params protocol.RefreshParams) (r
 		return recall.Health{}, ctx.Err()
 	}
 	if err != nil {
-		if g == nil {
-			g = old
+		if g == nil && old != nil {
+			if readErr := a.checkReadable(old); readErr != nil {
+				loadErr = readErr
+			} else {
+				g = old
+			}
 		}
+		var scanErr error
 		if errors.Is(err, errCorpusMoved) {
-			current, loadErr = a.scan(ctx)
-		} else if g != nil {
-			loadErr = nil
+			current, scanErr = a.scan(ctx)
 		}
-		h := a.health(current, loadErr, g, nil)
+		h := a.health(current, scanErr, g, loadErr)
 		if g != nil {
 			h.Status = recall.HealthDegraded
 		}
-		h.Diagnostics["refresh_error"] = err.Error()
+		h.Diagnostics["last_refresh_error"] = err.Error()
 		return h, nil
 	}
 
@@ -280,12 +289,25 @@ func fromCache(g *generation, cached map[string][]float32, file docs.SemanticFil
 	return doc, true
 }
 
+// checkReadable distinguishes files present on disk from an openable Antfly
+// generation. Refresh can reconstruct an unreadable database from cached vectors.
+func (a *Adapter) checkReadable(g *generation) error {
+	if len(g.Chunks) == 0 {
+		return nil
+	}
+	idx, err := a.open(filepath.Join(a.dir, g.ID, databaseFile))
+	if err != nil {
+		return fmt.Errorf("open published Antfly index: %w", err)
+	}
+	return idx.Close()
+}
+
 func (a *Adapter) verify(ctx context.Context, file string, rows []antfly.Row) error {
 	index, err := a.open(file)
 	if err != nil {
 		return err
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 	for _, i := range []int{0, len(rows) / 2, len(rows) - 1} {
 		hits, err := index.Search(ctx, rows[i].Vector, min(10, len(rows)))
 		if err != nil {

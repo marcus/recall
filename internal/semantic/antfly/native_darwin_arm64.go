@@ -70,6 +70,7 @@ import "C"
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -101,17 +102,17 @@ func loadLibrary() error {
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("%w: library path: %v", ErrUnavailable, err)
+		return fmt.Errorf("%w: library path: %w", ErrUnavailable, err)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	hash := sha256.New()
 	_, hashErr := io.Copy(hash, file)
 	closeErr := file.Close()
 	if hashErr != nil || closeErr != nil {
-		return fmt.Errorf("%w: hash library: %v / %v", ErrUnavailable, hashErr, closeErr)
+		return fmt.Errorf("%w: hash library: %w", ErrUnavailable, errors.Join(hashErr, closeErr))
 	}
 	if got := fmt.Sprintf("%x", hash.Sum(nil)); got != librarySHA256 {
 		return fmt.Errorf("%w: libantfly SHA-256 %s, want %s (v0.3.1 darwin-arm64)", ErrUnavailable, got, librarySHA256)
@@ -147,7 +148,7 @@ func openNative(path string, create bool) (database, error) {
 	if create {
 		mode = 1
 	}
-	if err := nativeError(C.af_open_db(cPath, mode, &handle)); err != nil {
+	if err := nativeError(C.af_open_db(cPath, mode, &handle)); err != nil { //nolint:gocritic // cgo inserts a pointer check with duplicate operands.
 		return nil, fmt.Errorf("antfly: open: %w", err)
 	}
 	return &nativeDB{handle: handle}, nil
@@ -176,9 +177,9 @@ func (db *nativeDB) call(op string, input []byte) ([]byte, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	var out C.af_buffer
-	code := C.af_call(db.handle, operation, ptr, C.size_t(len(input)), &out)
-	err := nativeError(code) // Native diagnostics are thread-local; read immediately.
-	defer C.af_free_buffer(&out)
+	code := C.af_call(db.handle, operation, ptr, C.size_t(len(input)), &out) //nolint:gocritic // cgo inserts a pointer check with duplicate operands.
+	err := nativeError(code)                                                 // Native diagnostics are thread-local; read immediately.
+	defer C.af_free_buffer(&out)                                             //nolint:gocritic // cgo inserts a pointer check with duplicate operands.
 	if err != nil {
 		return nil, err
 	}

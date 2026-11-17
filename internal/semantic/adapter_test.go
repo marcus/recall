@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -88,7 +89,8 @@ func TestFailedReopenKeepsPreviousGeneration(t *testing.T) {
 	}
 	writeDoc(t, root, "two.md", "orbital pool\n")
 	next, err := a.Refresh(ctx, protocol.RefreshParams{})
-	if err != nil || next.Status != recall.HealthDegraded || next.IndexGeneration != first.IndexGeneration {
+	if err != nil || next.Status != recall.HealthDegraded || next.IndexGeneration != first.IndexGeneration ||
+		!strings.Contains(fmt.Sprint(next.Diagnostics["last_refresh_error"]), "reopen failed") {
 		t.Fatalf("failed refresh: %+v, %v", next, err)
 	}
 	hits := search(t, a, "orbital")
@@ -99,6 +101,28 @@ func TestFailedReopenKeepsPreviousGeneration(t *testing.T) {
 	next, err = a.Refresh(ctx, protocol.RefreshParams{})
 	if err != nil || next.Status != recall.HealthHealthy || next.IndexedCount != 2 {
 		t.Fatalf("recovered refresh: %+v, %v", next, err)
+	}
+}
+
+func TestRefreshRepairsUnreadableUnchangedIndex(t *testing.T) {
+	ctx := context.Background()
+	a, fake, root := fixture(t)
+	writeDoc(t, root, "one.md", "orbital\n")
+	first, err := a.Refresh(ctx, protocol.RefreshParams{})
+	if err != nil || first.Status != recall.HealthHealthy {
+		t.Fatalf("initialize index: %+v, %v", first, err)
+	}
+	file := filepath.Join(a.dir, first.IndexGeneration, databaseFile)
+	if err := os.WriteFile(file, []byte("corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h, err := a.Health(ctx)
+	if err != nil || h.Status != recall.HealthUnavailable {
+		t.Fatalf("corrupt health: %+v, %v", h, err)
+	}
+	h, err = a.Refresh(ctx, protocol.RefreshParams{})
+	if err != nil || h.Status != recall.HealthHealthy || h.IndexGeneration == first.IndexGeneration || fake.embedded != 1 {
+		t.Fatalf("repair with cached vectors: %+v, %d vectors, %v", h, fake.embedded, err)
 	}
 }
 

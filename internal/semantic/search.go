@@ -93,7 +93,7 @@ func (a *Adapter) Search(ctx context.Context, req recall.SearchRequest) (recall.
 	if err != nil {
 		return fail(protocol.Errorf(protocol.CodeSourceUnavailable, "open Antfly index: %v", err))
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 20

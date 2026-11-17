@@ -14,17 +14,20 @@ import (
 	"github.com/marcus/recall/pkg/buildinfo"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	version := flag.Bool("version", false, "print the adapter identity and exit")
 	flag.Parse()
 	if *version {
 		fmt.Printf("recall-antfly %s\n", buildinfo.Version)
-		return
+		return 0
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := adapter.Serve(ctx, os.Stdin, os.Stdout, semantic.New()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

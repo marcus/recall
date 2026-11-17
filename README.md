@@ -90,6 +90,8 @@ source is configured for it: `recall-gmail` needs
 [`qmd`](https://github.com/tobi/qmd) plus its local models — see
 [qmd-adapter.md](docs/qmd-adapter.md), which also explains that qmd runs
 *alongside* the built-in lexical document adapter rather than replacing it.
+The optional macOS arm64 [Antfly Lite adapter](docs/antfly-adapter.md) installs
+with `make install-antfly`.
 Private, consumer-specific adapters live with the consumers that configure them.
 `make uninstall` removes the same command set.
 
