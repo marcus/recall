@@ -8,7 +8,7 @@ package antfly
 #include <stddef.h>
 #include <stdlib.h>
 
-// The small ABI-3 subset used here matches the v0.3.1 Apache-2.0 C header.
+// The small ABI-3 subset used here matches the v0.3.2 Apache-2.0 C header.
 // No native header, linker search path, Python, or Go module is needed.
 typedef struct antfly_db antfly_db;
 typedef struct { const uint8_t *ptr; size_t len; } af_slice;
@@ -80,8 +80,8 @@ import (
 	"unsafe"
 )
 
-// Pin the same darwin-arm64 v0.3.1 embedded artifact as the local proof.
-const librarySHA256 = "ecfacc69ccece59b38e7ad8d5920edb57d77141fa3b42bcb96d0c3aebd92e0ce"
+// Pin the same darwin-arm64 v0.3.2 embedded artifact as the local proof.
+const librarySHA256 = "1144d7f0d28978b4d75ab83a0c5a5d0c10c01246d64b594e5458112788b7e08b"
 
 var nativeRuntime struct {
 	sync.Once
@@ -98,7 +98,7 @@ func loadNative() error {
 func loadLibrary() error {
 	path := os.Getenv("ANTFLY_LIBRARY")
 	if path == "" {
-		return fmt.Errorf("%w: set ANTFLY_LIBRARY to the pinned v0.3.1 libantfly.dylib (see package README)", ErrUnavailable)
+		return fmt.Errorf("%w: set ANTFLY_LIBRARY to the pinned v0.3.2 libantfly.dylib (see package README)", ErrUnavailable)
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -115,7 +115,7 @@ func loadLibrary() error {
 		return fmt.Errorf("%w: hash library: %w", ErrUnavailable, errors.Join(hashErr, closeErr))
 	}
 	if got := fmt.Sprintf("%x", hash.Sum(nil)); got != librarySHA256 {
-		return fmt.Errorf("%w: libantfly SHA-256 %s, want %s (v0.3.1 darwin-arm64)", ErrUnavailable, got, librarySHA256)
+		return fmt.Errorf("%w: libantfly SHA-256 %s, want %s (v0.3.2 darwin-arm64)", ErrUnavailable, got, librarySHA256)
 	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))

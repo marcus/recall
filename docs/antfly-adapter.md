@@ -4,7 +4,7 @@
 
 ## Install
 
-Use macOS arm64 with cgo. Install the pinned Antfly Lite v0.3.1 embedded release in a durable local directory and verify it using the [runtime checksums](../internal/semantic/antfly/README.md). Keep the unpacked release layout together. Then run `make install-antfly`. Configure `ANTFLY_LIBRARY` in the trusted user-level Recall adapter environment to the absolute path of `lib/libantfly.dylib`. Inject the Rook credential with Hush on aerie.
+Use macOS arm64 with cgo. Install the pinned Antfly Lite v0.3.2 embedded release in a durable local directory and verify it using the [runtime checksums](../internal/semantic/antfly/README.md). Keep the unpacked release layout together. Then run `make install-antfly`. Configure `ANTFLY_LIBRARY` in the trusted user-level Recall adapter environment to the absolute path of `lib/libantfly.dylib`. Inject the Rook credential with Hush on aerie.
 
 The source takes a local corpus location, the document adapter's `extensions`, exclusions, sibling preference, and size settings, plus:
 

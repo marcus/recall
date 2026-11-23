@@ -8,11 +8,10 @@ error wrapping `ErrUnavailable` when the engine is opened or built.
 
 ## Pinned dependency and environment
 
-The runtime is the **v0.3.1 darwin-arm64 embedded release**, C ABI 3, already
-unpacked on aerie at:
+The runtime is the **v0.3.2 darwin-arm64 embedded release**, C ABI 3, deployed on aerie at:
 
 ```
-/Volumes/Swift/scratch/recall/antfly-engine/embedded/
+~/.local/lib/recall/antfly-v0.3.2/
 ```
 
 Keep the embedded archive layout, assets and license notices together. The
@@ -20,14 +19,14 @@ runtime loader requires this exact `lib/libantfly.dylib` and verifies its SHA-25
 before `dlopen`:
 
 ```
-ecfacc69ccece59b38e7ad8d5920edb57d77141fa3b42bcb96d0c3aebd92e0ce  lib/libantfly.dylib
-ce8e4fb830c51924923271653413b69625f43f276b1b1ae8adaa805d25d7f2c8  embedded.tgz
+1144d7f0d28978b4d75ab83a0c5a5d0c10c01246d64b594e5458112788b7e08b  lib/libantfly.dylib
+a6e9a269b4757b02a79661bf61aa9a905d99eac9a280d533eaeb20c4a64c6362  antfly-embedded_0.3.2_Darwin_arm64.tar.gz
 ```
 
 Configure the library before the first engine operation in the process:
 
 ```sh
-export ANTFLY_LIBRARY=/Volumes/Swift/scratch/recall/antfly-engine/embedded/lib/libantfly.dylib
+export ANTFLY_LIBRARY="$HOME/.local/lib/recall/antfly-v0.3.2/lib/libantfly.dylib"
 ```
 
 The runtime requires macOS 15.0 or later on arm64. The normal Go toolchain
@@ -82,7 +81,7 @@ oracle over 256 vectors:
 ```sh
 go test -race ./internal/semantic/antfly
 CGO_ENABLED=0 go test ./internal/semantic/antfly
-ANTFLY_LIBRARY=/Volumes/Swift/scratch/recall/antfly-engine/embedded/lib/libantfly.dylib \
+ANTFLY_LIBRARY="$HOME/.local/lib/recall/antfly-v0.3.2/lib/libantfly.dylib" \
   go test -tags antflyintegration ./internal/semantic/antfly
 ```
 
